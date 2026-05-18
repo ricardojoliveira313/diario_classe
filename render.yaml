@@ -3,7 +3,6 @@ services:
     name: diario-classe-backend
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
-    plan: free
     envVars:
       - key: DATABASE_URL
         sync: false
@@ -20,7 +19,6 @@ services:
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
     rootDir: frontend
-    plan: free
     envVars:
       - key: VITE_API_URL
         value: https://diario-classe-backend.onrender.com/api
