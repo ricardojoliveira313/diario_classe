@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: diario-classe-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: NODE_ENV
+        value: production
+      - key: FRONTEND_URL
+        value: https://diario-classe-frontend.onrender.com
+
+  - type: web
+    name: diario-classe-frontend
+    runtime: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    rootDir: frontend
+    plan: free
+    envVars:
+      - key: VITE_API_URL
+        value: https://diario-classe-backend.onrender.com/api
