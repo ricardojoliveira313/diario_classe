@@ -174,7 +174,7 @@ export default function Importar() {
 
       // Mapa ra → alunoId (após insert)
       const raKeyToId = new Map<string, string>();
-      await api.bulkInsertAlunos(alunosList.map((a, _i) => ({ ...a, _idx: _i })), async (n) => {
+      await api.bulkInsertAlunos(alunosList, (n) => {
         setProgresso(n);
         setStatus(`Inserindo alunos... ${n}/${totalAlunos}`);
       });
