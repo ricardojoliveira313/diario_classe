@@ -1,25 +1,60 @@
-const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+import { createClient } from '@supabase/supabase-js';
 
-async function req(path: string, opts?: RequestInit) {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...opts,
-  });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
-}
+const SUPABASE_URL = 'https://hxmwpleyhagwcukuhzxg.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4bXdwbGV5aGFnd2N1a3VoenhnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNzcyMzMsImV4cCI6MjA5Mzc1MzIzM30.3o7GXefZaGVlbB3PndAaMdri0gk8-P792Z3KmgPVPwQ';
+
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 export const api = {
-  getTurmas: () => req('/turmas'),
-  createTurma: (data: any) => req('/turmas', { method: 'POST', body: JSON.stringify(data) }),
-  deleteTurma: (id: string) => req(`/turmas/${id}`, { method: 'DELETE' }),
+  getTurmas: async () => {
+    const { data, error } = await supabase.from('Turma').select('*').order('nome');
+    if (error) throw error;
+    return data;
+  },
+  createTurma: async (data: any) => {
+    const { data: result, error } = await supabase.from('Turma').insert(data).select().single();
+    if (error) throw error;
+    return result;
+  },
+  deleteTurma: async (id: string) => {
+    const { error } = await supabase.from('Turma').delete().eq('id', id);
+    if (error) throw error;
+  },
 
-  getAlunos: (turmaId?: string) => req(`/alunos${turmaId ? `?turmaId=${turmaId}` : ''}`),
-  createAluno: (data: any) => req('/alunos', { method: 'POST', body: JSON.stringify(data) }),
-  deleteAluno: (id: string) => req(`/alunos/${id}`, { method: 'DELETE' }),
+  getAlunos: async (turmaId?: string) => {
+    let query = supabase.from('Aluno').select('*').order('nome');
+    if (turmaId) query = query.eq('turmaId', turmaId);
+    const { data, error } = await query;
+    if (error) throw error;
+    return data;
+  },
+  createAluno: async (data: any) => {
+    const { data: result, error } = await supabase.from('Aluno').insert(data).select().single();
+    if (error) throw error;
+    return result;
+  },
+  deleteAluno: async (id: string) => {
+    const { error } = await supabase.from('Aluno').delete().eq('id', id);
+    if (error) throw error;
+  },
 
-  getFaltas: (turmaId: string, mes: number, ano: number) =>
-    req(`/faltas?turmaId=${turmaId}&mes=${mes}&ano=${ano}`),
-  upsertFaltasBatch: (registros: any[]) =>
-    req('/faltas/upsert-batch', { method: 'POST', body: JSON.stringify({ registros }) }),
+  getFaltas: async (turmaId: string, mes: number, ano: number) => {
+    const { data, error } = await supabase
+      .from('Falta')
+      .select('*, aluno:Aluno(*)')
+      .eq('turmaId', turmaId)
+      .eq('mes', mes)
+      .eq('ano', ano);
+    if (error) throw error;
+    return data;
+  },
+
+  upsertFaltasBatch: async (registros: any[]) => {
+    const { data, error } = await supabase
+      .from('Falta')
+      .upsert(registros, { onConflict: 'alunoId,mes,ano' })
+      .select();
+    if (error) throw error;
+    return data;
+  },
 };
