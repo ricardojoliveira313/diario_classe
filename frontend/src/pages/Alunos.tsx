@@ -1,87 +1,157 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 
-const card = { background: 'white', borderRadius: 8, padding: 12, marginBottom: 8, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' };
-const btn = { padding: '8px 16px', borderRadius: 6, border: 'none', cursor: 'pointer', fontWeight: 600 };
 const input = { padding: '8px 12px', borderRadius: 6, border: '1px solid #cbd5e1', width: '100%', marginBottom: 8 };
 const label = { fontSize: 12, color: '#64748b', marginBottom: 4, display: 'block' };
+
+const SITUACAO_COR: Record<string, string> = {
+  'ATIVO': '#16a34a',
+  'N COM': '#dc2626',
+  'BAIXA TRANSF.': '#9333ea',
+  'REMA': '#ea580c',
+  'TRANSF.': '#0284c7',
+};
 
 export default function Alunos() {
   const [turmas, setTurmas] = useState<any[]>([]);
   const [turmaId, setTurmaId] = useState('');
   const [alunos, setAlunos] = useState<any[]>([]);
-  const [adding, setAdding] = useState(false);
-  const [form, setForm] = useState({ nome: '', ra: '', digito: '', nascimento: '', situacao: 'ATIVO' });
+  const [busca, setBusca] = useState('');
+  const [filtroSituacao, setFiltroSituacao] = useState('');
 
-  useEffect(() => { api.getTurmas().then(t => { setTurmas(t); if (t.length) setTurmaId(t[0].id); }); }, []);
-  useEffect(() => { if (turmaId) api.getAlunos(turmaId).then(setAlunos); }, [turmaId]);
+  useEffect(() => {
+    api.getTurmas().then(t => { setTurmas(t); if (t.length) setTurmaId(t[0].id); });
+  }, []);
 
-  const save = async () => {
-    await api.createAluno({ ...form, turmaId });
-    setAdding(false);
-    setForm({ nome: '', ra: '', digito: '', nascimento: '', situacao: 'ATIVO' });
-    api.getAlunos(turmaId).then(setAlunos);
-  };
+  useEffect(() => {
+    if (turmaId) api.getAlunos(turmaId).then(setAlunos);
+  }, [turmaId]);
 
-  const del = async (id: string, nome: string) => {
-    if (!confirm(`Excluir aluno "${nome}"?`)) return;
-    await api.deleteAluno(id);
-    api.getAlunos(turmaId).then(setAlunos);
-  };
+  const alunosFiltrados = alunos.filter(a => {
+    const buscaOk = !busca || a.nome?.toLowerCase().includes(busca.toLowerCase()) || String(a.ra ?? '').includes(busca);
+    const sitOk = !filtroSituacao || a.situacao === filtroSituacao;
+    return buscaOk && sitOk;
+  });
+
+  const totalAtivos = alunos.filter(a => a.situacao === 'ATIVO').length;
+  const totalBolsa = alunos.filter(a => a.bolsa_familia).length;
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, marginTop: 16 }}>
-        <h1 style={{ fontSize: 20, fontWeight: 700 }}>Alunos</h1>
-        <button style={{ ...btn, background: '#1e40af', color: 'white' }} onClick={() => setAdding(!adding)}>
-          {adding ? 'Cancelar' : '+ Novo Aluno'}
-        </button>
-      </div>
+    <div style={{ marginTop: 16 }}>
+      <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 12 }}>Alunos</h1>
 
-      <div style={{ marginBottom: 16 }}>
+      {/* Seletor de turma */}
+      <div style={{ marginBottom: 12 }}>
         <label style={label}>Turma</label>
         <select style={{ ...input, marginBottom: 0 }} value={turmaId} onChange={e => setTurmaId(e.target.value)}>
-          {turmas.map(t => <option key={t.id} value={t.id}>{t.nome || `${t.numero}º ${t.letra} - ${t.periodo}`}</option>)}
+          {turmas.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
         </select>
       </div>
 
-      {adding && (
-        <div style={{ background: 'white', borderRadius: 8, padding: 16, marginBottom: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-          <label style={label}>Nome completo</label>
-          <input style={input} placeholder="Nome do aluno" value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })} />
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <div>
-              <label style={label}>RA</label>
-              <input style={input} value={form.ra} onChange={e => setForm({ ...form, ra: e.target.value })} />
+      {/* Resumo */}
+      {alunos.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
+          {[
+            { label: 'Total', value: alunos.length, cor: '#1e40af' },
+            { label: 'Ativos', value: totalAtivos, cor: '#16a34a' },
+            { label: 'Bolsa Família', value: totalBolsa, cor: '#ea580c' },
+          ].map(({ label: l, value, cor }) => (
+            <div key={l} style={{ background: 'white', borderRadius: 8, padding: '10px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', textAlign: 'center' }}>
+              <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>{l}</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: cor }}>{value}</div>
             </div>
-            <div>
-              <label style={label}>Dígito</label>
-              <input style={input} value={form.digito} onChange={e => setForm({ ...form, digito: e.target.value })} />
-            </div>
-          </div>
-          <label style={label}>Nascimento</label>
-          <input style={input} placeholder="dd/mm/aaaa" value={form.nascimento} onChange={e => setForm({ ...form, nascimento: e.target.value })} />
-          <button style={{ ...btn, background: '#16a34a', color: 'white', width: '100%', marginTop: 8 }} onClick={save}>
-            Salvar Aluno
-          </button>
+          ))}
         </div>
       )}
 
-      {alunos.length === 0 && (
-        <p style={{ textAlign: 'center', color: '#64748b', marginTop: 32 }}>
-          {turmas.length === 0 ? 'Cadastre uma turma primeiro.' : 'Nenhum aluno nesta turma.'}
-        </p>
+      {/* Filtros */}
+      {alunos.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, marginBottom: 12 }}>
+          <input style={{ ...input, marginBottom: 0 }} placeholder="🔍 Buscar por nome ou RA..."
+            value={busca} onChange={e => setBusca(e.target.value)} />
+          <select style={{ ...input, marginBottom: 0, width: 'auto' }}
+            value={filtroSituacao} onChange={e => setFiltroSituacao(e.target.value)}>
+            <option value="">Todos</option>
+            <option value="ATIVO">Ativo</option>
+            <option value="N COM">N COM</option>
+            <option value="BAIXA TRANSF.">Baixa Transf.</option>
+            <option value="REMA">REMA</option>
+            <option value="TRANSF.">Transf.</option>
+          </select>
+        </div>
       )}
 
-      {alunos.map((a, i) => (
-        <div key={a.id} style={card}>
-          <div>
-            <strong>{i + 1}. {a.nome}</strong>
-            <div style={{ fontSize: 12, color: '#64748b' }}>RA: {a.ra}{a.digito ? `-${a.digito}` : ''} · {a.situacao}</div>
-          </div>
-          <button style={{ ...btn, background: '#fee2e2', color: '#dc2626', padding: '6px 12px' }} onClick={() => del(a.id, a.nome)}>✕</button>
+      {/* Sem dados */}
+      {turmas.length === 0 && (
+        <div style={{ textAlign: 'center', color: '#64748b', marginTop: 40 }}>
+          <div style={{ fontSize: 40 }}>📥</div>
+          <p>Nenhuma turma cadastrada.</p>
+          <a href="/importar" style={{ color: '#1e40af', fontWeight: 600 }}>→ Importar planilha</a>
         </div>
-      ))}
+      )}
+
+      {turmas.length > 0 && alunos.length === 0 && (
+        <div style={{ textAlign: 'center', color: '#64748b', marginTop: 40 }}>
+          <div style={{ fontSize: 40 }}>📭</div>
+          <p>Nenhum aluno nesta turma.</p>
+          <a href="/importar" style={{ color: '#1e40af', fontWeight: 600 }}>→ Importar planilha</a>
+        </div>
+      )}
+
+      {/* Tabela de alunos */}
+      {alunosFiltrados.length > 0 && (
+        <div style={{ background: 'white', borderRadius: 8, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+          {/* Cabeçalho */}
+          <div style={{
+            background: '#1e40af', color: 'white', padding: '10px 14px',
+            display: 'grid', gridTemplateColumns: '32px 1fr 90px 70px 70px',
+            gap: 8, fontSize: 12, fontWeight: 700,
+          }}>
+            <span>#</span>
+            <span>Nome do Aluno</span>
+            <span>RA</span>
+            <span style={{ textAlign: 'center' }}>Situação</span>
+            <span style={{ textAlign: 'center' }}>B. Família</span>
+          </div>
+
+          {alunosFiltrados.map((a, i) => (
+            <div key={a.id} style={{
+              padding: '9px 14px',
+              display: 'grid', gridTemplateColumns: '32px 1fr 90px 70px 70px',
+              gap: 8, alignItems: 'center',
+              borderBottom: '1px solid #f1f5f9',
+              background: i % 2 === 0 ? 'white' : '#f8fafc',
+            }}>
+              <span style={{ fontSize: 12, color: '#94a3b8' }}>{a.numero || i + 1}</span>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>{a.nome}</div>
+                <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                  {a.data_nascimento ? `Nasc: ${a.data_nascimento}` : ''}
+                  {a.deficiencia ? ` · ${a.deficiencia}` : ''}
+                </div>
+              </div>
+              <span style={{ fontSize: 12, color: '#475569', fontFamily: 'monospace' }}>
+                {a.ra}{a.dig_ra ? `-${a.dig_ra}` : ''}
+              </span>
+              <span style={{
+                fontSize: 10, fontWeight: 700, textAlign: 'center',
+                color: SITUACAO_COR[a.situacao] ?? '#64748b',
+                background: `${SITUACAO_COR[a.situacao] ?? '#64748b'}18`,
+                borderRadius: 4, padding: '2px 4px',
+              }}>
+                {a.situacao ?? 'ATIVO'}
+              </span>
+              <span style={{ textAlign: 'center', fontSize: 14 }}>
+                {a.bolsa_familia ? '✅' : '—'}
+              </span>
+            </div>
+          ))}
+
+          <div style={{ padding: '8px 14px', background: '#f8fafc', fontSize: 12, color: '#64748b', borderTop: '1px solid #e2e8f0' }}>
+            {alunosFiltrados.length} aluno(s) exibido(s) de {alunos.length} total
+          </div>
+        </div>
+      )}
     </div>
   );
 }

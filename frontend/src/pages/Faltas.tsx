@@ -78,14 +78,20 @@ export default function Faltas() {
       {alunos.length > 0 && (
         <>
           <div style={{ background: 'white', borderRadius: 8, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: 16 }}>
-            <div style={{ background: '#1e40af', color: 'white', padding: '10px 16px', display: 'grid', gridTemplateColumns: '40px 1fr 120px', gap: 8, fontSize: 13, fontWeight: 600 }}>
-              <span>#</span><span>Aluno</span><span style={{ textAlign: 'center' }}>Faltas</span>
+            <div style={{ background: '#1e40af', color: 'white', padding: '10px 16px', display: 'grid', gridTemplateColumns: '36px 1fr 28px 100px', gap: 8, fontSize: 12, fontWeight: 600 }}>
+              <span>#</span><span>Aluno</span><span title="Bolsa Família">💚</span><span style={{ textAlign: 'center' }}>Faltas</span>
             </div>
             {alunos.map((a, i) => (
-              <div key={a.id} style={{ padding: '10px 16px', display: 'grid', gridTemplateColumns: '40px 1fr 120px', gap: 8, alignItems: 'center', borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? 'white' : '#f8fafc' }}>
-                <span style={{ fontSize: 13, color: '#64748b' }}>{i + 1}</span>
-                <span style={{ fontSize: 14 }}>{a.nome}</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
+              <div key={a.id} style={{ padding: '9px 16px', display: 'grid', gridTemplateColumns: '36px 1fr 28px 100px', gap: 8, alignItems: 'center', borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? 'white' : '#f8fafc' }}>
+                <span style={{ fontSize: 12, color: '#94a3b8' }}>{a.numero || i + 1}</span>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{a.nome}</div>
+                  {a.situacao && a.situacao !== 'ATIVO' && (
+                    <span style={{ fontSize: 10, color: '#dc2626', fontWeight: 700 }}>{a.situacao}</span>
+                  )}
+                </div>
+                <span style={{ textAlign: 'center', fontSize: 13 }}>{a.bolsa_familia ? '✅' : ''}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}>
                   <button style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid #cbd5e1', background: '#f1f5f9', cursor: 'pointer', fontWeight: 700, fontSize: 16 }}
                     onClick={() => setFalta(a.id, (faltas[a.id] ?? 0) - 1)}>−</button>
                   <span style={{ width: 28, textAlign: 'center', fontWeight: 700, fontSize: 16, color: (faltas[a.id] ?? 0) > 0 ? '#dc2626' : '#1e293b' }}>
