@@ -1,0 +1,64 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Turma {
+  id        String   @id @default(dbgenerated("gen_random_uuid()::text"))
+  nome      String
+  etapa     String
+  numero    Int
+  letra     String
+  periodo   String
+  professor String   @default("")
+  createdAt DateTime @default(now())
+  alunos    Aluno[]
+  faltas    Falta[]
+}
+
+model Aluno {
+  id               String   @id @default(dbgenerated("gen_random_uuid()::text"))
+  ra               String
+  digito           String   @default("")
+  nome             String
+  nascimento       String   @default("")
+  situacao         String   @default("ATIVO")
+  dataInicioMatric String   @default("04/02/2026")
+  dataFimMatric    String   @default("18/12/2026")
+  dataMovimentacao String   @default("")
+  bolsaFamilia     Boolean  @default(false)
+  deficiencia      String   @default("")
+  turmaId          String
+  createdAt        DateTime @default(now())
+  turma            Turma    @relation(fields: [turmaId], references: [id], onDelete: Cascade)
+  faltas           Falta[]
+
+  @@unique([ra, turmaId])
+}
+
+model Falta {
+  id         String @id @default(dbgenerated("gen_random_uuid()::text"))
+  alunoId    String
+  turmaId    String
+  mes        Int
+  ano        Int    @default(2026)
+  faltas     Int    @default(0)
+  frequencia String @default("")
+  aluno      Aluno  @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  turma      Turma  @relation(fields: [turmaId], references: [id], onDelete: Cascade)
+
+  @@unique([alunoId, mes, ano])
+}
+
+model Upload {
+  id        String   @id @default(dbgenerated("gen_random_uuid()::text"))
+  tipo      String
+  filename  String
+  path      String
+  createdAt DateTime @default(now())
+}
