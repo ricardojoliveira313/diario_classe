@@ -1,12 +1,22 @@
 import { useState, useRef } from 'react';
 import * as XLSX from 'xlsx';
-import { api } from '../api';
+import { api, supabase } from '../api';
 
 const MES_MAP: Record<string, number> = {
-  JANEIRO: 1, FEVEREIRO: 2, MARÇO: 3, ABRIL: 4,
+  JANEIRO: 1, FEVEREIRO: 2, MARCO: 3, MARÇO: 3, ABRIL: 4,
   MAIO: 5, JUNHO: 6, JULHO: 7, AGOSTO: 8,
   SETEMBRO: 9, OUTUBRO: 10, NOVEMBRO: 11, DEZEMBRO: 12,
 };
+
+function getMes(sheetName: string, row: any): number {
+  // Tenta pelo nome da aba primeiro
+  const porAba = MES_MAP[sheetName.toUpperCase().trim().normalize('NFD').replace(/[̀-ͯ]/g, '')];
+  if (porAba) return porAba;
+  // Tenta pela coluna MÊS da linha
+  const colMes = String(row['MÊS'] ?? row['MES'] ?? row['Mês'] ?? row['mês'] ?? '')
+    .toUpperCase().trim().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  return MES_MAP[colMes] ?? 0;
+}
 
 function fmtDate(val: any): string {
   if (!val) return '';
@@ -19,16 +29,10 @@ function fmtDate(val: any): string {
 }
 
 function parseBool(val: any): boolean {
-  if (!val) return false;
-  return String(val).toUpperCase().trim() === 'SIM';
+  return String(val ?? '').toUpperCase().trim() === 'SIM';
 }
 
-interface Preview {
-  turmas: number;
-  alunos: number;
-  meses: string[];
-  registros: number;
-}
+interface Preview { turmas: number; alunos: number; meses: string[]; registros: number; }
 
 export default function Importar() {
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -40,11 +44,10 @@ export default function Importar() {
   const [sucesso, setSucesso] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Dados parseados guardados em memória
   const dadosRef = useRef<{
     turmas: { nome: string; professora: string }[];
     alunosMap: Map<string, any>;
-    faltasRows: any[];
+    faltasMap: Map<string, any>;
   } | null>(null);
 
   const handleFile = (file: File) => {
@@ -59,33 +62,26 @@ export default function Importar() {
       try {
         const wb = XLSX.read(e.target!.result, { type: 'binary', cellDates: true });
 
-        // Mapa: série → { nome, professora }
         const turmaMap = new Map<string, { nome: string; professora: string }>();
-        // Mapa: ra → aluno (dados mais recentes)
         const alunoMap = new Map<string, any>();
-        // Faltas: uma por (ra + mes)
-        const faltasRows: any[] = [];
+        // Chave: raKey|mes — evita duplicatas
+        const faltasMap = new Map<string, any>();
 
         for (const sheetName of wb.SheetNames) {
-          const mesNum = MES_MAP[sheetName.toUpperCase().trim()];
           const ws = wb.Sheets[sheetName];
           const rows: any[] = XLSX.utils.sheet_to_json(ws, { raw: false, dateNF: 'dd/mm/yyyy' });
 
           for (const row of rows) {
-            const serie = String(row['SÉRIE'] ?? row['SERIE'] ?? '').trim();
+            const serie = String(row['SÉRIE'] ?? row['SERIE'] ?? row['Série'] ?? '').trim();
             const professora = String(row['PROFESSORA'] ?? '').trim();
             const nome = String(row['NOME DO ALUNO'] ?? '').trim();
             const ra = String(row['RA'] ?? '').trim();
             const digRa = String(row['DIG RA'] ?? '').trim();
-            const numero = parseInt(String(row['Nº'] ?? row['N'] ?? '0')) || 0;
-            const nascimento = fmtDate(row['DATA DE NASCIMENTO']);
-            const inicioMatricula = fmtDate(row['DATA INÍCIO MATRÍCULA'] ?? row['DATA INICIO MATRICULA']);
-            const fimMatricula = fmtDate(row['DATA FIM MATRÍCULA'] ?? row['DATA FIM MATRICULA']);
-            const movimentacao = fmtDate(row['DATA MOVIMENTAÇÃO'] ?? row['DATA MOVIMENTACAO']);
+            const numero = parseInt(String(row['Nº'] ?? row['N°'] ?? row['N'] ?? '0')) || 0;
             const deficiencia = String(row['DEFICIÊNCIA'] ?? row['DEFICIENCIA'] ?? '').trim();
             const bolsaFamilia = parseBool(row['BOLSA FAMÍLIA'] ?? row['BOLSA FAMILIA']);
             const situacao = String(row['SITUAÇÃO'] ?? row['SITUACAO'] ?? 'ATIVO').trim();
-            const frequenciaTexto = String(row['FREQUÊNCIA DOS ALUNOS(A)'] ?? row['FREQUENCIA DOS ALUNOS(A)'] ?? '').trim();
+            const mes = getMes(sheetName, row);
 
             if (!nome || !serie) continue;
 
@@ -94,38 +90,42 @@ export default function Importar() {
             }
 
             const raKey = ra || nome;
+
             if (!alunoMap.has(raKey)) {
               alunoMap.set(raKey, {
-                nome, ra: ra || null, dig_ra: digRa, numero,
-                data_nascimento: nascimento,
-                data_inicio_matricula: inicioMatricula,
-                data_fim_matricula: fimMatricula,
-                data_movimentacao: movimentacao,
-                deficiencia, bolsa_familia: bolsaFamilia,
-                situacao, professora,
+                nome,
+                ra: ra ? Number(ra) : null,
+                dig_ra: digRa,
+                numero,
+                data_nascimento: fmtDate(row['DATA DE NASCIMENTO']),
+                data_inicio_matricula: fmtDate(row['DATA INÍCIO MATRÍCULA'] ?? row['DATA INICIO MATRICULA']),
+                data_fim_matricula: fmtDate(row['DATA FIM MATRÍCULA'] ?? row['DATA FIM MATRICULA']),
+                data_movimentacao: fmtDate(row['DATA MOVIMENTAÇÃO'] ?? row['DATA MOVIMENTACAO']),
+                deficiencia,
+                bolsa_familia: bolsaFamilia,
+                situacao,
+                professora,
                 _serie: serie,
               });
             }
 
-            faltasRows.push({
-              _ra: raKey, _serie: serie,
-              mes: mesNum ?? 0, ano: 2026,
-              faltas: 0, frequencia: '', frequencia_texto: frequenciaTexto,
-            });
+            // Registra falta apenas se tiver mês válido, sem duplicar
+            if (mes > 0) {
+              const faltaKey = `${raKey}|${mes}`;
+              if (!faltasMap.has(faltaKey)) {
+                faltasMap.set(faltaKey, { _ra: raKey, _serie: serie, mes, ano: 2026, faltas: 0, frequencia: '' });
+              }
+            }
           }
         }
 
-        dadosRef.current = {
-          turmas: Array.from(turmaMap.values()),
-          alunosMap: alunoMap,
-          faltasRows,
-        };
+        dadosRef.current = { turmas: Array.from(turmaMap.values()), alunosMap: alunoMap, faltasMap };
 
         setPreview({
           turmas: turmaMap.size,
           alunos: alunoMap.size,
           meses: wb.SheetNames,
-          registros: faltasRows.length,
+          registros: faltasMap.size,
         });
       } catch (ex: any) {
         setErro('Erro ao ler o arquivo: ' + ex.message);
@@ -136,7 +136,7 @@ export default function Importar() {
 
   const importar = async () => {
     if (!dadosRef.current) return;
-    const { turmas, alunosMap, faltasRows } = dadosRef.current;
+    const { turmas, alunosMap, faltasMap } = dadosRef.current;
 
     setErro('');
     setSucesso(false);
@@ -150,18 +150,15 @@ export default function Importar() {
 
       setStatus('Criando turmas...');
       const turmasInseridas = await api.bulkInsertTurmas(turmas);
-
-      // Mapa série → id da turma
-      const serieToId = new Map<string, string>();
-      for (const t of turmasInseridas) {
-        serieToId.set(t.nome, t.id);
-      }
+      const serieToId = new Map<string, string>(turmasInseridas.map((t: any) => [t.nome, t.id]));
 
       setStatus('Inserindo alunos...');
-      const alunosList = Array.from(alunosMap.entries()).map(([_key, a]) => ({
+      const alunosList = Array.from(alunosMap.values()).map(a => ({
         nome: a.nome,
         turmaId: serieToId.get(a._serie) ?? null,
-        ra: a.ra, dig_ra: a.dig_ra, numero: a.numero,
+        ra: a.ra,
+        dig_ra: a.dig_ra,
+        numero: a.numero,
         data_nascimento: a.data_nascimento,
         data_inicio_matricula: a.data_inicio_matricula,
         data_fim_matricula: a.data_fim_matricula,
@@ -172,75 +169,65 @@ export default function Importar() {
         professora: a.professora,
       }));
 
-      // Mapa ra → alunoId (após insert)
-      const raKeyToId = new Map<string, string>();
       await api.bulkInsertAlunos(alunosList, (n) => {
         setProgresso(n);
         setStatus(`Inserindo alunos... ${n}/${totalAlunos}`);
       });
 
-      // Buscar todos os alunos para obter os IDs
-      setStatus('Vinculando registros de faltas...');
-      const { supabase } = await import('../api');
-      const { data: alunosDb } = await supabase.from('Aluno').select('id, ra, nome, turmaId');
+      setStatus('Vinculando faltas...');
+      const { data: alunosDb } = await supabase.from('Aluno').select('id, ra, nome');
       const alunosDbList = alunosDb ?? [];
 
-      // Mapa raKey → id
-      for (const a of alunosDbList) {
-        const key = a.ra ? String(a.ra) : a.nome;
-        raKeyToId.set(key, a.id);
-      }
-      // Também mapear por nome para fallback
+      const raKeyToId = new Map<string, string>();
       const nomeToId = new Map<string, string>();
       for (const a of alunosDbList) {
+        if (a.ra) raKeyToId.set(String(a.ra), a.id);
         nomeToId.set(a.nome, a.id);
       }
 
-      const faltasParaInserir = faltasRows
+      // Buscar turmaId do aluno para inserir na Falta
+      const alunoIdToTurmaId = new Map<string, string>();
+      for (const a of alunosDbList as any[]) {
+        if (a.id && a.turmaId) alunoIdToTurmaId.set(a.id, a.turmaId);
+      }
+      // Rebuscar com turmaId
+      const { data: alunosComTurma } = await supabase.from('Aluno').select('id, ra, nome, turmaId');
+      for (const a of (alunosComTurma ?? []) as any[]) {
+        if (a.id && a.turmaId) alunoIdToTurmaId.set(a.id, a.turmaId);
+      }
+
+      const faltasParaInserir = Array.from(faltasMap.values())
         .map(f => {
           const alunoId = raKeyToId.get(f._ra) ?? nomeToId.get(f._ra);
           const turmaId = serieToId.get(f._serie);
-          if (!alunoId || !turmaId || !f.mes) return null;
-          return {
-            alunoId, turmaId, mes: f.mes, ano: f.ano,
-            faltas: 0, frequencia: '', frequencia_texto: f.frequencia_texto,
-          };
+          if (!alunoId || !turmaId) return null;
+          return { alunoId, turmaId, mes: f.mes, ano: f.ano, faltas: 0, frequencia: '' };
         })
-        .filter(Boolean);
+        .filter(Boolean) as any[];
 
-      setStatus('Inserindo registros de frequência...');
-      await api.bulkInsertFaltas(faltasParaInserir as any[]);
+      setStatus(`Inserindo ${faltasParaInserir.length} registros de frequência...`);
+      await api.bulkInsertFaltas(faltasParaInserir);
 
       setStatus('');
       setSucesso(true);
     } catch (ex: any) {
-      setErro('Erro na importação: ' + ex.message);
+      setErro('Erro: ' + ex.message);
       setStatus('');
     }
   };
-
-  const btn = (color: string) => ({
-    padding: '12px 24px', borderRadius: 8, border: 'none',
-    cursor: 'pointer', fontWeight: 700, fontSize: 15,
-    background: color, color: 'white', width: '100%', marginTop: 12,
-  });
 
   return (
     <div style={{ marginTop: 16 }}>
       <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>📥 Importar Planilha</h1>
       <p style={{ color: '#64748b', fontSize: 14, marginBottom: 20 }}>
-        Selecione o arquivo <strong>DIARIO_CLASSE_2026.xlsx</strong>. O sistema importará turmas, alunos e frequência automaticamente.
+        Selecione o arquivo <strong>DIARIO_CLASSE_2026.xlsx</strong> exportado da Secretaria Escolar Digital.
+        O sistema importa turmas, alunos e frequência automaticamente.
       </p>
 
-      {/* Área de upload */}
       <div
-        style={{
-          border: '2px dashed #cbd5e1', borderRadius: 12, padding: 32,
-          textAlign: 'center', cursor: 'pointer', background: '#f8fafc',
-          marginBottom: 16,
-        }}
+        style={{ border: '2px dashed #cbd5e1', borderRadius: 12, padding: 32, textAlign: 'center', cursor: 'pointer', background: '#f8fafc', marginBottom: 16 }}
         onClick={() => fileRef.current?.click()}
-        onDragOver={e => { e.preventDefault(); }}
+        onDragOver={e => e.preventDefault()}
         onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
       >
         <div style={{ fontSize: 36, marginBottom: 8 }}>📊</div>
@@ -252,33 +239,34 @@ export default function Importar() {
           onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
       </div>
 
-      {/* Preview */}
       {preview && !sucesso && (
         <div style={{ background: 'white', borderRadius: 10, padding: 20, boxShadow: '0 1px 4px rgba(0,0,0,0.1)', marginBottom: 16 }}>
-          <div style={{ fontWeight: 700, marginBottom: 12, color: '#1e40af' }}>✅ Arquivo lido com sucesso</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+          <div style={{ fontWeight: 700, marginBottom: 12, color: '#16a34a' }}>✅ Arquivo lido com sucesso</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 12 }}>
             {[
-              { label: 'Turmas', value: preview.turmas },
-              { label: 'Alunos', value: preview.alunos },
-              { label: 'Meses', value: preview.meses.join(', ') },
-              { label: 'Registros freq.', value: preview.registros },
-            ].map(({ label, value }) => (
-              <div key={label} style={{ background: '#eff6ff', borderRadius: 8, padding: '10px 14px' }}>
-                <div style={{ fontSize: 12, color: '#3b82f6', fontWeight: 600 }}>{label}</div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: '#1e3a8a' }}>{value}</div>
+              { label: 'Turmas', value: preview.turmas, cor: '#1e40af' },
+              { label: 'Alunos', value: preview.alunos, cor: '#16a34a' },
+              { label: 'Abas/Meses', value: preview.meses.join(', '), cor: '#7c3aed' },
+              { label: 'Registros freq.', value: preview.registros, cor: '#ea580c' },
+            ].map(({ label, value, cor }) => (
+              <div key={label} style={{ background: '#f8fafc', borderRadius: 8, padding: '10px 14px' }}>
+                <div style={{ fontSize: 11, color: cor, fontWeight: 700 }}>{label}</div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: '#1e293b' }}>{value}</div>
               </div>
             ))}
           </div>
-          <div style={{ background: '#fef9c3', borderRadius: 8, padding: 12, marginTop: 12, fontSize: 13, color: '#78350f' }}>
-            ⚠️ <strong>Atenção:</strong> a importação <strong>apaga todos os dados existentes</strong> e reimporta tudo do zero.
+          <div style={{ background: '#fef9c3', borderRadius: 8, padding: 10, fontSize: 13, color: '#78350f', marginBottom: 12 }}>
+            ⚠️ <strong>Atenção:</strong> apaga os dados existentes e reimporta tudo do zero.
           </div>
-          <button style={btn('#dc2626')} onClick={importar}>
+          <button
+            style={{ padding: '14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 15, background: '#dc2626', color: 'white', width: '100%' }}
+            onClick={importar}
+          >
             🚀 Confirmar Importação
           </button>
         </div>
       )}
 
-      {/* Progresso */}
       {status && (
         <div style={{ background: 'white', borderRadius: 10, padding: 20, boxShadow: '0 1px 4px rgba(0,0,0,0.1)', marginBottom: 16 }}>
           <div style={{ fontWeight: 600, color: '#1e40af', marginBottom: 8 }}>{status}</div>
@@ -293,26 +281,27 @@ export default function Importar() {
         </div>
       )}
 
-      {/* Sucesso */}
       {sucesso && (
-        <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: 20, textAlign: 'center' }}>
-          <div style={{ fontSize: 40 }}>✅</div>
-          <div style={{ fontWeight: 700, fontSize: 18, color: '#15803d', marginTop: 8 }}>Importação concluída!</div>
+        <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: 24, textAlign: 'center' }}>
+          <div style={{ fontSize: 48 }}>✅</div>
+          <div style={{ fontWeight: 700, fontSize: 20, color: '#15803d', marginTop: 8 }}>Importação concluída!</div>
           <div style={{ color: '#166534', fontSize: 14, marginTop: 4 }}>
-            {preview?.alunos} alunos em {preview?.turmas} turmas importados com sucesso.
+            {preview?.alunos} alunos · {preview?.turmas} turmas · {preview?.registros} registros
           </div>
-          <div style={{ marginTop: 12 }}>
-            <a href="/alunos" style={{ color: '#1e40af', fontWeight: 600 }}>→ Ver alunos</a>
-            {' · '}
-            <a href="/faltas" style={{ color: '#1e40af', fontWeight: 600 }}>→ Lançar faltas</a>
+          <div style={{ marginTop: 16, display: 'flex', gap: 12, justifyContent: 'center' }}>
+            <a href="/alunos" style={{ background: '#1e40af', color: 'white', padding: '10px 20px', borderRadius: 8, textDecoration: 'none', fontWeight: 600 }}>
+              👥 Ver Alunos
+            </a>
+            <a href="/faltas" style={{ background: '#16a34a', color: 'white', padding: '10px 20px', borderRadius: 8, textDecoration: 'none', fontWeight: 600 }}>
+              📋 Lançar Faltas
+            </a>
           </div>
         </div>
       )}
 
-      {/* Erro */}
       {erro && (
         <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 10, padding: 16, color: '#dc2626', fontSize: 14 }}>
-          {erro}
+          <strong>Erro:</strong> {erro}
         </div>
       )}
     </div>
