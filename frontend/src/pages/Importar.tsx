@@ -211,6 +211,83 @@ export default function Importar() {
     });
   }
 
+  // ─── PARSE: HTML SED (arquivos .xls com tabela HTML) ───
+  function parseHTMLSED(files: File[]): Promise<AlunoUnificado[]> {
+    return new Promise((resolve) => {
+      const alunos: AlunoUnificado[] = [];
+      const processados = new Set<string>();
+      let pendentes = 0;
+      for (const file of files) {
+        if (!file.name.toLowerCase().endsWith('.xls')) continue;
+        pendentes++;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const html = e.target?.result as string;
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, 'text/html');
+          const allText = doc.body?.textContent || '';
+          // Extrai turma do cabeçalho
+          let serie = '';
+          const tm = allText.match(/Turma:\s*(.+?)(?:\r|\n|$)/i);
+          if (tm) serie = tm[1].trim();
+          // Extrai de outra forma: procura strings tipo "1ª ETAPA PRÉ-ESCOLA" etc
+          if (!serie) {
+            const tf = allText.match(/(\d+[ª°º]?\s*(?:ETAPA|ANO|SÉRIE|FASE)\s*.+?(?:MANHA|TARDE|ANUAL|INTEGRAL|NOITE))/i);
+            if (tf) serie = tf[1].trim();
+          }
+          // Pega todas as tabelas
+          const tables = doc.querySelectorAll('table');
+          for (const table of tables) {
+            const rows = table.querySelectorAll('tr');
+            // Encontra cabeçalho com NOME e RA
+            let headerIdx = -1;
+            const headers: string[] = [];
+            for (let i = 0; i < rows.length; i++) {
+              const cells = rows[i].querySelectorAll('td, th');
+              const texts = Array.from(cells).map(c => (c.textContent || '').trim().toUpperCase());
+              const hasNome = texts.some(t => t.includes('NOME'));
+              const hasRA = texts.some(t => t === 'RA' || t.includes('REGISTRO'));
+              if (hasNome && hasRA) { headerIdx = i; headers.push(...texts); break; }
+            }
+            if (headerIdx < 0) continue;
+            for (let i = headerIdx + 1; i < rows.length; i++) {
+              const cells = rows[i].querySelectorAll('td');
+              const vals = Array.from(cells).map(c => (c.textContent || '').trim());
+              if (vals.length < 2) continue;
+              const nome = vals[0]?.length > 3 ? vals[0] : '';
+              if (!nome || /^\d/.test(nome)) continue;
+              // RA está em alguma coluna
+              let raStr = '', nasc = '', situ = 'ATIVO', defi = '';
+              for (let j = 1; j < vals.length; j++) {
+                const v = vals[j];
+                if (/^\d{6,12}$/.test(v)) raStr = v;
+                else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(v) && !nasc) nasc = v;
+                else if (/^(ATIVO|N\s?COM|BAIXA|REMA|TRANSF)/.test(v.toUpperCase())) situ = v;
+                else if (v.length > 2 && !/^\d/.test(v) && !nasc) defi = v;
+              }
+              const ra = parseInt(raStr) || null;
+              const key = normalizeStr(nome) + '|' + (ra || '') + '|' + nasc;
+              if (processados.has(key)) continue;
+              processados.add(key);
+              alunos.push({
+                nome, nomeNorm: normalizeStr(nome),
+                ra, nascimento: nasc, serie,
+                professora: '', situacao: situ, deficiencia: defi,
+                bolsaFamilia: false,
+                dataInicioMatricula: '', dataFimMatricula: '', dataMovimentacao: '',
+                nis: '', responsavel: '', faltas: {},
+              });
+            }
+          }
+          pendentes--;
+          if (pendentes === 0) resolve(alunos);
+        };
+        reader.readAsText(file);
+      }
+      if (pendentes === 0) resolve(alunos);
+    });
+  }
+
   // ─── PARSE: PDF Bolsa Família (NIS) ───
   async function parseBolsaFamiliaPDF(files: File[]): Promise<Map<string, { nis: string; responsavel: string }>> {
     const mapa = new Map<string, { nis: string; responsavel: string }>();
@@ -261,11 +338,16 @@ export default function Importar() {
     setErro('');
     setStatus('Analisando arquivos...');
     try {
-      const [alunosPDF, alunosExcel, turmasMap, bolsaMap] = await Promise.all([
-        parsePDFs(files.filter(f => f.name.toLowerCase().endsWith('.pdf'))),
-        parseExcels(files.filter(f => f.name.toLowerCase().endsWith('.xlsx') || f.name.toLowerCase().endsWith('.xls'))),
+      const pdfFiles = files.filter(f => f.name.toLowerCase().endsWith('.pdf'));
+      const xlsFiles = files.filter(f => f.name.toLowerCase().endsWith('.xls'));
+      const xlsxFiles = files.filter(f => f.name.toLowerCase().endsWith('.xlsx'));
+
+      const [alunosPDF, alunosHTML, alunosExcel, turmasMap, bolsaMap] = await Promise.all([
+        parsePDFs(pdfFiles),
+        parseHTMLSED(xlsFiles),
+        parseExcels([...xlsxFiles, ...xlsFiles]),
         parseTurmasProfessores(files),
-        parseBolsaFamiliaPDF(files),
+        parseBolsaFamiliaPDF(pdfFiles),
       ]);
 
       // ─── Cruzamento ───
@@ -287,6 +369,7 @@ export default function Importar() {
         }
       };
       alunosExcel.forEach(mergeAluno);
+      alunosHTML.forEach(mergeAluno);
       alunosPDF.forEach(mergeAluno);
 
       // Enriquece com professor da tabela TURMA-PROFESSORES
