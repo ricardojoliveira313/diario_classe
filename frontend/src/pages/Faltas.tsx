@@ -7,6 +7,12 @@ const label = { fontSize: 12, color: '#64748b', marginBottom: 4, display: 'block
 
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
+// Dias Letivos por mês — baseado no Calendário Escolar 2026
+const DIAS_LETIVOS: Record<number, number> = {
+  1: 4, 2: 13, 3: 22, 4: 18, 5: 20, 6: 21,
+  7: 9, 8: 21, 9: 22, 10: 18, 11: 20, 12: 17,
+};
+
 export default function Faltas() {
   const [turmas, setTurmas] = useState<any[]>([]);
   const [turmaId, setTurmaId] = useState('');
@@ -48,6 +54,8 @@ export default function Faltas() {
   };
 
   const totalFaltas = alunos.reduce((s, a) => s + (faltas[a.id] ?? 0), 0);
+  const dl = DIAS_LETIVOS[mes] ?? 22;
+  const freqGeral = alunos.length > 0 ? ((dl * alunos.length - totalFaltas) / (dl * alunos.length) * 100).toFixed(1) : '0.0';
 
   return (
     <div>
@@ -77,12 +85,27 @@ export default function Faltas() {
 
       {alunos.length > 0 && (
         <>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
+            <div style={{ background: 'white', borderRadius: 8, padding: 12, textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+              <div style={{ fontSize: 11, color: '#64748b' }}>Dias Letivos</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: '#1e40af' }}>{dl}</div>
+            </div>
+            <div style={{ background: 'white', borderRadius: 8, padding: 12, textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+              <div style={{ fontSize: 11, color: '#64748b' }}>Total Faltas</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: '#dc2626' }}>{totalFaltas}</div>
+            </div>
+            <div style={{ background: 'white', borderRadius: 8, padding: 12, textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+              <div style={{ fontSize: 11, color: '#64748b' }}>Frequência Geral</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: Number(freqGeral) >= 85 ? '#16a34a' : '#dc2626' }}>{freqGeral}%</div>
+            </div>
+          </div>
+
           <div style={{ background: 'white', borderRadius: 8, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: 16 }}>
-            <div style={{ background: '#1e40af', color: 'white', padding: '10px 16px', display: 'grid', gridTemplateColumns: '36px 1fr 28px 100px', gap: 8, fontSize: 12, fontWeight: 600 }}>
-              <span>#</span><span>Aluno</span><span title="Bolsa Família">💚</span><span style={{ textAlign: 'center' }}>Faltas</span>
+            <div style={{ background: '#1e40af', color: 'white', padding: '10px 16px', display: 'grid', gridTemplateColumns: '36px 1fr 28px 100px 55px', gap: 8, fontSize: 12, fontWeight: 600 }}>
+              <span>#</span><span>Aluno</span><span title="Bolsa Família">💚</span><span style={{ textAlign: 'center' }}>Faltas</span><span style={{ textAlign: 'center' }}>%</span>
             </div>
             {alunos.map((a, i) => (
-              <div key={a.id} style={{ padding: '9px 16px', display: 'grid', gridTemplateColumns: '36px 1fr 28px 100px', gap: 8, alignItems: 'center', borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? 'white' : '#f8fafc' }}>
+              <div key={a.id} style={{ padding: '9px 16px', display: 'grid', gridTemplateColumns: '36px 1fr 28px 100px 55px', gap: 8, alignItems: 'center', borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? 'white' : '#f8fafc' }}>
                 <span style={{ fontSize: 12, color: '#94a3b8' }}>{a.numero || i + 1}</span>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 600 }}>{a.nome}</div>
@@ -100,10 +123,13 @@ export default function Faltas() {
                   <button style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid #cbd5e1', background: '#f1f5f9', cursor: 'pointer', fontWeight: 700, fontSize: 16 }}
                     onClick={() => setFalta(a.id, (faltas[a.id] ?? 0) + 1)}>+</button>
                 </div>
+                <span style={{ textAlign: 'center', fontWeight: 700, fontSize: 13, color: (((dl - (faltas[a.id] ?? 0)) / dl * 100) >= 85) ? '#16a34a' : '#dc2626' }}>
+                  {((dl - (faltas[a.id] ?? 0)) / dl * 100).toFixed(0)}%
+                </span>
               </div>
             ))}
-            <div style={{ padding: '10px 16px', display: 'grid', gridTemplateColumns: '40px 1fr 120px', gap: 8, background: '#f8fafc', fontWeight: 700 }}>
-              <span></span><span>Total de faltas</span><span style={{ textAlign: 'center', color: '#dc2626' }}>{totalFaltas}</span>
+            <div style={{ padding: '10px 16px', display: 'grid', gridTemplateColumns: '40px 1fr 120px 55px', gap: 8, background: '#f8fafc', fontWeight: 700 }}>
+              <span></span><span>Total</span><span style={{ textAlign: 'center', color: '#dc2626' }}>{totalFaltas} faltas</span><span style={{ textAlign: 'center' }}>{freqGeral}%</span>
             </div>
           </div>
 

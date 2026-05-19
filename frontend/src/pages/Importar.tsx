@@ -113,7 +113,12 @@ export default function Importar() {
             if (mes > 0) {
               const faltaKey = `${raKey}|${mes}`;
               if (!faltasMap.has(faltaKey)) {
-                faltasMap.set(faltaKey, { _ra: raKey, _serie: serie, mes, ano: 2026, faltas: 0, frequencia: '' });
+                // FREQUÊNCIA DOS ALUNOS(A): número = faltas, texto = 0 ou situação
+                const freqVal = String(row['FREQUÊNCIA DOS ALUNOS(A)'] ?? row['FREQUENCIA DOS ALUNOS(A)'] ?? '').trim();
+                const faltasNum = parseInt(freqVal);
+                const faltasQtd = isNaN(faltasNum) ? 0 : faltasNum;
+                const freqTexto = isNaN(faltasNum) ? freqVal : '';
+                faltasMap.set(faltaKey, { _ra: raKey, _serie: serie, mes, ano: 2026, faltas: faltasQtd, frequencia: freqTexto });
               }
             }
           }
