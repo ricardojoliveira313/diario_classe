@@ -20,6 +20,7 @@ export default function Faltas() {
   const [ano] = useState(2026);
   const [alunos, setAlunos] = useState<any[]>([]);
   const [faltas, setFaltas] = useState<Record<string, number>>({});
+  const [freqTextos, setFreqTextos] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -29,9 +30,11 @@ export default function Faltas() {
     if (!turmaId) return;
     Promise.all([api.getAlunos(turmaId), api.getFaltas(turmaId, mes, ano)]).then(([al, fa]) => {
       setAlunos(al);
-      const map: Record<string, number> = {};
-      fa.forEach((f: any) => { map[f.alunoId] = f.faltas; });
-      setFaltas(map);
+      const mapF: Record<string, number> = {};
+      const mapT: Record<string, string> = {};
+      fa.forEach((f: any) => { mapF[f.alunoId] = f.faltas; if (f.frequencia) mapT[f.alunoId] = f.frequencia; });
+      setFaltas(mapF);
+      setFreqTextos(mapT);
       setSaved(false);
     });
   }, [turmaId, mes]);
@@ -114,6 +117,11 @@ export default function Faltas() {
                   )}
                 </div>
                 <span style={{ textAlign: 'center', fontSize: 13 }}>{a.bolsa_familia ? '✅' : ''}</span>
+                {freqTextos[a.id] ? (
+                  <span style={{ fontSize: 10, color: '#9333ea', fontWeight: 700, textAlign: 'center', padding: '2px 4px', background: '#f3e8ff', borderRadius: 4 }}>
+                    {freqTextos[a.id]}
+                  </span>
+                ) : (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}>
                   <button style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid #cbd5e1', background: '#f1f5f9', cursor: 'pointer', fontWeight: 700, fontSize: 16 }}
                     onClick={() => setFalta(a.id, (faltas[a.id] ?? 0) - 1)}>−</button>
@@ -123,6 +131,7 @@ export default function Faltas() {
                   <button style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid #cbd5e1', background: '#f1f5f9', cursor: 'pointer', fontWeight: 700, fontSize: 16 }}
                     onClick={() => setFalta(a.id, (faltas[a.id] ?? 0) + 1)}>+</button>
                 </div>
+                )}
                 <span style={{ textAlign: 'center', fontWeight: 700, fontSize: 13, color: (((dl - (faltas[a.id] ?? 0)) / dl * 100) >= 85) ? '#16a34a' : '#dc2626' }}>
                   {((dl - (faltas[a.id] ?? 0)) / dl * 100).toFixed(0)}%
                 </span>
