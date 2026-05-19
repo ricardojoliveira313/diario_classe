@@ -60,7 +60,7 @@ export default function Importar() {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        const wb = XLSX.read(e.target!.result, { type: 'binary', cellDates: true });
+        const wb = XLSX.read(e.target!.result, { type: 'array', cellDates: true });
 
         const turmaMap = new Map<string, { nome: string; professora: string }>();
         const alunoMap = new Map<string, any>();
@@ -131,7 +131,7 @@ export default function Importar() {
         setErro('Erro ao ler o arquivo: ' + ex.message);
       }
     };
-    reader.readAsBinaryString(file);
+    reader.readAsArrayBuffer(file);
   };
 
   const importar = async () => {
