@@ -202,7 +202,36 @@ export default function Importar() {
     });
   }
 
-  // ─── HANDLE: upload múltiplo ───
+  // ─── PARSE: PDF Bolsa Família (NIS) ───
+  async function parseBolsaFamiliaPDF(files: File[]): Promise<Map<string, { nis: string; responsavel: string }>> {
+    const mapa = new Map<string, { nis: string; responsavel: string }>();
+    for (const file of files) {
+      const name = normalizeFileName(file.name);
+      if (!file.name.toLowerCase().endsWith('.pdf')) continue;
+      if (!name.includes('FORMULARIO') && !name.includes('BOLSA')) continue;
+      const arrayBuf = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuf }).promise;
+      let texto = '';
+      for (let p = 1; p <= Math.min(pdf.numPages, 60); p++) {
+        const page = await pdf.getPage(p);
+        const content = await page.getTextContent();
+        texto += content.items.map((item: any) => item.str).join(' ') + '\n';
+      }
+      // Regex para extrair Nome, Dt Nasc, NIS
+      const regex = /Nome:\s*(.+?)\s+Dt\.\s*Nasc\.:\s*(\d{2}\/\d{2}\/\d{4}).*?NIS:\s*(\d{11})/gs;
+      let m;
+      while ((m = regex.exec(texto)) !== null) {
+        const nome = m[1].trim();
+        const nasc = m[2];
+        const nis = m[3];
+        const key = `${normalizeStr(nome)}|${nasc}`;
+        if (!mapa.has(key)) {
+          mapa.set(key, { nis, responsavel: '' });
+        }
+      }
+    }
+    return mapa;
+  }
   const handleFiles = (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
     setFiles(prev => [...prev, ...Array.from(fileList)]);
@@ -223,10 +252,11 @@ export default function Importar() {
     setErro('');
     setStatus('Analisando arquivos...');
     try {
-      const [alunosPDF, alunosExcel, turmasMap] = await Promise.all([
+      const [alunosPDF, alunosExcel, turmasMap, bolsaMap] = await Promise.all([
         parsePDFs(files.filter(f => f.name.toLowerCase().endsWith('.pdf'))),
         parseExcels(files.filter(f => f.name.toLowerCase().endsWith('.xlsx') || f.name.toLowerCase().endsWith('.xls'))),
         parseTurmasProfessores(files),
+        parseBolsaFamiliaPDF(files),
       ]);
 
       // ─── Cruzamento ───
@@ -256,6 +286,14 @@ export default function Importar() {
         const tp = turmasMap.get(normalizeStr(a.serie));
         if (tp) {
           if (tp.professor && !a.professora) a.professora = tp.professor;
+        }
+        // Enriquece com NIS do Bolsa Família
+        const bfKey = `${a.nomeNorm}|${a.nascimento}`;
+        const bf = bolsaMap.get(bfKey);
+        if (bf) {
+          a.nis = bf.nis;
+          a.responsavel = bf.responsavel || a.responsavel;
+          a.bolsaFamilia = true; // confirmado pelo PDF
         }
       }
 
@@ -314,6 +352,7 @@ export default function Importar() {
         data_movimentacao: a.dataMovimentacao,
         deficiencia: a.deficiencia, situacao: a.situacao,
         bolsa_familia: a.bolsaFamilia, professora: a.professora,
+        nis: a.nis || null, responsavel: a.responsavel || null,
       }));
 
       await api.bulkInsertAlunos(alunosInsert, (n) => {
