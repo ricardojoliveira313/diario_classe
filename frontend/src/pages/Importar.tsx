@@ -368,6 +368,58 @@ export default function Importar() {
     }
     return mapa;
   }
+  // ─── PARSE: TXT Bolsa Família (formato linearizado campo a campo) ───
+  async function parseBolsaFamiliaTXT(files: File[]): Promise<Map<string, { nis: string; responsavel: string }>> {
+    const mapa = new Map<string, { nis: string; responsavel: string }>();
+
+    const indexar = (nome: string, nasc: string, nis: string, responsavel: string) => {
+      if (nome.length < 3 || !/^\d{11}$/.test(nis)) return;
+      mapa.set(`${nome}|${nasc}`, { nis, responsavel });
+      const partes = nome.split(' ').filter(p => p.length > 2);
+      if (partes.length >= 2) {
+        mapa.set(`~${partes[0]}|${partes[partes.length - 1]}`, { nis, responsavel });
+      }
+    };
+
+    for (const file of files) {
+      const name = normalizeFileName(file.name);
+      if (!file.name.toLowerCase().endsWith('.txt')) continue;
+      if (!name.includes('FORMULARIO') && !name.includes('BOLSA')) continue;
+      const texto = await file.text();
+
+      // Formato: cada campo em linha própria com rótulo
+      // "Nome: NOME\n...\nDt. Nasc.: DD/MM/YYYY\n...\nNIS: 11DIGITS"
+      let currentNome = '';
+      let currentNasc = '';
+      let currentResp = '';
+
+      for (const linha of texto.split('\n')) {
+        const l = linha.trim();
+        const nomeM = l.match(/^Nome:\s*(.+)/i);
+        if (nomeM) {
+          currentNome = normalizeStr(nomeM[1].trim());
+          currentNasc = '';
+          currentResp = '';
+          continue;
+        }
+        const nascM = l.match(/^Dt\.\s*Nasc\.:\s*(\d{2}\/\d{2}\/\d{4})/i);
+        if (nascM) { currentNasc = nascM[1]; continue; }
+
+        const respM = l.match(/^Respons[áa]vel\s+familiar:\s*(.+)/i);
+        if (respM) { currentResp = normalizeStr(respM[1].trim()); continue; }
+
+        const nisM = l.match(/^NIS:\s*(\d{11})/i);
+        if (nisM && currentNome) {
+          indexar(currentNome, currentNasc, nisM[1], currentResp);
+          currentNome = '';
+          currentNasc = '';
+          currentResp = '';
+        }
+      }
+    }
+    return mapa;
+  }
+
   const handleFiles = (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
     setFiles(prev => [...prev, ...Array.from(fileList)]);
@@ -391,14 +443,18 @@ export default function Importar() {
       const pdfFiles = files.filter(f => f.name.toLowerCase().endsWith('.pdf'));
       const xlsFiles = files.filter(f => f.name.toLowerCase().endsWith('.xls'));
       const xlsxFiles = files.filter(f => f.name.toLowerCase().endsWith('.xlsx'));
+      const txtFiles = files.filter(f => f.name.toLowerCase().endsWith('.txt'));
 
-      const [alunosPDF, alunosHTML, alunosExcel, turmasMap, bolsaMap] = await Promise.all([
+      const [alunosPDF, alunosHTML, alunosExcel, turmasMap, bolsaMapPDF, bolsaMapTXT] = await Promise.all([
         parsePDFs(pdfFiles),
         parseHTMLSED(xlsFiles),
         parseExcels(xlsxFiles),
         parseTurmasProfessores(files),
         parseBolsaFamiliaPDF(pdfFiles),
+        parseBolsaFamiliaTXT(txtFiles),
       ]);
+      // Merge: TXT tem prioridade (mais confiável), PDF completa o que faltar
+      const bolsaMap = new Map([...bolsaMapPDF, ...bolsaMapTXT]);
 
       // ─── Cruzamento ───
       const todosAlunos = new Map<string, AlunoUnificado>();
@@ -549,7 +605,7 @@ export default function Importar() {
       <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>📥 Importar Dados da SED</h1>
       <p style={{ color: '#64748b', fontSize: 14, marginBottom: 20 }}>
         Selecione todos os arquivos exportados da Secretaria Escolar Digital:
-        PDFs (Alunos por Classe, Bolsa Família) + Excels (Diário de Classe, Turmas-Professores).
+        PDFs (Alunos por Classe) + Excels (Diário de Classe, Turmas-Professores) + <strong>TXT do Bolsa Família</strong> (salvar PDF como texto no leitor de PDF).
         O sistema cruza automaticamente por nome, RA e data de nascimento.
       </p>
 
