@@ -30,6 +30,15 @@ export const api = {
     if (error) throw error;
     return data ?? [];
   },
+  getAllAlunos: async () => {
+    const { data, error } = await supabase.from('Aluno').select('*').order('nome');
+    if (error) throw error;
+    return data ?? [];
+  },
+  updateAluno: async (id: string, updates: any) => {
+    const { error } = await supabase.from('Aluno').update(updates).eq('id', id);
+    if (error) throw error;
+  },
   createAluno: async (data: any) => {
     const { data: result, error } = await supabase.from('Aluno').insert(data).select().single();
     if (error) throw error;
@@ -42,38 +51,42 @@ export const api = {
 
   getFaltas: async (turmaId: string, mes: number, ano: number) => {
     const { data, error } = await supabase
-      .from('Falta')
-      .select('*')
-      .eq('turmaId', turmaId)
-      .eq('mes', mes)
-      .eq('ano', ano);
+      .from('Falta').select('*').eq('turmaId', turmaId).eq('mes', mes).eq('ano', ano);
+    if (error) throw error;
+    return data ?? [];
+  },
+  getFaltasMes: async (mes: number, ano: number) => {
+    const { data, error } = await supabase
+      .from('Falta').select('*').eq('mes', mes).eq('ano', ano);
+    if (error) throw error;
+    return data ?? [];
+  },
+  getFaltasAluno: async (alunoId: string, ano: number) => {
+    const { data, error } = await supabase
+      .from('Falta').select('*').eq('alunoId', alunoId).eq('ano', ano).order('mes');
     if (error) throw error;
     return data ?? [];
   },
 
   upsertFaltasBatch: async (registros: any[]) => {
-    const { data, error } = await supabase
-      .from('Falta')
-      .upsert(registros, { onConflict: 'alunoId,mes,ano' })
-      .select();
-    if (error) throw error;
-    return data;
+    for (let i = 0; i < registros.length; i += CHUNK) {
+      const { error } = await supabase
+        .from('Falta')
+        .upsert(registros.slice(i, i + CHUNK), { onConflict: 'alunoId,mes,ano' });
+      if (error) throw error;
+    }
   },
-
-  // --- IMPORTAÇÃO EXCEL ---
 
   clearAll: async () => {
     await supabase.from('Falta').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('Aluno').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('Turma').delete().neq('id', '00000000-0000-0000-0000-000000000000');
   },
-
   bulkInsertTurmas: async (turmas: { nome: string; professora: string }[]) => {
     const { data, error } = await supabase.from('Turma').insert(turmas).select();
     if (error) throw error;
     return data ?? [];
   },
-
   bulkInsertAlunos: async (alunos: any[], onProgress: (n: number) => void) => {
     for (let i = 0; i < alunos.length; i += CHUNK) {
       const { error } = await supabase.from('Aluno').insert(alunos.slice(i, i + CHUNK));
@@ -81,7 +94,6 @@ export const api = {
       onProgress(Math.min(i + CHUNK, alunos.length));
     }
   },
-
   bulkInsertFaltas: async (faltas: any[]) => {
     for (let i = 0; i < faltas.length; i += CHUNK) {
       const { error } = await supabase.from('Falta').insert(faltas.slice(i, i + CHUNK));
