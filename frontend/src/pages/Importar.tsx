@@ -345,7 +345,7 @@ export default function Importar() {
       const [alunosPDF, alunosHTML, alunosExcel, turmasMap, bolsaMap] = await Promise.all([
         parsePDFs(pdfFiles),
         parseHTMLSED(xlsFiles),
-        parseExcels([...xlsxFiles, ...xlsFiles]),
+        parseExcels(xlsxFiles),
         parseTurmasProfessores(files),
         parseBolsaFamiliaPDF(pdfFiles),
       ]);
