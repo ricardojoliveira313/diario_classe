@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
 import Alunos from './pages/Alunos';
 import Faltas from './pages/Faltas';
 import Importar from './pages/Importar';
+import Turmas from './pages/Turmas';
 
 const nav = { display: 'flex', gap: 4, padding: '10px 16px', background: '#1e40af', alignItems: 'center', flexWrap: 'wrap' as const };
 const linkStyle = { color: '#bfdbfe', textDecoration: 'none', padding: '6px 12px', borderRadius: 6, fontSize: 14 };
@@ -15,7 +16,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <div style={{ minHeight: '100vh', background: '#f1f5f9' }}>
         <nav style={nav}>
           <span style={{ color: 'white', fontWeight: 700, marginRight: 12, fontSize: 15 }}>📚 Diário de Classe</span>
-          <NavLink to="/" end style={({ isActive }) => isActive ? activeStyle : linkStyle}>📥 Importar</NavLink>
+          <NavLink to="/importar" style={({ isActive }) => isActive ? activeStyle : linkStyle}>📥 Importar</NavLink>
+          <NavLink to="/turmas" style={({ isActive }) => isActive ? activeStyle : linkStyle}>👩‍🏫 Turmas</NavLink>
           <NavLink to="/alunos" style={({ isActive }) => isActive ? activeStyle : linkStyle}>👥 Alunos</NavLink>
           <NavLink to="/faltas" style={({ isActive }) => isActive ? activeStyle : linkStyle}>📋 Faltas</NavLink>
         </nav>
@@ -23,6 +25,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Routes>
             <Route path="/" element={<Importar />} />
             <Route path="/importar" element={<Importar />} />
+            <Route path="/turmas" element={<Turmas />} />
             <Route path="/alunos" element={<Alunos />} />
             <Route path="/faltas" element={<Faltas />} />
           </Routes>
