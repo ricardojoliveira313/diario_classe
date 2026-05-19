@@ -17,3 +17,17 @@ ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS responsavel TEXT DEFAULT NULL;
 ALTER TABLE "Turma" ADD COLUMN IF NOT EXISTS professora TEXT DEFAULT '';
 
 ALTER TABLE "Falta" ADD COLUMN IF NOT EXISTS frequencia_texto TEXT DEFAULT '';
+
+-- Tabela para submissões dos professores aguardando revisão
+CREATE TABLE IF NOT EXISTS "Pendente" (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  turmaId UUID REFERENCES "Turma"(id) ON DELETE CASCADE,
+  mes INTEGER NOT NULL,
+  ano INTEGER NOT NULL DEFAULT 2026,
+  status TEXT DEFAULT 'pendente',  -- pendente | aprovado | rejeitado
+  dados JSONB NOT NULL DEFAULT '[]',
+  total_entradas INTEGER DEFAULT 0,
+  total_problemas INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE "Pendente" DISABLE ROW LEVEL SECURITY;
