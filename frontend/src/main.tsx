@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
 import Alunos from './pages/Alunos';
@@ -7,28 +7,46 @@ import Importar from './pages/Importar';
 import Turmas from './pages/Turmas';
 import Dashboard from './pages/Dashboard';
 import OCR from './pages/OCR';
+import Professor from './pages/Professor';
+import Pendentes from './pages/Pendentes';
+import { api } from './api';
 
 const nav = { display: 'flex', gap: 2, padding: '10px 12px', background: '#1e40af', alignItems: 'center', flexWrap: 'wrap' as const };
-const linkStyle = { color: '#bfdbfe', textDecoration: 'none', padding: '6px 10px', borderRadius: 6, fontSize: 13 };
-const activeStyle = { ...linkStyle, background: '#1d4ed8', color: 'white', fontWeight: 600 };
+const lk = { color: '#bfdbfe', textDecoration: 'none', padding: '6px 10px', borderRadius: 6, fontSize: 13 };
+const al = { ...lk, background: '#1d4ed8', color: 'white', fontWeight: 600 };
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
+function App() {
+  const [nPendentes, setNPendentes] = useState(0);
+
+  useEffect(() => {
+    api.contarPendentes().then(setNPendentes).catch(() => {});
+    const id = setInterval(() => api.contarPendentes().then(setNPendentes).catch(() => {}), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
     <BrowserRouter>
       <div style={{ minHeight: '100vh', background: '#f1f5f9' }}>
         <nav style={nav}>
           <span style={{ color: 'white', fontWeight: 700, marginRight: 8, fontSize: 14, whiteSpace: 'nowrap' }}>📚 Diário</span>
-          <NavLink to="/" end style={({ isActive }) => isActive ? activeStyle : linkStyle}>📊 Dashboard</NavLink>
-          <NavLink to="/importar" style={({ isActive }) => isActive ? activeStyle : linkStyle}>📥 Importar</NavLink>
-          <NavLink to="/turmas" style={({ isActive }) => isActive ? activeStyle : linkStyle}>👩‍🏫 Turmas</NavLink>
-          <NavLink to="/alunos" style={({ isActive }) => isActive ? activeStyle : linkStyle}>👥 Alunos</NavLink>
-          <NavLink to="/faltas" style={({ isActive }) => isActive ? activeStyle : linkStyle}>📋 Faltas</NavLink>
-          <NavLink to="/ocr" style={({ isActive }) => isActive ? activeStyle : linkStyle}>📷 OCR</NavLink>
+          <NavLink to="/" end style={({ isActive }) => isActive ? al : lk}>📊 Dashboard</NavLink>
+          <NavLink to="/importar" style={({ isActive }) => isActive ? al : lk}>📥 Importar</NavLink>
+          <NavLink to="/turmas" style={({ isActive }) => isActive ? al : lk}>👩‍🏫 Turmas</NavLink>
+          <NavLink to="/alunos" style={({ isActive }) => isActive ? al : lk}>👥 Alunos</NavLink>
+          <NavLink to="/faltas" style={({ isActive }) => isActive ? al : lk}>📋 Faltas</NavLink>
+          <NavLink to="/ocr" style={({ isActive }) => isActive ? al : lk}>📷 OCR</NavLink>
+          <NavLink to="/pendentes" style={({ isActive }) => isActive ? al : lk}>
+            ⏳ Pendentes
+            {nPendentes > 0 && (
+              <span style={{ marginLeft: 4, background: '#dc2626', color: 'white', borderRadius: 10, padding: '0px 5px', fontSize: 11, fontWeight: 700 }}>
+                {nPendentes}
+              </span>
+            )}
+          </NavLink>
           <span style={{ marginLeft: 'auto' }}>
             <a
               href="https://github.com/ricardojoliveira313/diario_classe"
-              target="_blank"
-              rel="noopener noreferrer"
+              target="_blank" rel="noopener noreferrer"
               style={{ color: '#93c5fd', textDecoration: 'none', padding: '6px 8px', borderRadius: 6, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
             >
               <svg height="15" width="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -46,9 +64,15 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route path="/alunos" element={<Alunos />} />
             <Route path="/faltas" element={<Faltas />} />
             <Route path="/ocr" element={<OCR />} />
+            <Route path="/professor" element={<Professor />} />
+            <Route path="/pendentes" element={<Pendentes />} />
           </Routes>
         </div>
       </div>
     </BrowserRouter>
-  </React.StrictMode>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode><App /></React.StrictMode>
 );

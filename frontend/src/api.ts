@@ -77,6 +77,32 @@ export const api = {
     }
   },
 
+  // --- PENDENTES ---
+  getPendentes: async (status?: string) => {
+    let q = supabase.from('Pendente').select('*, Turma(nome, professora)').order('created_at', { ascending: false });
+    if (status) q = q.eq('status', status);
+    const { data, error } = await q;
+    if (error) throw error;
+    return data ?? [];
+  },
+  criarPendente: async (p: { turmaId: string; mes: number; ano: number; dados: any[]; total_entradas: number; total_problemas: number }) => {
+    const { data, error } = await supabase.from('Pendente').insert(p).select().single();
+    if (error) throw error;
+    return data;
+  },
+  atualizarPendente: async (id: string, updates: any) => {
+    const { error } = await supabase.from('Pendente').update(updates).eq('id', id);
+    if (error) throw error;
+  },
+  deletePendente: async (id: string) => {
+    const { error } = await supabase.from('Pendente').delete().eq('id', id);
+    if (error) throw error;
+  },
+  contarPendentes: async () => {
+    const { count } = await supabase.from('Pendente').select('*', { count: 'exact', head: true }).eq('status', 'pendente');
+    return count ?? 0;
+  },
+
   clearAll: async () => {
     await supabase.from('Falta').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('Aluno').delete().neq('id', '00000000-0000-0000-0000-000000000000');
