@@ -302,6 +302,7 @@ export default function Importar() {
 
   // ─── PARSE: PDF Bolsa Família (NIS) ───
   async function parseBolsaFamiliaPDF(files: File[]): Promise<Map<string, { nis: string; responsavel: string }>> {
+    // Retorna dois mapas: exato (nome|nasc) e fuzzy (primeiroNome|ultimoNome)
     const mapa = new Map<string, { nis: string; responsavel: string }>();
     for (const file of files) {
       const name = normalizeFileName(file.name);
@@ -310,21 +311,42 @@ export default function Importar() {
       const arrayBuf = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: arrayBuf }).promise;
       let texto = '';
-      for (let p = 1; p <= Math.min(pdf.numPages, 60); p++) {
+      for (let p = 1; p <= pdf.numPages; p++) {
         const page = await pdf.getPage(p);
         const content = await page.getTextContent();
         texto += content.items.map((item: any) => item.str).join(' ') + '\n';
       }
-      // Regex para extrair Nome, Dt Nasc, NIS
-      const regex = /Nome:\s*(.+?)\s+Dt\.\s*Nasc\.:\s*(\d{2}\/\d{2}\/\d{4}).*?NIS:\s*(\d{11})/gs;
-      let m;
-      while ((m = regex.exec(texto)) !== null) {
-        const nome = m[1].trim();
+
+      // Padrão 1: "Nome: X Dt. Nasc.: DD/MM/YYYY ... NIS: XXXXXXXXXXX"
+      const re1 = /Nome:\s*(.+?)\s+Dt\.\s*Nasc\.:\s*(\d{2}\/\d{2}\/\d{4}).*?NIS:\s*(\d{11})/gs;
+      let m: RegExpExecArray | null;
+      while ((m = re1.exec(texto)) !== null) {
+        const nome = normalizeStr(m[1].trim());
         const nasc = m[2];
         const nis = m[3];
-        const key = `${normalizeStr(nome)}|${nasc}`;
-        if (!mapa.has(key)) {
-          mapa.set(key, { nis, responsavel: '' });
+        mapa.set(`${nome}|${nasc}`, { nis, responsavel: '' });
+        // também indexa só pelo nome (chave fuzzy)
+        const partes = nome.split(' ').filter(p => p.length > 2);
+        if (partes.length >= 2) mapa.set(`~${partes[0]}|${partes[partes.length - 1]}`, { nis, responsavel: '' });
+      }
+
+      // Padrão 2: "NIS XXXXXXXXXXX ... NOME" (tabela invertida)
+      const re2 = /NIS[:\s]+(\d{11})\s+([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇÀ\s]{4,60})/g;
+      while ((m = re2.exec(texto)) !== null) {
+        const nis = m[1];
+        const nome = normalizeStr(m[2].trim());
+        const partes = nome.split(' ').filter(p => p.length > 2);
+        if (partes.length >= 2) mapa.set(`~${partes[0]}|${partes[partes.length - 1]}`, { nis, responsavel: '' });
+      }
+
+      // Padrão 3: "NOME ... NIS XXXXXXXXXXX" sem cabeçalho
+      const re3 = /([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇÀ\s]{4,60})\s+(\d{11})(?!\d)/g;
+      while ((m = re3.exec(texto)) !== null) {
+        const nome = normalizeStr(m[1].trim());
+        const nis = m[2];
+        const partes = nome.split(' ').filter(p => p.length > 2);
+        if (partes.length >= 2 && !nome.includes('ESCOLA') && !nome.includes('SECRETARIA')) {
+          mapa.set(`~${partes[0]}|${partes[partes.length - 1]}`, { nis, responsavel: '' });
         }
       }
     }
@@ -391,13 +413,15 @@ export default function Importar() {
         if (tp) {
           if (tp.professor && !a.professora) a.professora = tp.professor;
         }
-        // Enriquece com NIS do Bolsa Família
-        const bfKey = `${a.nomeNorm}|${a.nascimento}`;
-        const bf = bolsaMap.get(bfKey);
+        // Enriquece com NIS do Bolsa Família — 3 tentativas de cruzamento
+        const bfExato = bolsaMap.get(`${a.nomeNorm}|${a.nascimento}`);
+        const partes = a.nomeNorm.split(' ').filter((p: string) => p.length > 2);
+        const bfFuzzy = partes.length >= 2 ? bolsaMap.get(`~${partes[0]}|${partes[partes.length - 1]}`) : undefined;
+        const bf = bfExato ?? bfFuzzy;
         if (bf) {
-          a.nis = bf.nis;
-          a.responsavel = bf.responsavel || a.responsavel;
-          a.bolsaFamilia = true; // confirmado pelo PDF
+          a.nis = a.nis || bf.nis;
+          a.responsavel = a.responsavel || bf.responsavel;
+          a.bolsaFamilia = true;
         }
       }
 
