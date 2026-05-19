@@ -129,35 +129,44 @@ export default function Importar() {
             const ws = wb.Sheets[sheetName];
             const rows = XLSX.utils.sheet_to_json(ws, { raw: false, dateNF: 'dd/mm/yyyy' }) as any[];
             for (const row of rows) {
-              const nome = String(row['NOME DO ALUNO'] ?? '').trim();
-              const serie = String(row['SÉRIE'] ?? row['SERIE'] ?? row['Série'] ?? '').trim();
-              if (!nome || !serie) continue;
-              const ra = parseInt(String(row['RA'] ?? '')) || null;
-              const nasc = fmtDate(row['DATA DE NASCIMENTO']);
+              // Detecta formato: DIARIO CLASSE (tem FREQUÊNCIA) ou SED Relação (tem Nome do Aluno sem FREQUÊNCIA)
+              const isDiario = 'FREQUÊNCIA DOS ALUNOS(A)' in row || 'FREQUENCIA DOS ALUNOS(A)' in row;
+              
+              const nome = String(row['NOME DO ALUNO'] ?? row['Nome do Aluno'] ?? row['Nome'] ?? '').trim();
+              const serie = String(row['SÉRIE'] ?? row['SERIE'] ?? row['Série'] ?? row['Turma'] ?? '').trim();
+              if (!nome) continue;
+              
+              const ra = parseInt(String(row['RA'] ?? row['RA'] ?? '')) || null;
+              const nasc = fmtDate(row['DATA DE NASCIMENTO'] ?? row['Data de Nascimento'] ?? row['Data Nascimento']);
               const key = `${normalizeStr(nome)}|${ra}|${nasc}`;
               if (processados.has(key)) continue;
               processados.add(key);
 
               const mes = getMes(sheetName, row);
-              const freqVal = String(row['FREQUÊNCIA DOS ALUNOS(A)'] ?? '').trim();
-              const faltasNum = parseInt(freqVal);
-              const faltasQtd = isNaN(faltasNum) ? 0 : faltasNum;
-              const freqTexto = isNaN(faltasNum) ? freqVal : '';
+              let faltasQtd = 0;
+              let freqTexto = '';
+              if (isDiario) {
+                const freqVal = String(row['FREQUÊNCIA DOS ALUNOS(A)'] ?? '').trim();
+                const faltasNum = parseInt(freqVal);
+                faltasQtd = isNaN(faltasNum) ? 0 : faltasNum;
+                freqTexto = isNaN(faltasNum) ? freqVal : '';
+              }
+
+              const situacao = String(row['SITUAÇÃO'] ?? row['SITUACAO'] ?? row['Situação'] ?? 'ATIVO').trim();
+              const deficiencia = String(row['DEFICIÊNCIA'] ?? row['DEFICIENCIA'] ?? row['Deficiência'] ?? '').trim();
 
               alunos.push({
                 nome, nomeNorm: normalizeStr(nome),
                 ra, nascimento: nasc,
-                serie, professora: String(row['PROFESSORA'] ?? '').trim(),
-                situacao: String(row['SITUAÇÃO'] ?? 'ATIVO').trim(),
-                deficiencia: String(row['DEFICIÊNCIA'] ?? '').trim(),
-                bolsaFamilia: parseBool(row['BOLSA FAMÍLIA']),
-                dataInicioMatricula: fmtDate(row['DATA INÍCIO MATRÍCULA']),
-                dataFimMatricula: fmtDate(row['DATA FIM MATRÍCULA']),
-                dataMovimentacao: fmtDate(row['DATA MOVIMENTAÇÃO']),
+                serie, professora: String(row['PROFESSORA'] ?? row['Professora'] ?? '').trim(),
+                situacao, deficiencia,
+                bolsaFamilia: parseBool(row['BOLSA FAMÍLIA'] ?? row['BOLSA FAMILIA']),
+                dataInicioMatricula: fmtDate(row['DATA INÍCIO MATRÍCULA'] ?? row['Data Início Matrícula']),
+                dataFimMatricula: fmtDate(row['DATA FIM MATRÍCULA'] ?? row['Data Fim Matrícula']),
+                dataMovimentacao: fmtDate(row['DATA MOVIMENTAÇÃO'] ?? row['Data Movimentação']),
                 nis: '',
                 responsavel: '',
-                faltas: mes > 0 && faltasQtd > 0 ? { [mes]: { faltas: faltasQtd, frequencia: freqTexto } }
-                  : mes > 0 ? { [mes]: { faltas: 0, frequencia: freqTexto || '' } } : {},
+                faltas: mes > 0 && faltasQtd >= 0 ? { [mes]: { faltas: faltasQtd, frequencia: freqTexto } } : {},
               });
             }
           }
