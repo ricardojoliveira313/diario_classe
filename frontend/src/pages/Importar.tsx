@@ -302,7 +302,6 @@ export default function Importar() {
 
   // ─── PARSE: PDF Bolsa Família (NIS) ───
   async function parseBolsaFamiliaPDF(files: File[]): Promise<Map<string, { nis: string; responsavel: string }>> {
-    // Retorna dois mapas: exato (nome|nasc) e fuzzy (primeiroNome|ultimoNome)
     const mapa = new Map<string, { nis: string; responsavel: string }>();
 
     const indexar = (nome: string, nasc: string, nis: string, responsavel: string) => {
@@ -320,38 +319,50 @@ export default function Importar() {
       if (!name.includes('FORMULARIO') && !name.includes('BOLSA')) continue;
       const arrayBuf = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: arrayBuf }).promise;
+
+      // Usa hasEOL para preservar quebras de linha reais do PDF
       let texto = '';
       for (let p = 1; p <= pdf.numPages; p++) {
         const page = await pdf.getPage(p);
         const content = await page.getTextContent();
-        texto += content.items.map((item: any) => item.str).join(' ') + '\n';
-      }
-
-      // Estratégia 1: split por "Nome:" para isolar bloco de cada aluno,
-      // então extrai campos dentro do bloco (robusto contra quebras de página e ordenação de itens PDF)
-      const blocos = texto.split(/(?=\bNome:\s)/);
-      for (const bloco of blocos) {
-        if (!bloco.includes('Nome:')) continue;
-        const nomeM = bloco.match(/\bNome:\s*(.+?)(?=\s*Dt\.\s*Nasc\.|\s*NIS:|\s*S[eé]rie:|\s*Respons|$)/s);
-        const nascM = bloco.match(/Dt\.\s*Nasc\.:\s*(\d{2}\/\d{2}\/\d{4})/);
-        const nisM = bloco.match(/\bNIS:\s*(\d{11})/);
-        const respM = bloco.match(/Respons[áa]vel\s+familiar:\s*(.+?)(?=\s*Contato|\s*S[eé]rie:|$)/s);
-        if (nomeM?.[1] && nisM?.[1]) {
-          indexar(
-            normalizeStr(nomeM[1].trim()),
-            nascM?.[1] ?? '',
-            nisM[1],
-            respM ? normalizeStr(respM[1].trim()) : '',
-          );
+        for (const item of content.items) {
+          const it = item as any;
+          texto += it.str + ((it.hasEOL || it.str.endsWith('\n')) ? '\n' : ' ');
         }
+        texto += '\n';
       }
 
-      // Estratégia 2 (fallback): procura NIS: seguido de nome na mesma linha
+      // Abordagem 1: âncora no NIS → busca Nome: e Dt. Nasc.: imediatamente antes
+      const nisRe = /\bNIS:\s*(\d{11})/g;
+      let m: RegExpExecArray | null;
+      while ((m = nisRe.exec(texto)) !== null) {
+        const nis = m[1];
+        const endPos = m.index;
+        const lookback = texto.substring(Math.max(0, endPos - 800), endPos);
+
+        const lastNomeIdx = lookback.lastIndexOf('Nome:');
+        if (lastNomeIdx < 0) continue;
+        const afterNome = lookback.substring(lastNomeIdx + 5).trimStart();
+        const nameStop = afterNome.search(/Dt\.\s*Nasc\.|NIS:|S[eé]rie:|Respons/);
+        const nome = normalizeStr((nameStop > 0 ? afterNome.substring(0, nameStop) : afterNome).trim());
+
+        const nascMatches = [...lookback.matchAll(/Dt\.\s*Nasc\.:\s*(\d{2}\/\d{2}\/\d{4})/g)];
+        const nasc = nascMatches.length > 0 ? nascMatches[nascMatches.length - 1][1] : '';
+
+        indexar(nome, nasc, nis, '');
+      }
+
+      // Abordagem 2 (fallback): split por bloco
       if (mapa.size < 5) {
-        const re2 = /\bNIS:\s*(\d{11})\s+([A-Z][A-Z\s]{4,60})/g;
-        let m: RegExpExecArray | null;
-        while ((m = re2.exec(texto)) !== null) {
-          indexar(normalizeStr(m[2].trim()), '', m[1], '');
+        const blocos = texto.split(/(?=\bNome:\s)/);
+        for (const bloco of blocos) {
+          if (!bloco.includes('Nome:')) continue;
+          const nomeM = bloco.match(/\bNome:\s*(.+?)(?=\s*Dt\.\s*Nasc\.|\s*NIS:|\s*S[eé]rie:|\s*Respons|$)/s);
+          const nascM = bloco.match(/Dt\.\s*Nasc\.:\s*(\d{2}\/\d{2}\/\d{4})/);
+          const nisM = bloco.match(/\bNIS:\s*(\d{11})/);
+          if (nomeM?.[1] && nisM?.[1]) {
+            indexar(normalizeStr(nomeM[1].trim()), nascM?.[1] ?? '', nisM[1], '');
+          }
         }
       }
     }
@@ -446,6 +457,7 @@ export default function Importar() {
         turmas: turmasUnicas.size,
         alunos: alunosArr.length,
         bolsaFamilia: alunosArr.filter(a => a.bolsaFamilia).length,
+        bolsaMapSize: bolsaMap.size,
         arquivos: files.length,
         faltas: totalFaltas,
       };
@@ -593,6 +605,7 @@ export default function Importar() {
               ['🏫 Turmas', preview.turmas],
               ['👥 Alunos', preview.alunos],
               ['🟢 Bolsa Família', preview.bolsaFamilia],
+              ['📄 No PDF BF', preview.bolsaMapSize ?? 0],
               ['📋 Registros Faltas', preview.faltas],
               ['📂 Arquivos', preview.arquivos],
             ].map(([label, val]) => (
