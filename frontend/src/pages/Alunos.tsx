@@ -18,6 +18,7 @@ export default function Alunos() {
   const [alunos, setAlunos] = useState<any[]>([]);
   const [busca, setBusca] = useState('');
   const [filtroSituacao, setFiltroSituacao] = useState('');
+  const [soBolsa, setSoBolsa] = useState(false);
 
   useEffect(() => {
     api.getTurmas().then(t => { setTurmas(t); if (t.length) setTurmaId(t[0].id); });
@@ -30,7 +31,8 @@ export default function Alunos() {
   const alunosFiltrados = alunos.filter(a => {
     const buscaOk = !busca || a.nome?.toLowerCase().includes(busca.toLowerCase()) || String(a.ra ?? '').includes(busca);
     const sitOk = !filtroSituacao || a.situacao === filtroSituacao;
-    return buscaOk && sitOk;
+    const bolsaOk = !soBolsa || a.bolsa_familia;
+    return buscaOk && sitOk && bolsaOk;
   });
 
   const totalAtivos = alunos.filter(a => a.situacao === 'ATIVO').length;
@@ -66,18 +68,24 @@ export default function Alunos() {
 
       {/* Filtros */}
       {alunos.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, marginBottom: 12 }}>
-          <input style={{ ...input, marginBottom: 0 }} placeholder="🔍 Buscar por nome ou RA..."
-            value={busca} onChange={e => setBusca(e.target.value)} />
-          <select style={{ ...input, marginBottom: 0, width: 'auto' }}
-            value={filtroSituacao} onChange={e => setFiltroSituacao(e.target.value)}>
-            <option value="">Todos</option>
-            <option value="ATIVO">Ativo</option>
-            <option value="N COM">N COM</option>
-            <option value="BAIXA TRANSF.">Baixa Transf.</option>
-            <option value="REMA">REMA</option>
-            <option value="TRANSF.">Transf.</option>
-          </select>
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, marginBottom: 8 }}>
+            <input style={{ ...input, marginBottom: 0 }} placeholder="🔍 Buscar por nome ou RA..."
+              value={busca} onChange={e => setBusca(e.target.value)} />
+            <select style={{ ...input, marginBottom: 0, width: 'auto' }}
+              value={filtroSituacao} onChange={e => setFiltroSituacao(e.target.value)}>
+              <option value="">Todos</option>
+              <option value="ATIVO">Ativo</option>
+              <option value="N COM">N COM</option>
+              <option value="BAIXA TRANSF.">Baixa Transf.</option>
+              <option value="REMA">REMA</option>
+              <option value="TRANSF.">Transf.</option>
+            </select>
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, color: '#16a34a', fontWeight: 600 }}>
+            <input type="checkbox" checked={soBolsa} onChange={e => setSoBolsa(e.target.checked)} style={{ width: 16, height: 16, accentColor: '#16a34a' }} />
+            🟢 Só Bolsa Família ({totalBolsa} alunos)
+          </label>
         </div>
       )}
 
