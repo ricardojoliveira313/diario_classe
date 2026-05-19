@@ -1,6 +1,10 @@
 import { useState, useRef } from 'react';
 import * as XLSX from 'xlsx';
+import * as pdfjsLib from 'pdfjs-dist';
 import { api, supabase } from '../api';
+
+// Worker do PDF.js — caminho relativo p/ vite
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs`;
 
 const MES_MAP: Record<string, number> = {
   JANEIRO: 1, FEVEREIRO: 2, MARCO: 3, MARÇO: 3, ABRIL: 4,
@@ -9,12 +13,10 @@ const MES_MAP: Record<string, number> = {
 };
 
 function getMes(sheetName: string, row: any): number {
-  // Tenta pelo nome da aba primeiro
-  const porAba = MES_MAP[sheetName.toUpperCase().trim().normalize('NFD').replace(/[̀-ͯ]/g, '')];
+  const porAba = MES_MAP[sheetName.toUpperCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '')];
   if (porAba) return porAba;
-  // Tenta pela coluna MÊS da linha
   const colMes = String(row['MÊS'] ?? row['MES'] ?? row['Mês'] ?? row['mês'] ?? '')
-    .toUpperCase().trim().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    .toUpperCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   return MES_MAP[colMes] ?? 0;
 }
 
@@ -32,183 +34,316 @@ function parseBool(val: any): boolean {
   return String(val ?? '').toUpperCase().trim() === 'SIM';
 }
 
-interface Preview { turmas: number; alunos: number; meses: string[]; registros: number; }
+function normalizeStr(s: string): string {
+  return s.toUpperCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+// ─── Registro unificado do aluno ───
+interface AlunoUnificado {
+  nome: string;
+  nomeNorm: string;
+  ra: number | null;
+  nascimento: string;
+  serie: string;
+  professora: string;
+  situacao: string;
+  deficiencia: string;
+  bolsaFamilia: boolean;
+  dataInicioMatricula: string;
+  dataFimMatricula: string;
+  dataMovimentacao: string;
+  nis: string;
+  responsavel: string;
+  faltas: Record<number, { faltas: number; frequencia: string }>;
+}
+
+const normalizeFileName = (s: string) => s.toUpperCase();
 
 export default function Importar() {
-  const [preview, setPreview] = useState<Preview | null>(null);
-  const [arquivo, setArquivo] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [preview, setPreview] = useState<Record<string, any> | null>(null);
   const [status, setStatus] = useState('');
   const [progresso, setProgresso] = useState(0);
   const [total, setTotal] = useState(0);
   const [erro, setErro] = useState('');
   const [sucesso, setSucesso] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const dadosRef = useRef<{ turmas: any[]; alunos: AlunoUnificado[]; faltasArr: any[] } | null>(null);
 
-  const dadosRef = useRef<{
-    turmas: { nome: string; professora: string }[];
-    alunosMap: Map<string, any>;
-    faltasMap: Map<string, any>;
-  } | null>(null);
+  // ─── PARSE: PDF ───
+  async function parsePDFs(files: File[]): Promise<AlunoUnificado[]> {
+    const alunos: AlunoUnificado[] = [];
+    for (const file of files) {
+      if (!file.name.toLowerCase().endsWith('.pdf')) continue;
+      const arrayBuf = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuf }).promise;
+      let texto = '';
+      for (let p = 1; p <= pdf.numPages; p++) {
+        const page = await pdf.getPage(p);
+        const content = await page.getTextContent();
+        texto += content.items.map((item: any) => item.str).join(' ') + '\n';
+      }
+      // Extrai turma do PDF
+      const turmaMatch = texto.match(/Turma:\s*\n?\s*(.+)/i);
+      const serie = turmaMatch?.[1]?.trim() || '';
+      // Extrai alunos do PDF (formato SED: Nome, RA, Data Nasc)
+      const linhas = texto.split('\n').map(l => l.trim()).filter(Boolean);
+      for (let i = 0; i < linhas.length; i++) {
+        const nome = linhas[i];
+        if (nome.length < 5 || /^\d/.test(nome)) continue;
+        const raStr = linhas[i + 1]?.trim();
+        const ra = parseInt(raStr) || null;
+        const nascStr = linhas[i + 2]?.trim();
+        if (nascStr && /^\d{2}\/\d{2}\/\d{4}$/.test(nascStr)) {
+          alunos.push({
+            nome, nomeNorm: normalizeStr(nome),
+            ra, nascimento: nascStr,
+            serie: serie, professora: '', situacao: 'ATIVO', deficiencia: '',
+            bolsaFamilia: false,
+            dataInicioMatricula: '', dataFimMatricula: '', dataMovimentacao: '',
+            nis: '', responsavel: '',
+            faltas: {},
+          });
+          i += 2;
+        }
+      }
+    }
+    return alunos;
+  }
 
-  const handleFile = (file: File) => {
-    setArquivo(file);
+  // ─── PARSE: Excel ───
+  function parseExcels(files: File[]): Promise<AlunoUnificado[]> {
+    return new Promise((resolve) => {
+      const alunos: AlunoUnificado[] = [];
+      const processados = new Set<string>();
+      let pendentes = 0;
+
+      for (const file of files) {
+        const name = file.name.toLowerCase();
+        if (!name.endsWith('.xlsx') && !name.endsWith('.xls')) continue;
+        pendentes++;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const wb = XLSX.read(e.target!.result, { type: 'array', cellDates: true });
+          for (const sheetName of wb.SheetNames) {
+            const ws = wb.Sheets[sheetName];
+            const rows = XLSX.utils.sheet_to_json(ws, { raw: false, dateNF: 'dd/mm/yyyy' }) as any[];
+            for (const row of rows) {
+              const nome = String(row['NOME DO ALUNO'] ?? '').trim();
+              const serie = String(row['SÉRIE'] ?? row['SERIE'] ?? row['Série'] ?? '').trim();
+              if (!nome || !serie) continue;
+              const ra = parseInt(String(row['RA'] ?? '')) || null;
+              const nasc = fmtDate(row['DATA DE NASCIMENTO']);
+              const key = `${normalizeStr(nome)}|${ra}|${nasc}`;
+              if (processados.has(key)) continue;
+              processados.add(key);
+
+              const mes = getMes(sheetName, row);
+              const freqVal = String(row['FREQUÊNCIA DOS ALUNOS(A)'] ?? '').trim();
+              const faltasNum = parseInt(freqVal);
+              const faltasQtd = isNaN(faltasNum) ? 0 : faltasNum;
+              const freqTexto = isNaN(faltasNum) ? freqVal : '';
+
+              alunos.push({
+                nome, nomeNorm: normalizeStr(nome),
+                ra, nascimento: nasc,
+                serie, professora: String(row['PROFESSORA'] ?? '').trim(),
+                situacao: String(row['SITUAÇÃO'] ?? 'ATIVO').trim(),
+                deficiencia: String(row['DEFICIÊNCIA'] ?? '').trim(),
+                bolsaFamilia: parseBool(row['BOLSA FAMÍLIA']),
+                dataInicioMatricula: fmtDate(row['DATA INÍCIO MATRÍCULA']),
+                dataFimMatricula: fmtDate(row['DATA FIM MATRÍCULA']),
+                dataMovimentacao: fmtDate(row['DATA MOVIMENTAÇÃO']),
+                nis: '',
+                responsavel: '',
+                faltas: mes > 0 && faltasQtd > 0 ? { [mes]: { faltas: faltasQtd, frequencia: freqTexto } }
+                  : mes > 0 ? { [mes]: { faltas: 0, frequencia: freqTexto || '' } } : {},
+              });
+            }
+          }
+          pendentes--;
+          if (pendentes === 0) resolve(alunos);
+        };
+        reader.readAsArrayBuffer(file);
+      }
+      if (pendentes === 0) resolve(alunos);
+    });
+  }
+
+  // ─── PARSE: Excel Turmas-Professores ───
+  function parseTurmasProfessores(files: File[]): Promise<Map<string, { professor: string; periodo: string }>> {
+    return new Promise((resolve) => {
+      const mapa = new Map<string, { professor: string; periodo: string }>();
+      let pendentes = 0;
+      for (const file of files) {
+        const name = normalizeFileName(file.name);
+        if (!name.includes('TURMA') && !name.includes('PROFESSOR')) continue;
+        if (!file.name.toLowerCase().endsWith('.xlsx') && !file.name.toLowerCase().endsWith('.xls')) continue;
+        pendentes++;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const wb = XLSX.read(e.target!.result, { type: 'array' });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
+          for (let i = 1; i < rows.length; i++) {
+            const r = rows[i];
+            if (!r || r.length < 4) continue;
+            const turma = String(r[1] ?? '').trim();
+            const prof = String(r[2] ?? '').trim();
+            const periodo = String(r[3] ?? '').trim();
+            if (turma && prof) mapa.set(normalizeStr(turma), { professor: prof, periodo });
+          }
+          pendentes--;
+          if (pendentes === 0) resolve(mapa);
+        };
+        reader.readAsArrayBuffer(file);
+      }
+      if (pendentes === 0) resolve(mapa);
+    });
+  }
+
+  // ─── HANDLE: upload múltiplo ───
+  const handleFiles = (fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return;
+    setFiles(prev => [...prev, ...Array.from(fileList)]);
     setErro('');
     setSucesso(false);
     setPreview(null);
     dadosRef.current = null;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const wb = XLSX.read(e.target!.result, { type: 'array', cellDates: true });
-
-        const turmaMap = new Map<string, { nome: string; professora: string }>();
-        const alunoMap = new Map<string, any>();
-        // Chave: raKey|mes — evita duplicatas
-        const faltasMap = new Map<string, any>();
-
-        for (const sheetName of wb.SheetNames) {
-          const ws = wb.Sheets[sheetName];
-          const rows: any[] = XLSX.utils.sheet_to_json(ws, { raw: false, dateNF: 'dd/mm/yyyy' });
-
-          for (const row of rows) {
-            const serie = String(row['SÉRIE'] ?? row['SERIE'] ?? row['Série'] ?? '').trim();
-            const professora = String(row['PROFESSORA'] ?? '').trim();
-            const nome = String(row['NOME DO ALUNO'] ?? '').trim();
-            const ra = String(row['RA'] ?? '').trim();
-            const digRa = String(row['DIG RA'] ?? '').trim();
-            const numero = parseInt(String(row['Nº'] ?? row['N°'] ?? row['N'] ?? '0')) || 0;
-            const deficiencia = String(row['DEFICIÊNCIA'] ?? row['DEFICIENCIA'] ?? '').trim();
-            const bolsaFamilia = parseBool(row['BOLSA FAMÍLIA'] ?? row['BOLSA FAMILIA']);
-            const situacao = String(row['SITUAÇÃO'] ?? row['SITUACAO'] ?? 'ATIVO').trim();
-            const mes = getMes(sheetName, row);
-
-            if (!nome || !serie) continue;
-
-            if (!turmaMap.has(serie)) {
-              turmaMap.set(serie, { nome: serie, professora });
-            }
-
-            const raKey = ra || nome;
-
-            if (!alunoMap.has(raKey)) {
-              alunoMap.set(raKey, {
-                nome,
-                ra: ra ? Number(ra) : null,
-                dig_ra: digRa,
-                numero,
-                data_nascimento: fmtDate(row['DATA DE NASCIMENTO']),
-                data_inicio_matricula: fmtDate(row['DATA INÍCIO MATRÍCULA'] ?? row['DATA INICIO MATRICULA']),
-                data_fim_matricula: fmtDate(row['DATA FIM MATRÍCULA'] ?? row['DATA FIM MATRICULA']),
-                data_movimentacao: fmtDate(row['DATA MOVIMENTAÇÃO'] ?? row['DATA MOVIMENTACAO']),
-                deficiencia,
-                bolsa_familia: bolsaFamilia,
-                situacao,
-                professora,
-                _serie: serie,
-              });
-            }
-
-            // Registra falta apenas se tiver mês válido, sem duplicar
-            if (mes > 0) {
-              const faltaKey = `${raKey}|${mes}`;
-              if (!faltasMap.has(faltaKey)) {
-                // FREQUÊNCIA DOS ALUNOS(A): número = faltas, texto = 0 ou situação
-                const freqVal = String(row['FREQUÊNCIA DOS ALUNOS(A)'] ?? row['FREQUENCIA DOS ALUNOS(A)'] ?? '').trim();
-                const faltasNum = parseInt(freqVal);
-                const faltasQtd = isNaN(faltasNum) ? 0 : faltasNum;
-                const freqTexto = isNaN(faltasNum) ? freqVal : '';
-                faltasMap.set(faltaKey, { _ra: raKey, _serie: serie, mes, ano: 2026, faltas: faltasQtd, frequencia: freqTexto });
-              }
-            }
-          }
-        }
-
-        dadosRef.current = { turmas: Array.from(turmaMap.values()), alunosMap: alunoMap, faltasMap };
-
-        setPreview({
-          turmas: turmaMap.size,
-          alunos: alunoMap.size,
-          meses: wb.SheetNames,
-          registros: faltasMap.size,
-        });
-      } catch (ex: any) {
-        setErro('Erro ao ler o arquivo: ' + ex.message);
-      }
-    };
-    reader.readAsArrayBuffer(file);
   };
 
+  const removerArquivo = (idx: number) => {
+    setFiles(prev => prev.filter((_, i) => i !== idx));
+    setPreview(null);
+  };
+
+  // ─── ANALISAR ───
+  const analisar = async () => {
+    if (files.length === 0) { setErro('Adicione ao menos 1 arquivo.'); return; }
+    setErro('');
+    setStatus('Analisando arquivos...');
+    try {
+      const [alunosPDF, alunosExcel, turmasMap] = await Promise.all([
+        parsePDFs(files.filter(f => f.name.toLowerCase().endsWith('.pdf'))),
+        parseExcels(files.filter(f => f.name.toLowerCase().endsWith('.xlsx') || f.name.toLowerCase().endsWith('.xls'))),
+        parseTurmasProfessores(files),
+      ]);
+
+      // ─── Cruzamento ───
+      const todosAlunos = new Map<string, AlunoUnificado>();
+      // Prioridade: Excel primeiro (dados mais completos), depois PDF
+      const mergeAluno = (a: AlunoUnificado) => {
+        const key = `${a.nomeNorm}|${a.ra}|${a.nascimento}`;
+        if (todosAlunos.has(key)) {
+          const existente = todosAlunos.get(key)!;
+          existente.bolsaFamilia = existente.bolsaFamilia || a.bolsaFamilia;
+          existente.nis = existente.nis || a.nis;
+          existente.responsavel = existente.responsavel || a.responsavel;
+          existente.professora = existente.professora || a.professora;
+          existente.situacao = a.situacao !== 'ATIVO' ? a.situacao : existente.situacao;
+          existente.deficiencia = existente.deficiencia || a.deficiencia;
+          Object.assign(existente.faltas, a.faltas);
+        } else {
+          todosAlunos.set(key, a);
+        }
+      };
+      alunosExcel.forEach(mergeAluno);
+      alunosPDF.forEach(mergeAluno);
+
+      // Enriquece com professor da tabela TURMA-PROFESSORES
+      const alunosArr = Array.from(todosAlunos.values());
+      for (const a of alunosArr) {
+        const tp = turmasMap.get(normalizeStr(a.serie));
+        if (tp) {
+          if (tp.professor && !a.professora) a.professora = tp.professor;
+        }
+      }
+
+      // Turmas únicas
+      const turmasUnicas = new Map<string, { nome: string; professora: string }>();
+      for (const a of alunosArr) {
+        if (!turmasUnicas.has(a.serie)) {
+          turmasUnicas.set(a.serie, { nome: a.serie, professora: a.professora });
+        }
+      }
+
+      // Conta faltas
+      let totalFaltas = 0;
+      for (const a of alunosArr) totalFaltas += Object.keys(a.faltas).length;
+
+      const prev = {
+        turmas: turmasUnicas.size,
+        alunos: alunosArr.length,
+        bolsaFamilia: alunosArr.filter(a => a.bolsaFamilia).length,
+        arquivos: files.length,
+        faltas: totalFaltas,
+      };
+      setPreview(prev);
+      dadosRef.current = { turmas: Array.from(turmasUnicas.values()), alunos: alunosArr, faltasArr: [] };
+      setStatus('');
+    } catch (ex: any) {
+      setErro('Erro na análise: ' + ex.message);
+      setStatus('');
+    }
+  };
+
+  // ─── IMPORTAR ───
   const importar = async () => {
     if (!dadosRef.current) return;
-    const { turmas, alunosMap, faltasMap } = dadosRef.current;
-
+    const { turmas, alunos } = dadosRef.current;
     setErro('');
     setSucesso(false);
-    const totalAlunos = alunosMap.size;
-    setTotal(totalAlunos);
+    setTotal(alunos.length);
     setProgresso(0);
 
     try {
       setStatus('Limpando dados anteriores...');
       await api.clearAll();
 
-      setStatus('Criando turmas...');
-      const turmasInseridas = await api.bulkInsertTurmas(turmas);
+      setStatus('Inserindo turmas...');
+      const turmasInseridas = await api.bulkInsertTurmas(turmas.map(t => ({ nome: t.nome, professora: t.professora })));
       const serieToId = new Map<string, string>(turmasInseridas.map((t: any) => [t.nome, t.id]));
 
       setStatus('Inserindo alunos...');
-      const alunosList = Array.from(alunosMap.values()).map(a => ({
-        nome: a.nome,
-        turmaId: serieToId.get(a._serie) ?? null,
-        ra: a.ra,
-        dig_ra: a.dig_ra,
-        numero: a.numero,
-        data_nascimento: a.data_nascimento,
-        data_inicio_matricula: a.data_inicio_matricula,
-        data_fim_matricula: a.data_fim_matricula,
-        data_movimentacao: a.data_movimentacao,
-        deficiencia: a.deficiencia,
-        bolsa_familia: a.bolsa_familia,
-        situacao: a.situacao,
-        professora: a.professora,
+      const alunosInsert = alunos.map(a => ({
+        nome: a.nome, turmaId: serieToId.get(a.serie) ?? null,
+        ra: a.ra, numero: 0,
+        data_nascimento: a.nascimento,
+        data_inicio_matricula: a.dataInicioMatricula,
+        data_fim_matricula: a.dataFimMatricula,
+        data_movimentacao: a.dataMovimentacao,
+        deficiencia: a.deficiencia, situacao: a.situacao,
+        bolsa_familia: a.bolsaFamilia, professora: a.professora,
       }));
 
-      await api.bulkInsertAlunos(alunosList, (n) => {
+      await api.bulkInsertAlunos(alunosInsert, (n) => {
         setProgresso(n);
-        setStatus(`Inserindo alunos... ${n}/${totalAlunos}`);
+        setStatus(`Inserindo alunos... ${n}/${alunos.length}`);
       });
 
-      setStatus('Vinculando faltas...');
+      // Buscar IDs dos alunos inseridos
       const { data: alunosDb } = await supabase.from('Aluno').select('id, ra, nome');
-      const alunosDbList = alunosDb ?? [];
-
-      const raKeyToId = new Map<string, string>();
+      const raToId = new Map<string, string>();
       const nomeToId = new Map<string, string>();
-      for (const a of alunosDbList) {
-        if (a.ra) raKeyToId.set(String(a.ra), a.id);
-        nomeToId.set(a.nome, a.id);
+      for (const a of (alunosDb ?? [])) {
+        if (a.ra) raToId.set(String(a.ra), a.id);
+        nomeToId.set(normalizeStr(a.nome), a.id);
       }
 
-      // Buscar turmaId do aluno para inserir na Falta
-      const alunoIdToTurmaId = new Map<string, string>();
-      for (const a of alunosDbList as any[]) {
-        if (a.id && a.turmaId) alunoIdToTurmaId.set(a.id, a.turmaId);
+      // Inserir faltas
+      const faltasParaInserir: any[] = [];
+      for (const a of alunos) {
+        const alunoId = raToId.get(String(a.ra ?? '')) ?? nomeToId.get(a.nomeNorm);
+        const turmaId = serieToId.get(a.serie);
+        if (!alunoId || !turmaId) continue;
+        for (const [mes, f] of Object.entries(a.faltas)) {
+          faltasParaInserir.push({
+            alunoId, turmaId,
+            mes: Number(mes), ano: 2026,
+            faltas: f.faltas, frequencia: f.frequencia,
+          });
+        }
       }
-      // Rebuscar com turmaId
-      const { data: alunosComTurma } = await supabase.from('Aluno').select('id, ra, nome, turmaId');
-      for (const a of (alunosComTurma ?? []) as any[]) {
-        if (a.id && a.turmaId) alunoIdToTurmaId.set(a.id, a.turmaId);
-      }
-
-      const faltasParaInserir = Array.from(faltasMap.values())
-        .map(f => {
-          const alunoId = raKeyToId.get(f._ra) ?? nomeToId.get(f._ra);
-          const turmaId = serieToId.get(f._serie);
-          if (!alunoId || !turmaId) return null;
-          return { alunoId, turmaId, mes: f.mes, ano: f.ano, faltas: 0, frequencia: '' };
-        })
-        .filter(Boolean) as any[];
 
       setStatus(`Inserindo ${faltasParaInserir.length} registros de frequência...`);
       await api.bulkInsertFaltas(faltasParaInserir);
@@ -216,97 +351,113 @@ export default function Importar() {
       setStatus('');
       setSucesso(true);
     } catch (ex: any) {
-      setErro('Erro: ' + ex.message);
+      setErro('Erro na importação: ' + ex.message);
       setStatus('');
     }
   };
 
+  const s = (n: number) => (
+    <span style={{ fontSize: 24, fontWeight: 700, color: '#1e40af' }}>{n}</span>
+  );
+
   return (
     <div style={{ marginTop: 16 }}>
-      <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>📥 Importar Planilha</h1>
+      <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>📥 Importar Dados da SED</h1>
       <p style={{ color: '#64748b', fontSize: 14, marginBottom: 20 }}>
-        Selecione o arquivo <strong>DIARIO_CLASSE_2026.xlsx</strong> exportado da Secretaria Escolar Digital.
-        O sistema importa turmas, alunos e frequência automaticamente.
+        Selecione todos os arquivos exportados da Secretaria Escolar Digital:
+        PDFs (Alunos por Classe, Bolsa Família) + Excels (Diário de Classe, Turmas-Professores).
+        O sistema cruza automaticamente por nome, RA e data de nascimento.
       </p>
 
-      <div
-        style={{ border: '2px dashed #cbd5e1', borderRadius: 12, padding: 32, textAlign: 'center', cursor: 'pointer', background: '#f8fafc', marginBottom: 16 }}
-        onClick={() => fileRef.current?.click()}
-        onDragOver={e => e.preventDefault()}
-        onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
-      >
-        <div style={{ fontSize: 36, marginBottom: 8 }}>📊</div>
-        <div style={{ fontWeight: 600, color: '#334155' }}>
-          {arquivo ? arquivo.name : 'Clique ou arraste o arquivo .xlsx aqui'}
-        </div>
-        {!arquivo && <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 4 }}>Formato: Excel (.xlsx)</div>}
-        <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }}
-          onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+      {/* Upload zone */}
+      <div style={{ border: '2px dashed #cbd5e1', borderRadius: 12, padding: files.length > 0 ? 16 : 40, textAlign: 'center', marginBottom: 16, background: '#f8fafc', cursor: 'pointer' }}
+        onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = '#1e40af'; }}
+        onDragLeave={e => e.currentTarget.style.borderColor = '#cbd5e1'}
+        onDrop={e => { e.preventDefault(); e.currentTarget.style.borderColor = '#cbd5e1'; handleFiles(e.dataTransfer.files); }}
+        onClick={() => fileRef.current?.click()}>
+        <input ref={fileRef} type="file" multiple accept=".xlsx,.xls,.pdf"
+          style={{ display: 'none' }} onChange={e => handleFiles(e.target.files)} />
+        <div style={{ fontSize: 32, marginBottom: 8 }}>📂</div>
+        <p style={{ fontWeight: 600, color: '#1e40af', marginBottom: 4 }}>
+          {files.length > 0 ? `${files.length} arquivo(s) selecionado(s)` : 'Clique ou arraste arquivos aqui'}
+        </p>
+        <p style={{ fontSize: 12, color: '#64748b' }}>.xlsx .xls .pdf — múltiplos arquivos</p>
       </div>
 
-      {preview && !sucesso && (
-        <div style={{ background: 'white', borderRadius: 10, padding: 20, boxShadow: '0 1px 4px rgba(0,0,0,0.1)', marginBottom: 16 }}>
-          <div style={{ fontWeight: 700, marginBottom: 12, color: '#16a34a' }}>✅ Arquivo lido com sucesso</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 12 }}>
-            {[
-              { label: 'Turmas', value: preview.turmas, cor: '#1e40af' },
-              { label: 'Alunos', value: preview.alunos, cor: '#16a34a' },
-              { label: 'Abas/Meses', value: preview.meses.join(', '), cor: '#7c3aed' },
-              { label: 'Registros freq.', value: preview.registros, cor: '#ea580c' },
-            ].map(({ label, value, cor }) => (
-              <div key={label} style={{ background: '#f8fafc', borderRadius: 8, padding: '10px 14px' }}>
-                <div style={{ fontSize: 11, color: cor, fontWeight: 700 }}>{label}</div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: '#1e293b' }}>{value}</div>
-              </div>
-            ))}
-          </div>
-          <div style={{ background: '#fef9c3', borderRadius: 8, padding: 10, fontSize: 13, color: '#78350f', marginBottom: 12 }}>
-            ⚠️ <strong>Atenção:</strong> apaga os dados existentes e reimporta tudo do zero.
-          </div>
-          <button
-            style={{ padding: '14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 15, background: '#dc2626', color: 'white', width: '100%' }}
-            onClick={importar}
-          >
-            🚀 Confirmar Importação
-          </button>
+      {/* Lista de arquivos */}
+      {files.map((f, i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: 'white', borderRadius: 8, marginBottom: 4, fontSize: 13 }}>
+          <span>{f.name.endsWith('.pdf') ? '📄' : f.name.endsWith('.xlsx') ? '📊' : '📋'}</span>
+          <span style={{ flex: 1 }}>{f.name}</span>
+          <span style={{ fontSize: 11, color: '#94a3b8' }}>{(f.size / 1024).toFixed(0)} KB</span>
+          <button onClick={() => removerArquivo(i)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#dc2626', fontSize: 16 }}>✕</button>
         </div>
+      ))}
+
+      {files.length > 0 && !preview && !status && (
+        <button onClick={analisar}
+          style={{ padding: '12px 24px', borderRadius: 8, background: '#1e40af', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 15, marginTop: 12, width: '100%' }}>
+          🔍 Analisar Arquivos
+        </button>
       )}
 
-      {status && (
-        <div style={{ background: 'white', borderRadius: 10, padding: 20, boxShadow: '0 1px 4px rgba(0,0,0,0.1)', marginBottom: 16 }}>
-          <div style={{ fontWeight: 600, color: '#1e40af', marginBottom: 8 }}>{status}</div>
+      {status && !sucesso && (
+        <div style={{ marginTop: 16, textAlign: 'center' }}>
+          <p style={{ color: '#64748b', marginBottom: 8 }}>{status}</p>
           {total > 0 && (
-            <>
-              <div style={{ background: '#e2e8f0', borderRadius: 999, height: 10, overflow: 'hidden' }}>
-                <div style={{ background: '#1e40af', height: '100%', width: `${Math.round((progresso / total) * 100)}%`, transition: 'width 0.3s' }} />
-              </div>
-              <div style={{ fontSize: 13, color: '#64748b', marginTop: 6 }}>{progresso} / {total} alunos</div>
-            </>
+            <div style={{ height: 8, background: '#e2e8f0', borderRadius: 4, overflow: 'hidden', maxWidth: 400, margin: '0 auto' }}>
+              <div style={{ height: '100%', background: '#1e40af', transition: 'width 0.2s', width: `${(progresso / total) * 100}%`, borderRadius: 4 }} />
+            </div>
           )}
         </div>
       )}
 
-      {sucesso && (
-        <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: 24, textAlign: 'center' }}>
-          <div style={{ fontSize: 48 }}>✅</div>
-          <div style={{ fontWeight: 700, fontSize: 20, color: '#15803d', marginTop: 8 }}>Importação concluída!</div>
-          <div style={{ color: '#166534', fontSize: 14, marginTop: 4 }}>
-            {preview?.alunos} alunos · {preview?.turmas} turmas · {preview?.registros} registros
+      {/* Preview do cruzamento */}
+      {preview && !sucesso && (
+        <div style={{ marginTop: 16, background: 'white', borderRadius: 12, padding: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>📊 Resultado do Cruzamento</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8 }}>
+            {[
+              ['🏫 Turmas', preview.turmas],
+              ['👥 Alunos', preview.alunos],
+              ['🟢 Bolsa Família', preview.bolsaFamilia],
+              ['📋 Registros Faltas', preview.faltas],
+              ['📂 Arquivos', preview.arquivos],
+            ].map(([label, val]) => (
+              <div key={label as string} style={{ textAlign: 'center', padding: 12, background: '#f8fafc', borderRadius: 8 }}>
+                <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>{label}</div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: '#1e40af' }}>{(val as number)}</div>
+              </div>
+            ))}
           </div>
-          <div style={{ marginTop: 16, display: 'flex', gap: 12, justifyContent: 'center' }}>
-            <a href="/alunos" style={{ background: '#1e40af', color: 'white', padding: '10px 20px', borderRadius: 8, textDecoration: 'none', fontWeight: 600 }}>
-              👥 Ver Alunos
-            </a>
-            <a href="/faltas" style={{ background: '#16a34a', color: 'white', padding: '10px 20px', borderRadius: 8, textDecoration: 'none', fontWeight: 600 }}>
-              📋 Lançar Faltas
-            </a>
+          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+            <button onClick={() => { setPreview(null); dadosRef.current = null; }} style={{ flex: 1, padding: 12, borderRadius: 8, background: '#f1f5f9', border: '1px solid #cbd5e1', cursor: 'pointer', fontWeight: 600 }}>
+              Reanalisar
+            </button>
+            <button onClick={importar} style={{ flex: 2, padding: 12, borderRadius: 8, background: '#dc2626', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 15 }}>
+              Confirmar Importação (apaga dados anteriores)
+            </button>
+          </div>
+        </div>
+      )}
+
+      {sucesso && (
+        <div style={{ marginTop: 16, background: '#f0fdf4', borderRadius: 12, padding: 24, textAlign: 'center', border: '2px solid #16a34a' }}>
+          <div style={{ fontSize: 40 }}>✅</div>
+          <p style={{ fontSize: 16, fontWeight: 700, color: '#16a34a', marginTop: 8 }}>Importação concluída!</p>
+          {preview && <p style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>
+            {preview.turmas} turmas, {preview.alunos} alunos, {preview.faltas} registros de frequência
+          </p>}
+          <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'center' }}>
+            <a href="/alunos" style={{ padding: '10px 20px', borderRadius: 8, background: '#1e40af', color: 'white', textDecoration: 'none', fontWeight: 600 }}>👥 Ver Alunos</a>
+            <a href="/faltas" style={{ padding: '10px 20px', borderRadius: 8, background: '#16a34a', color: 'white', textDecoration: 'none', fontWeight: 600 }}>📋 Lançar Faltas</a>
           </div>
         </div>
       )}
 
       {erro && (
-        <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 10, padding: 16, color: '#dc2626', fontSize: 14 }}>
-          <strong>Erro:</strong> {erro}
+        <div style={{ marginTop: 16, padding: 12, background: '#fef2f2', borderRadius: 8, border: '1px solid #dc2626', color: '#dc2626', fontSize: 13 }}>
+          {erro}
         </div>
       )}
     </div>
