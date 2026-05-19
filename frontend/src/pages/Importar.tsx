@@ -304,6 +304,16 @@ export default function Importar() {
   async function parseBolsaFamiliaPDF(files: File[]): Promise<Map<string, { nis: string; responsavel: string }>> {
     // Retorna dois mapas: exato (nome|nasc) e fuzzy (primeiroNome|ultimoNome)
     const mapa = new Map<string, { nis: string; responsavel: string }>();
+
+    const indexar = (nome: string, nasc: string, nis: string, responsavel: string) => {
+      if (nome.length < 3 || !/^\d{11}$/.test(nis)) return;
+      mapa.set(`${nome}|${nasc}`, { nis, responsavel });
+      const partes = nome.split(' ').filter(p => p.length > 2);
+      if (partes.length >= 2) {
+        mapa.set(`~${partes[0]}|${partes[partes.length - 1]}`, { nis, responsavel });
+      }
+    };
+
     for (const file of files) {
       const name = normalizeFileName(file.name);
       if (!file.name.toLowerCase().endsWith('.pdf')) continue;
@@ -317,36 +327,31 @@ export default function Importar() {
         texto += content.items.map((item: any) => item.str).join(' ') + '\n';
       }
 
-      // Padrão 1: "Nome: X Dt. Nasc.: DD/MM/YYYY ... NIS: XXXXXXXXXXX"
-      const re1 = /Nome:\s*(.+?)\s+Dt\.\s*Nasc\.:\s*(\d{2}\/\d{2}\/\d{4}).*?NIS:\s*(\d{11})/gs;
-      let m: RegExpExecArray | null;
-      while ((m = re1.exec(texto)) !== null) {
-        const nome = normalizeStr(m[1].trim());
-        const nasc = m[2];
-        const nis = m[3];
-        mapa.set(`${nome}|${nasc}`, { nis, responsavel: '' });
-        // também indexa só pelo nome (chave fuzzy)
-        const partes = nome.split(' ').filter(p => p.length > 2);
-        if (partes.length >= 2) mapa.set(`~${partes[0]}|${partes[partes.length - 1]}`, { nis, responsavel: '' });
+      // Estratégia 1: split por "Nome:" para isolar bloco de cada aluno,
+      // então extrai campos dentro do bloco (robusto contra quebras de página e ordenação de itens PDF)
+      const blocos = texto.split(/(?=\bNome:\s)/);
+      for (const bloco of blocos) {
+        if (!bloco.includes('Nome:')) continue;
+        const nomeM = bloco.match(/\bNome:\s*(.+?)(?=\s*Dt\.\s*Nasc\.|\s*NIS:|\s*S[eé]rie:|\s*Respons|$)/s);
+        const nascM = bloco.match(/Dt\.\s*Nasc\.:\s*(\d{2}\/\d{2}\/\d{4})/);
+        const nisM = bloco.match(/\bNIS:\s*(\d{11})/);
+        const respM = bloco.match(/Respons[áa]vel\s+familiar:\s*(.+?)(?=\s*Contato|\s*S[eé]rie:|$)/s);
+        if (nomeM?.[1] && nisM?.[1]) {
+          indexar(
+            normalizeStr(nomeM[1].trim()),
+            nascM?.[1] ?? '',
+            nisM[1],
+            respM ? normalizeStr(respM[1].trim()) : '',
+          );
+        }
       }
 
-      // Padrão 2: "NIS XXXXXXXXXXX ... NOME" (tabela invertida)
-      const re2 = /NIS[:\s]+(\d{11})\s+([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇÀ\s]{4,60})/g;
-      while ((m = re2.exec(texto)) !== null) {
-        const nis = m[1];
-        const nome = normalizeStr(m[2].trim());
-        const partes = nome.split(' ').filter(p => p.length > 2);
-        if (partes.length >= 2) mapa.set(`~${partes[0]}|${partes[partes.length - 1]}`, { nis, responsavel: '' });
-      }
-
-      // Padrão 3: "NOME ... NIS XXXXXXXXXXX" sem cabeçalho
-      const re3 = /([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇÀ\s]{4,60})\s+(\d{11})(?!\d)/g;
-      while ((m = re3.exec(texto)) !== null) {
-        const nome = normalizeStr(m[1].trim());
-        const nis = m[2];
-        const partes = nome.split(' ').filter(p => p.length > 2);
-        if (partes.length >= 2 && !nome.includes('ESCOLA') && !nome.includes('SECRETARIA')) {
-          mapa.set(`~${partes[0]}|${partes[partes.length - 1]}`, { nis, responsavel: '' });
+      // Estratégia 2 (fallback): procura NIS: seguido de nome na mesma linha
+      if (mapa.size < 5) {
+        const re2 = /\bNIS:\s*(\d{11})\s+([A-Z][A-Z\s]{4,60})/g;
+        let m: RegExpExecArray | null;
+        while ((m = re2.exec(texto)) !== null) {
+          indexar(normalizeStr(m[2].trim()), '', m[1], '');
         }
       }
     }
