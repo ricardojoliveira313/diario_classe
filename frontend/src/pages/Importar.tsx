@@ -38,6 +38,18 @@ function normalizeStr(s: string): string {
   return s.toUpperCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
+const SITUACAO_MAP: Record<string, string> = {
+  ATIVO: 'ATIVO', REMA: 'REMA', REMANEJADO: 'REMA', 'REMANEJADA': 'REMA',
+  BXTR: 'BXTR', 'BAIXA TRANSF.': 'BXTR', 'BAIXA TRANSFERENCIA': 'BXTR', 'BAIXA TRANSFER\u00caNCIA': 'BXTR',
+  TRAN: 'TRAN', 'TRANSF.': 'TRAN', TRANSFERIDO: 'TRAN', TRANSFERIDA: 'TRAN',
+  'N COM': 'N COM', 'NAO COMPARECEU': 'N COM', 'N\u00c3O COMPARECEU': 'N COM', 'NCOM': 'N COM',
+};
+
+function normalizeSituacao(s: string): string {
+  const key = normalizeStr(s);
+  return SITUACAO_MAP[key] ?? SITUACAO_MAP[s.trim().toUpperCase()] ?? s.trim();
+}
+
 // ─── Registro unificado do aluno ───
 interface AlunoUnificado {
   nome: string;
@@ -152,7 +164,7 @@ export default function Importar() {
                 freqTexto = isNaN(faltasNum) ? freqVal : '';
               }
 
-              const situacao = String(row['SITUAÇÃO'] ?? row['SITUACAO'] ?? row['Situação'] ?? 'ATIVO').trim();
+              const situacao = normalizeSituacao(String(row['SITUAÇÃO'] ?? row['SITUACAO'] ?? row['Situação'] ?? 'ATIVO'));
               const deficiencia = String(row['DEFICIÊNCIA'] ?? row['DEFICIENCIA'] ?? row['Deficiência'] ?? '').trim();
 
               alunos.push({
