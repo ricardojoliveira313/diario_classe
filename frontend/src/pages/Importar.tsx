@@ -27,7 +27,11 @@ function fmtDate(val: any): string {
     const m = String(val.getMonth() + 1).padStart(2, '0');
     return `${d}/${m}/${val.getFullYear()}`;
   }
-  return String(val);
+  // Normaliza strings no formato D/M/YYYY ou DD/M/YYYY → DD/MM/YYYY
+  const s = String(val).trim();
+  const dm = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (dm) return `${dm[1].padStart(2,'0')}/${dm[2].padStart(2,'0')}/${dm[3]}`;
+  return s;
 }
 
 function parseBool(val: any): boolean {
@@ -296,7 +300,7 @@ export default function Importar() {
               for (let j = 1; j < vals.length; j++) {
                 const v = vals[j];
                 if (/^\d{6,12}$/.test(v)) raStr = v;
-                else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(v) && !nasc) nasc = v;
+                else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(v) && !nasc) nasc = fmtDate(v);
                 else if (/^(ATIVO|N\s?COM|BAIXA|REMA|TRANSF)/.test(v.toUpperCase())) situ = v;
                 else if (v.length > 2 && !/^\d/.test(v) && !nasc) defi = v;
               }
@@ -399,9 +403,9 @@ export default function Importar() {
     const indexar = (nome: string, nasc: string, nis: string, responsavel: string) => {
       if (nome.length < 3 || !/^\d{11}$/.test(nis)) return;
       mapa.set(`${nome}|${nasc}`, { nis, responsavel });
-      const partes = nome.split(' ').filter(p => p.length > 2);
-      if (partes.length >= 2) {
-        mapa.set(`~${partes[0]}|${partes[partes.length - 1]}`, { nis, responsavel });
+      const nomeSimp = nomeSignificativo(nome);
+      if (nomeSimp.length >= 3 && nasc) {
+        mapa.set(`~${nomeSimp}|${nasc}`, { nis, responsavel });
       }
     };
 
@@ -426,8 +430,8 @@ export default function Importar() {
           currentResp = '';
           continue;
         }
-        const nascM = l.match(/^Dt\.\s*Nasc\.:\s*(\d{2}\/\d{2}\/\d{4})/i);
-        if (nascM) { currentNasc = nascM[1]; continue; }
+        const nascM = l.match(/^Dt\.\s*Nasc\.:\s*(\d{1,2}\/\d{1,2}\/\d{4})/i);
+        if (nascM) { currentNasc = fmtDate(nascM[1]); continue; }
 
         const respM = l.match(/^Respons[áa]vel\s+familiar:\s*(.+)/i);
         if (respM) { currentResp = normalizeStr(respM[1].trim()); continue; }
