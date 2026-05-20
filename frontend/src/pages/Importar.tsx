@@ -38,6 +38,13 @@ function normalizeStr(s: string): string {
   return s.toUpperCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
+// Artigos/preposi\u00e7\u00f5es removidos na chave fuzzy para ignorar varia\u00e7\u00f5es (ex: "DA" vs sem "DA")
+const ARTIGOS = new Set(['DE', 'DA', 'DO', 'DOS', 'DAS', 'E', 'NO', 'NA']);
+
+function nomeSignificativo(nome: string): string {
+  return nome.split(' ').filter(p => p.length >= 2 && !ARTIGOS.has(p)).join(' ');
+}
+
 const SITUACAO_MAP: Record<string, string> = {
   ATIVO: 'ATIVO', REMA: 'REMA', REMANEJADO: 'REMA', 'REMANEJADA': 'REMA',
   BXTR: 'BXTR', 'BAIXA TRANSF.': 'BXTR', 'BAIXA TRANSFERENCIA': 'BXTR', 'BAIXA TRANSFER\u00caNCIA': 'BXTR',
@@ -307,9 +314,10 @@ export default function Importar() {
     const indexar = (nome: string, nasc: string, nis: string, responsavel: string) => {
       if (nome.length < 3 || !/^\d{11}$/.test(nis)) return;
       mapa.set(`${nome}|${nasc}`, { nis, responsavel });
-      const partes = nome.split(' ').filter(p => p.length > 2);
-      if (partes.length >= 2) {
-        mapa.set(`~${partes[0]}|${partes[partes.length - 1]}`, { nis, responsavel });
+      // Chave fuzzy: nome sem artigos + data (tolera variações de "DA"/"DE" entre sistemas)
+      const nomeSimp = nomeSignificativo(nome);
+      if (nomeSimp.length >= 3 && nasc) {
+        mapa.set(`~${nomeSimp}|${nasc}`, { nis, responsavel });
       }
     };
 
@@ -485,10 +493,10 @@ export default function Importar() {
         if (tp) {
           if (tp.professor && !a.professora) a.professora = tp.professor;
         }
-        // Enriquece com NIS do Bolsa Família — 3 tentativas de cruzamento
+        // Cruzamento Bolsa Família: nome+data (exato), depois nome sem artigos+data (fuzzy)
         const bfExato = bolsaMap.get(`${a.nomeNorm}|${a.nascimento}`);
-        const partes = a.nomeNorm.split(' ').filter((p: string) => p.length > 2);
-        const bfFuzzy = partes.length >= 2 ? bolsaMap.get(`~${partes[0]}|${partes[partes.length - 1]}`) : undefined;
+        const nomeSimp = nomeSignificativo(a.nomeNorm);
+        const bfFuzzy = a.nascimento ? bolsaMap.get(`~${nomeSimp}|${a.nascimento}`) : undefined;
         const bf = bfExato ?? bfFuzzy;
         if (bf) {
           a.nis = a.nis || bf.nis;
