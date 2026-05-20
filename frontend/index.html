@@ -2,7 +2,7 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Diário de Classe</title>
     <style>
       :root {
@@ -85,12 +85,12 @@
       a { color: var(--primary); text-decoration: none; }
       a:hover { text-decoration: underline; }
       @media (max-width: 768px) {
-        html { font-size: 15px; }
+        html { font-size: 16px; }
         .mobile-menu-btn { display: block !important; }
         .mobile-menu { display: flex !important; }
-        /* Hide desktop nav links on mobile */
         nav > div > div:first-of-type { display: none !important; }
       }
+      .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
       @keyframes fadeIn {
         from { opacity: 0; transform: translateY(4px); }
         to { opacity: 1; transform: translateY(0); }

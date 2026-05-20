@@ -709,8 +709,8 @@ export default function Importar() {
 
   return (
     <div style={{ marginTop: 16, animation: 'fadeIn 0.25s ease both' }}>
-      <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>📥 Importar Dados da SED</h1>
-      <p style={{ color: theme.textSecondary, fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
+      <h1 style={{ fontSize: 26, fontWeight: 800, marginBottom: 4 }}>📥 Importar Dados da SED</h1>
+      <p style={{ color: theme.textSecondary, fontSize: 15, lineHeight: 1.6, marginBottom: 20 }}>
         Selecione todos os arquivos exportados da Secretaria Escolar Digital:
         PDFs (Alunos por Classe) + Excels (Diário de Classe, Turmas-Professores) + <strong>TXT do Bolsa Família</strong>.
         O sistema cruza automaticamente por nome, RA e data de nascimento.
@@ -731,11 +731,11 @@ export default function Importar() {
         onClick={() => fileRef.current?.click()}>
         <input ref={fileRef} type="file" multiple accept=".xlsx,.xls,.pdf,.txt"
           style={{ display: 'none' }} onChange={e => handleFiles(e.target.files)} />
-        <div style={{ fontSize: 36, marginBottom: 8 }}>📂</div>
-        <p style={{ fontWeight: 700, color: theme.primary, marginBottom: 4, fontSize: 15 }}>
+        <div style={{ fontSize: 42, marginBottom: 8 }}>📂</div>
+        <p style={{ fontWeight: 700, color: theme.primary, marginBottom: 4, fontSize: 17 }}>
           {files.length > 0 ? `${files.length} arquivo(s) selecionado(s)` : 'Clique ou arraste arquivos aqui'}
         </p>
-        <p style={{ fontSize: 12, color: theme.textMuted }}>.xlsx .xls .pdf .txt — múltiplos arquivos</p>
+        <p style={{ fontSize: 13, color: theme.textMuted }}>.xlsx .xls .pdf .txt — múltiplos arquivos</p>
       </div>
 
       {/* Lista de arquivos */}
@@ -759,7 +759,7 @@ export default function Importar() {
       {/* Preview do cruzamento */}
       {preview && !sucesso && (
         <div className="scale-in" style={cardStyle({ marginTop: 16, padding: 20 })}>
-          <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 14, color: theme.text }}>📊 Resultado do Cruzamento</h2>
+          <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 14, color: theme.text }}>📊 Resultado do Cruzamento</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10 }}>
             {[
               ['🏫 Turmas', preview.turmas],
@@ -768,9 +768,9 @@ export default function Importar() {
               ['📄 Registros Faltas', preview.faltas],
               ['📂 Arquivos', preview.arquivos],
             ].map(([label, val]) => (
-              <div key={label as string} style={{ textAlign: 'center', padding: 14, background: theme.primaryBg, borderRadius: theme.radius }}>
-                <div style={{ fontSize: 11, color: theme.textSecondary, marginBottom: 4, fontWeight: 600 }}>{label as string}</div>
-                <div style={{ fontSize: 24, fontWeight: 800, color: theme.primary }}>{val as number}</div>
+                <div key={label as string} style={{ textAlign: 'center', padding: 16, background: theme.primaryBg, borderRadius: theme.radius }}>
+                <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 4, fontWeight: 600 }}>{label as string}</div>
+                <div style={{ fontSize: 28, fontWeight: 800, color: theme.primary }}>{val as number}</div>
               </div>
             ))}
           </div>

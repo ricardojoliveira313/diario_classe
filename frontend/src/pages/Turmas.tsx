@@ -36,7 +36,7 @@ export default function Turmas() {
   return (
     <div style={{ marginTop: 16, animation: 'fadeIn 0.25s ease both' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: theme.text }}>👩‍🏫 Turmas</h1>
+        <h1 style={{ fontSize: 26, fontWeight: 800, color: theme.text }}>👩‍🏫 Turmas</h1>
         <button style={adding ? btn('ghost') : btn('primary')} onClick={() => setAdding(!adding)}>
           {adding ? 'Cancelar' : '+ Nova Turma'}
         </button>
@@ -97,9 +97,9 @@ export default function Turmas() {
           animationDelay: `${i * 0.05}s`,
         }}>
           <div>
-            <strong style={{ fontSize: 15, color: theme.text }}>{t.nome || `${t.numero}º ${t.letra} - ${t.periodo}`}</strong>
-            <div style={{ fontSize: 13, color: theme.textSecondary, marginTop: 2 }}>
-              {t.etapa} · {t.periodo} {t.professor && `· Prof. ${t.professor}`}
+            <strong style={{ fontSize: 16, color: theme.text }}>{t.nome || `${t.numero}º ${t.letra} - ${t.periodo}`}</strong>
+            <div style={{ fontSize: 14, color: theme.textSecondary, marginTop: 2 }}>
+              {t.etapa} · {t.periodo} {t.professora && `· Prof. ${t.professora}`}
             </div>
           </div>
           <button style={btn('danger', { small: true, outline: true })}

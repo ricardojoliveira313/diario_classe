@@ -60,7 +60,7 @@ export function btn(variant: BtnVariant = 'primary', opts: { small?: boolean; fu
     transition: 'all 0.15s ease',
     whiteSpace: 'nowrap',
     userSelect: 'none',
-    ...(opts.small ? { padding: '6px 12px', fontSize: 12 } : { padding: '10px 18px', fontSize: 14 }),
+    ...(opts.small ? { padding: '8px 14px', fontSize: 13 } : { padding: '12px 20px', fontSize: 15 }),
     ...(opts.full ? { width: '100%' } : {}),
     background: opts.outline ? 'transparent' : c.bg,
     color: opts.outline ? c.bg : c.text,
@@ -68,21 +68,21 @@ export function btn(variant: BtnVariant = 'primary', opts: { small?: boolean; fu
 }
 
 export const input: React.CSSProperties = {
-  padding: '9px 12px',
+  padding: '11px 14px',
   borderRadius: theme.radius,
   border: `1.5px solid ${theme.border}`,
   width: '100%',
-  fontSize: 14,
+  fontSize: 15,
   background: 'var(--input-bg)',
   outline: 'none',
   transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
 };
 
 export const label: React.CSSProperties = {
-  fontSize: 12,
+  fontSize: 13,
   color: theme.textSecondary,
   fontWeight: 600,
-  marginBottom: 4,
+  marginBottom: 5,
   display: 'block',
 };
 
@@ -92,7 +92,7 @@ export function card(p: React.CSSProperties = {}): React.CSSProperties {
 
 export function row(index: number, extra: React.CSSProperties = {}): React.CSSProperties {
   return {
-    padding: '9px 14px',
+    padding: '10px 16px',
     display: 'grid',
     gap: 8,
     alignItems: 'center',
