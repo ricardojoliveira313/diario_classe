@@ -57,7 +57,7 @@ export default function Alunos() {
     const updates: any = { situacao: novaSituacao };
     if (dataMovimentacao) {
       updates.data_movimentacao = dataMovimentacao;
-      if (['BXTR', 'TRAN', 'N COM'].includes(novaSituacao)) updates.data_fim_matricula = dataMovimentacao;
+      if (['BXTR', 'TRAN', 'N COM', 'REMA'].includes(novaSituacao)) updates.data_fim_matricula = dataMovimentacao;
     }
     await api.updateAluno(alunoId, updates);
     setAlunos(prev => prev.map(a => a.id === alunoId ? { ...a, ...updates } : a));
@@ -297,6 +297,8 @@ export default function Alunos() {
                     {a.data_movimentacao && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Movimentação:</span> {a.data_movimentacao}</div>}
                     {t?.professora && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Professora:</span> {t.professora}</div>}
                     {t?.nome && turmaId !== '__all__' && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Turma:</span> {t.nome}</div>}
+                    {a.nis && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>NIS:</span> {a.nis}</div>}
+                    {a.responsavel && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Responsável:</span> {a.responsavel}</div>}
                   </div>
                 )}
 
