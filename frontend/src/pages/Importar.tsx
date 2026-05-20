@@ -1,9 +1,10 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 import * as pdfjsLib from 'pdfjs-dist';
 import { api, supabase } from '../api';
+import { theme, btn, card as cardStyle } from '../styles';
+import { FileRow, ProgressBar, ErrorBox, Spinner } from '../components';
 
-// Worker do PDF.js — caminho relativo p/ vite
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs`;
 
 const MES_MAP: Record<string, number> = {
@@ -27,7 +28,6 @@ function fmtDate(val: any): string {
     const m = String(val.getMonth() + 1).padStart(2, '0');
     return `${d}/${m}/${val.getFullYear()}`;
   }
-  // Normaliza strings no formato D/M/YYYY ou DD/M/YYYY → DD/MM/YYYY
   const s = String(val).trim();
   const dm = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (dm) return `${dm[1].padStart(2,'0')}/${dm[2].padStart(2,'0')}/${dm[3]}`;
@@ -42,7 +42,6 @@ function normalizeStr(s: string): string {
   return s.toUpperCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
-// Artigos/preposi\u00e7\u00f5es removidos na chave fuzzy para ignorar varia\u00e7\u00f5es (ex: "DA" vs sem "DA")
 const ARTIGOS = new Set(['DE', 'DA', 'DO', 'DOS', 'DAS', 'E', 'NO', 'NA']);
 
 function nomeSignificativo(nome: string): string {
@@ -50,10 +49,12 @@ function nomeSignificativo(nome: string): string {
 }
 
 const SITUACAO_MAP: Record<string, string> = {
-  ATIVO: 'ATIVO', REMA: 'REMA', REMANEJADO: 'REMA', 'REMANEJADA': 'REMA',
+  ATIVO: 'ATIVO', REMA: 'REMA', REMANEJADO: 'REMA', 'REMANEJADA': 'REMA', 'REMANEJADO(A)': 'REMA',
   BXTR: 'BXTR', 'BAIXA TRANSF.': 'BXTR', 'BAIXA TRANSFERENCIA': 'BXTR', 'BAIXA TRANSFER\u00caNCIA': 'BXTR',
   TRAN: 'TRAN', 'TRANSF.': 'TRAN', TRANSFERIDO: 'TRAN', TRANSFERIDA: 'TRAN',
   'N COM': 'N COM', 'NAO COMPARECEU': 'N COM', 'N\u00c3O COMPARECEU': 'N COM', 'NCOM': 'N COM',
+  'BAIXA POR NAO COMPARECIMENTO': 'N COM', 'BAIXA POR N\u00c3O COMPARECIMENTO': 'N COM',
+  ABAN: 'ABAN', ABANDONO: 'ABAN',
 };
 
 function normalizeSituacao(s: string): string {
@@ -61,7 +62,6 @@ function normalizeSituacao(s: string): string {
   return SITUACAO_MAP[key] ?? SITUACAO_MAP[s.trim().toUpperCase()] ?? s.trim();
 }
 
-// ─── Registro unificado do aluno ───
 interface AlunoUnificado {
   nome: string;
   nomeNorm: string;
@@ -90,8 +90,23 @@ export default function Importar() {
   const [total, setTotal] = useState(0);
   const [erro, setErro] = useState('');
   const [sucesso, setSucesso] = useState(false);
+  const [fixing, setFixing] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const dadosRef = useRef<{ turmas: any[]; alunos: AlunoUnificado[]; faltasArr: any[] } | null>(null);
+
+  const fixSchema = useCallback(async () => {
+    setFixing(true);
+    setErro('');
+    try {
+      await api.reloadSchema();
+      setErro('');
+      setStatus('Schema recarregado! Tente importar novamente.');
+    } catch (ex: any) {
+      setErro('Execute no SQL Editor do Supabase:\nNOTIFY pgrst, \'reload schema\';');
+    } finally {
+      setFixing(false);
+    }
+  }, []);
 
   // ─── PARSE: PDF ───
   async function parsePDFs(files: File[]): Promise<AlunoUnificado[]> {
@@ -619,114 +634,133 @@ export default function Importar() {
       setStatus('');
       setSucesso(true);
     } catch (ex: any) {
-      setErro('Erro na importação: ' + ex.message);
+      const msg = ex.message ?? String(ex);
+      setErro(msg);
       setStatus('');
     }
   };
 
-  const s = (n: number) => (
-    <span style={{ fontSize: 24, fontWeight: 700, color: '#1e40af' }}>{n}</span>
-  );
-
   return (
-    <div style={{ marginTop: 16 }}>
-      <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>📥 Importar Dados da SED</h1>
-      <p style={{ color: '#64748b', fontSize: 14, marginBottom: 20 }}>
+    <div style={{ marginTop: 16, animation: 'fadeIn 0.25s ease both' }}>
+      <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>📥 Importar Dados da SED</h1>
+      <p style={{ color: theme.textSecondary, fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
         Selecione todos os arquivos exportados da Secretaria Escolar Digital:
-        PDFs (Alunos por Classe) + Excels (Diário de Classe, Turmas-Professores) + <strong>TXT do Bolsa Família</strong> (salvar PDF como texto no leitor de PDF).
+        PDFs (Alunos por Classe) + Excels (Diário de Classe, Turmas-Professores) + <strong>TXT do Bolsa Família</strong>.
         O sistema cruza automaticamente por nome, RA e data de nascimento.
       </p>
 
       {/* Upload zone */}
-      <div style={{ border: '2px dashed #cbd5e1', borderRadius: 12, padding: files.length > 0 ? 16 : 40, textAlign: 'center', marginBottom: 16, background: '#f8fafc', cursor: 'pointer' }}
-        onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = '#1e40af'; }}
-        onDragLeave={e => e.currentTarget.style.borderColor = '#cbd5e1'}
-        onDrop={e => { e.preventDefault(); e.currentTarget.style.borderColor = '#cbd5e1'; handleFiles(e.dataTransfer.files); }}
+      <div style={{
+        border: `2px dashed ${theme.border}`,
+        borderRadius: theme.radiusMd,
+        padding: files.length > 0 ? 16 : 48,
+        textAlign: 'center', marginBottom: 16,
+        background: '#f8fafc', cursor: 'pointer',
+        transition: 'border-color 0.2s ease, background 0.2s ease',
+      }}
+        onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = theme.primary; e.currentTarget.style.background = theme.primaryBg; }}
+        onDragLeave={e => { e.currentTarget.style.borderColor = theme.border; e.currentTarget.style.background = '#f8fafc'; }}
+        onDrop={e => { e.preventDefault(); e.currentTarget.style.borderColor = theme.border; e.currentTarget.style.background = '#f8fafc'; handleFiles(e.dataTransfer.files); }}
         onClick={() => fileRef.current?.click()}>
         <input ref={fileRef} type="file" multiple accept=".xlsx,.xls,.pdf,.txt"
           style={{ display: 'none' }} onChange={e => handleFiles(e.target.files)} />
-        <div style={{ fontSize: 32, marginBottom: 8 }}>📂</div>
-        <p style={{ fontWeight: 600, color: '#1e40af', marginBottom: 4 }}>
+        <div style={{ fontSize: 36, marginBottom: 8 }}>📂</div>
+        <p style={{ fontWeight: 700, color: theme.primary, marginBottom: 4, fontSize: 15 }}>
           {files.length > 0 ? `${files.length} arquivo(s) selecionado(s)` : 'Clique ou arraste arquivos aqui'}
         </p>
-        <p style={{ fontSize: 12, color: '#64748b' }}>.xlsx .xls .pdf — múltiplos arquivos</p>
+        <p style={{ fontSize: 12, color: theme.textMuted }}>.xlsx .xls .pdf .txt — múltiplos arquivos</p>
       </div>
 
       {/* Lista de arquivos */}
       {files.map((f, i) => (
-        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: 'white', borderRadius: 8, marginBottom: 4, fontSize: 13 }}>
-          <span>{f.name.endsWith('.pdf') ? '📄' : f.name.endsWith('.xlsx') ? '📊' : '📋'}</span>
-          <span style={{ flex: 1 }}>{f.name}</span>
-          <span style={{ fontSize: 11, color: '#94a3b8' }}>{(f.size / 1024).toFixed(0)} KB</span>
-          <button onClick={() => removerArquivo(i)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#dc2626', fontSize: 16 }}>✕</button>
-        </div>
+        <FileRow key={i} name={f.name} size={f.size} onRemove={() => removerArquivo(i)} />
       ))}
 
       {files.length > 0 && !preview && !status && (
-        <button onClick={analisar}
-          style={{ padding: '12px 24px', borderRadius: 8, background: '#1e40af', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 15, marginTop: 12, width: '100%' }}>
+        <button onClick={analisar} style={{ ...btn('primary', { full: true }), marginTop: 12, borderRadius: theme.radiusMd, padding: '13px', fontSize: 16 }}>
           🔍 Analisar Arquivos
         </button>
       )}
 
       {status && !sucesso && (
-        <div style={{ marginTop: 16, textAlign: 'center' }}>
-          <p style={{ color: '#64748b', marginBottom: 8 }}>{status}</p>
-          {total > 0 && (
-            <div style={{ height: 8, background: '#e2e8f0', borderRadius: 4, overflow: 'hidden', maxWidth: 400, margin: '0 auto' }}>
-              <div style={{ height: '100%', background: '#1e40af', transition: 'width 0.2s', width: `${(progresso / total) * 100}%`, borderRadius: 4 }} />
-            </div>
-          )}
+        <div className="fade-in" style={{ marginTop: 20, textAlign: 'center' }}>
+          <p style={{ color: theme.textSecondary, marginBottom: 10, fontSize: 14 }}>{status}</p>
+          <ProgressBar current={progresso} total={total} />
         </div>
       )}
 
       {/* Preview do cruzamento */}
       {preview && !sucesso && (
-        <div style={{ marginTop: 16, background: 'white', borderRadius: 12, padding: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-          <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>📊 Resultado do Cruzamento</h2>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8 }}>
+        <div className="scale-in" style={cardStyle({ marginTop: 16, padding: 20 })}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 14, color: theme.text }}>📊 Resultado do Cruzamento</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10 }}>
             {[
               ['🏫 Turmas', preview.turmas],
               ['👥 Alunos', preview.alunos],
               ['🟢 Bolsa Família', preview.bolsaFamilia],
-              ['📄 No PDF BF', preview.bolsaMapSize ?? 0],
-              ['📋 Registros Faltas', preview.faltas],
+              ['📄 Registros Faltas', preview.faltas],
               ['📂 Arquivos', preview.arquivos],
             ].map(([label, val]) => (
-              <div key={label as string} style={{ textAlign: 'center', padding: 12, background: '#f8fafc', borderRadius: 8 }}>
-                <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>{label}</div>
-                <div style={{ fontSize: 22, fontWeight: 700, color: '#1e40af' }}>{(val as number)}</div>
+              <div key={label as string} style={{ textAlign: 'center', padding: 14, background: theme.primaryBg, borderRadius: theme.radius }}>
+                <div style={{ fontSize: 11, color: theme.textSecondary, marginBottom: 4, fontWeight: 600 }}>{label as string}</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: theme.primary }}>{val as number}</div>
               </div>
             ))}
           </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-            <button onClick={() => { setPreview(null); dadosRef.current = null; }} style={{ flex: 1, padding: 12, borderRadius: 8, background: '#f1f5f9', border: '1px solid #cbd5e1', cursor: 'pointer', fontWeight: 600 }}>
-              Reanalisar
-            </button>
-            <button onClick={importar} style={{ flex: 2, padding: 12, borderRadius: 8, background: '#dc2626', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 15 }}>
-              Confirmar Importação (apaga dados anteriores)
+          <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+            <button onClick={() => { setPreview(null); dadosRef.current = null; }}
+              style={btn('ghost', { full: true })}>Reanalisar</button>
+            <button onClick={importar}
+              style={{ ...btn('danger', { full: true }), fontWeight: 700, fontSize: 15 }}>
+              ⚠️ Confirmar Importação (apaga dados anteriores)
             </button>
           </div>
         </div>
       )}
 
       {sucesso && (
-        <div style={{ marginTop: 16, background: '#f0fdf4', borderRadius: 12, padding: 24, textAlign: 'center', border: '2px solid #16a34a' }}>
-          <div style={{ fontSize: 40 }}>✅</div>
-          <p style={{ fontSize: 16, fontWeight: 700, color: '#16a34a', marginTop: 8 }}>Importação concluída!</p>
-          {preview && <p style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>
+        <div className="scale-in" style={{
+          background: theme.successLight, borderRadius: theme.radiusMd,
+          padding: 28, textAlign: 'center',
+          border: `2px solid ${theme.success}`,
+          marginTop: 16,
+        }}>
+          <div style={{ fontSize: 48 }}>✅</div>
+          <p style={{ fontSize: 18, fontWeight: 800, color: theme.successHover, marginTop: 10 }}>Importação concluída!</p>
+          {preview && <p style={{ fontSize: 14, color: theme.textSecondary, marginTop: 6 }}>
             {preview.turmas} turmas, {preview.alunos} alunos, {preview.faltas} registros de frequência
           </p>}
-          <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'center' }}>
-            <a href="/alunos" style={{ padding: '10px 20px', borderRadius: 8, background: '#1e40af', color: 'white', textDecoration: 'none', fontWeight: 600 }}>👥 Ver Alunos</a>
-            <a href="/faltas" style={{ padding: '10px 20px', borderRadius: 8, background: '#16a34a', color: 'white', textDecoration: 'none', fontWeight: 600 }}>📋 Lançar Faltas</a>
+          <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'center' }}>
+            <a href="/alunos" style={{ ...btn('primary'), textDecoration: 'none' }}>👥 Ver Alunos</a>
+            <a href="/faltas" style={{ ...btn('success'), textDecoration: 'none' }}>📋 Lançar Faltas</a>
           </div>
         </div>
       )}
 
       {erro && (
-        <div style={{ marginTop: 16, padding: 12, background: '#fef2f2', borderRadius: 8, border: '1px solid #dc2626', color: '#dc2626', fontSize: 13 }}>
-          {erro}
+        <div className="fade-in" style={{ marginTop: 16 }}>
+          {erro.includes('schema cache') || erro.includes('Could not find the table') ? (
+            <div style={{
+              padding: 16, background: theme.warningLight, borderRadius: theme.radiusMd,
+              border: `2px solid ${theme.warning}`,
+            }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#92400e', marginBottom: 8 }}>
+                ⚠️ Cache do Supabase desatualizado
+              </div>
+              <p style={{ fontSize: 13, color: '#78350f', marginBottom: 12 }}>
+                O Supabase precisa recarregar o cache das tabelas. Clique no botão abaixo para tentar automaticamente,
+                ou execute no SQL Editor do Supabase:
+              </p>
+              <pre style={{ background: '#1e293b', color: '#e2e8f0', padding: '10px 14px', borderRadius: theme.radius, fontSize: 12, marginBottom: 12, overflow: 'auto' }}>
+                NOTIFY pgrst, 'reload schema';
+              </pre>
+              <button onClick={fixSchema} disabled={fixing} style={btn('warning', { full: true })}>
+                {fixing ? <Spinner size={16} /> : '🔄 Recarregar Schema'}
+              </button>
+            </div>
+          ) : (
+            <ErrorBox message={erro} />
+          )}
         </div>
       )}
     </div>
