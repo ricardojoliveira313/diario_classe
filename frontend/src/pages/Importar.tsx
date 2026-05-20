@@ -215,19 +215,23 @@ export default function Importar() {
           const rows = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
           if (rows.length < 2) { pendentes--; if (pendentes === 0) resolve(mapa); return; }
 
-          // Detecta colunas pelos cabeçalhos (linha 0)
-          const headers = rows[0].map((h: any) => normalizeStr(String(h ?? '')));
-          const idxTurma = headers.findIndex((h: string) =>
-            h.includes('TURMA') || h.includes('SERIE') || h.includes('CLASSE'));
-          const idxProf = headers.findIndex((h: string) =>
-            h.includes('PROFESSOR') || h.includes('DOCENTE') || h.includes('PROF'));
-          const idxPer = headers.findIndex((h: string) =>
-            h.includes('PERIOD') || h.includes('TURNO'));
+          // Encontra a linha real de cabeçalho (pode ter nome da escola na linha 0)
+          let headerRowIdx = 0;
+          for (let i = 0; i < Math.min(rows.length, 5); i++) {
+            const joined = rows[i].map((h: any) => normalizeStr(String(h ?? ''))).join('|');
+            if (joined.includes('TURMA') || joined.includes('PROFESSOR') || joined.includes('SALA')) {
+              headerRowIdx = i;
+              break;
+            }
+          }
+          const headers = rows[headerRowIdx].map((h: any) => normalizeStr(String(h ?? '')));
+          const idxTurma = headers.findIndex((h: string) => h.includes('TURMA') || h.includes('SERIE') || h.includes('CLASSE'));
+          const idxProf  = headers.findIndex((h: string) => h.includes('PROFESSOR') || h.includes('DOCENTE'));
+          const idxPer   = headers.findIndex((h: string) => h.includes('PERIOD') || h.includes('TURNO'));
 
-          for (let i = 1; i < rows.length; i++) {
+          for (let i = headerRowIdx + 1; i < rows.length; i++) {
             const r = rows[i];
-            if (!r || r.length < 2) continue;
-            // Usa índice detectado, ou cai para posição padrão (col 1, 2, 3)
+            if (!r || r.every((c: any) => !String(c ?? '').trim())) continue; // pula linhas vazias
             const turma = String(r[idxTurma >= 0 ? idxTurma : 1] ?? '').trim();
             const prof  = String(r[idxProf  >= 0 ? idxProf  : 2] ?? '').trim();
             const per   = String(r[idxPer   >= 0 ? idxPer   : 3] ?? '').trim();
