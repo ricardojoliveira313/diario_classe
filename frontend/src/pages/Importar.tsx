@@ -288,31 +288,44 @@ export default function Importar() {
     });
   }
 
-  // ─── PARSE: PDF Bolsa Família (NIS) ───
-  async function parseBolsaFamiliaPDF(files: File[]): Promise<Map<string, { nis: string; responsavel: string }>> {
+  // ─── PARSE: Formulário Bolsa Família — PDF ou TXT ───
+  async function parseBolsaFamilia(files: File[]): Promise<Map<string, { nis: string; responsavel: string }>> {
     const mapa = new Map<string, { nis: string; responsavel: string }>();
     for (const file of files) {
       const name = normalizeFileName(file.name);
-      if (!file.name.toLowerCase().endsWith('.pdf')) continue;
+      const isPdf = file.name.toLowerCase().endsWith('.pdf');
+      const isTxt = file.name.toLowerCase().endsWith('.txt');
+      if (!isPdf && !isTxt) continue;
       if (!name.includes('FORMULARIO') && !name.includes('BOLSA')) continue;
-      const arrayBuf = await file.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuf }).promise;
+
       let texto = '';
-      for (let p = 1; p <= Math.min(pdf.numPages, 60); p++) {
-        const page = await pdf.getPage(p);
-        const content = await page.getTextContent();
-        texto += content.items.map((item: any) => item.str).join(' ') + '\n';
+      if (isPdf) {
+        const arrayBuf = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuf }).promise;
+        for (let p = 1; p <= Math.min(pdf.numPages, 200); p++) {
+          const page = await pdf.getPage(p);
+          const content = await page.getTextContent();
+          texto += content.items.map((item: any) => item.str).join(' ') + '\n';
+        }
+      } else {
+        texto = await file.text();
       }
-      // Regex para extrair Nome, Dt Nasc, NIS
-      const regex = /Nome:\s*(.+?)\s+Dt\.\s*Nasc\.:\s*(\d{2}\/\d{2}\/\d{4}).*?NIS:\s*(\d{11})/gs;
+
+      // PDF: campos juntos por espaço. TXT: separados por newlines (e possíveis \f entre páginas).
+      // Regex único: Nome ... Dt.Nasc ... NIS ... Responsável familiar
+      const regex = isPdf
+        ? /Nome:\s*(.+?)\s+Dt\.\s*Nasc\.:\s*(\d{2}\/\d{2}\/\d{4}).*?NIS:\s*(\d{11})(?:.*?Respons.vel\s*familiar:\s*(.+?)(?=Nome:|$))?/gs
+        : /Nome:\s*(.+?)\n[\s\S]*?Dt\.\s*Nasc\.:\s*(\d{2}\/\d{2}\/\d{4})\n[\s\S]*?NIS:\s*(\d{11})\n[\s\S]*?Respons.vel\s*familiar:\s*(.+?)(?=\n)/g;
+
       let m;
       while ((m = regex.exec(texto)) !== null) {
         const nome = m[1].trim();
         const nasc = m[2];
         const nis = m[3];
+        const responsavel = (m[4] ?? '').trim();
         const key = `${normalizeStr(nome)}|${nasc}`;
         if (!mapa.has(key)) {
-          mapa.set(key, { nis, responsavel: '' });
+          mapa.set(key, { nis, responsavel });
         }
       }
     }
@@ -347,7 +360,7 @@ export default function Importar() {
         parseHTMLSED(xlsFiles),
         parseExcels(xlsxFiles),
         parseTurmasProfessores(files),
-        parseBolsaFamiliaPDF(pdfFiles),
+        parseBolsaFamilia(files),
       ]);
 
       // ─── Cruzamento ───
@@ -385,7 +398,7 @@ export default function Importar() {
         if (bf) {
           a.nis = bf.nis;
           a.responsavel = bf.responsavel || a.responsavel;
-          a.bolsaFamilia = true; // confirmado pelo PDF
+          a.bolsaFamilia = true; // confirmado pelo formulário BF
         }
       }
 
@@ -405,6 +418,7 @@ export default function Importar() {
         turmas: turmasUnicas.size,
         alunos: alunosArr.length,
         bolsaFamilia: alunosArr.filter(a => a.bolsaFamilia).length,
+        noFormularioBF: bolsaMap.size,
         arquivos: files.length,
         faltas: totalFaltas,
       };
@@ -495,9 +509,7 @@ export default function Importar() {
     <div style={{ marginTop: 16 }}>
       <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>📥 Importar Dados da SED</h1>
       <p style={{ color: '#64748b', fontSize: 14, marginBottom: 20 }}>
-        Selecione todos os arquivos exportados da Secretaria Escolar Digital:
-        PDFs (Alunos por Classe, Bolsa Família) + Excels (Diário de Classe, Turmas-Professores).
-        O sistema cruza automaticamente por nome, RA e data de nascimento.
+        Selecione todos os arquivos exportados da Secretaria Escolar Digital: PDFs (Alunos por Classe) + Excels (Diário de Classe, Turmas-Professores) + <strong>TXT do Bolsa Família</strong> (salvar PDF como texto no leitor de PDF). O sistema cruza automaticamente por nome, RA e data de nascimento.
       </p>
 
       {/* Upload zone */}
@@ -506,13 +518,13 @@ export default function Importar() {
         onDragLeave={e => e.currentTarget.style.borderColor = '#cbd5e1'}
         onDrop={e => { e.preventDefault(); e.currentTarget.style.borderColor = '#cbd5e1'; handleFiles(e.dataTransfer.files); }}
         onClick={() => fileRef.current?.click()}>
-        <input ref={fileRef} type="file" multiple accept=".xlsx,.xls,.pdf"
+        <input ref={fileRef} type="file" multiple accept=".xlsx,.xls,.pdf,.txt"
           style={{ display: 'none' }} onChange={e => handleFiles(e.target.files)} />
         <div style={{ fontSize: 32, marginBottom: 8 }}>📂</div>
         <p style={{ fontWeight: 600, color: '#1e40af', marginBottom: 4 }}>
           {files.length > 0 ? `${files.length} arquivo(s) selecionado(s)` : 'Clique ou arraste arquivos aqui'}
         </p>
-        <p style={{ fontSize: 12, color: '#64748b' }}>.xlsx .xls .pdf — múltiplos arquivos</p>
+        <p style={{ fontSize: 12, color: '#64748b' }}>.xlsx .xls .pdf .txt — múltiplos arquivos</p>
       </div>
 
       {/* Lista de arquivos */}
@@ -552,7 +564,8 @@ export default function Importar() {
               ['🏫 Turmas', preview.turmas],
               ['👥 Alunos', preview.alunos],
               ['🟢 Bolsa Família', preview.bolsaFamilia],
-              ['📋 Registros Faltas', preview.faltas],
+              ['📋 No Formulário BF', preview.noFormularioBF],
+              ['📝 Registros Faltas', preview.faltas],
               ['📂 Arquivos', preview.arquivos],
             ].map(([label, val]) => (
               <div key={label as string} style={{ textAlign: 'center', padding: 12, background: '#f8fafc', borderRadius: 8 }}>
