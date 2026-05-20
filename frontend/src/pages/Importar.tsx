@@ -93,11 +93,15 @@ export default function Importar() {
   const fileRef = useRef<HTMLInputElement>(null);
   const dadosRef = useRef<{ turmas: any[]; alunos: AlunoUnificado[]; faltasArr: any[] } | null>(null);
 
-  // ─── PARSE: PDF ───
+  // ─── PARSE: PDF SED (Relação de Alunos por Classe) ───
   async function parsePDFs(files: File[]): Promise<AlunoUnificado[]> {
     const alunos: AlunoUnificado[] = [];
     for (const file of files) {
       if (!file.name.toLowerCase().endsWith('.pdf')) continue;
+      // PDFs do Bolsa Família têm parser próprio — pula aqui
+      const nomeArq = normalizeFileName(file.name);
+      if (nomeArq.includes('BOLSA') || nomeArq.includes('FORMULARIO')) continue;
+
       const arrayBuf = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: arrayBuf }).promise;
       let texto = '';
@@ -106,29 +110,67 @@ export default function Importar() {
         const content = await page.getTextContent();
         texto += content.items.map((item: any) => item.str).join(' ') + '\n';
       }
-      // Extrai turma do PDF
-      const turmaMatch = texto.match(/Turma:\s*\n?\s*(.+)/i);
-      const serie = turmaMatch?.[1]?.trim() || '';
-      // Extrai alunos do PDF (formato SED: Nome, RA, Data Nasc)
-      const linhas = texto.split('\n').map(l => l.trim()).filter(Boolean);
-      for (let i = 0; i < linhas.length; i++) {
-        const nome = linhas[i];
-        if (nome.length < 5 || /^\d/.test(nome)) continue;
-        const raStr = linhas[i + 1]?.trim();
-        const ra = parseInt(raStr) || null;
-        const nascStr = linhas[i + 2]?.trim();
-        if (nascStr && /^\d{2}\/\d{2}\/\d{4}$/.test(nascStr)) {
-          alunos.push({
-            nome, nomeNorm: normalizeStr(nome),
-            ra, nascimento: nascStr,
-            serie: serie, professora: '', situacao: 'ATIVO', deficiencia: '',
-            bolsaFamilia: false,
-            dataInicioMatricula: '', dataFimMatricula: '', dataMovimentacao: '',
-            nis: '', responsavel: '',
-            faltas: {},
-          });
-          i += 2;
-        }
+
+      // Texto em uma linha única para busca posicional
+      const allText = texto.replace(/\n/g, ' ').replace(/\s{2,}/g, ' ');
+
+      // Mapa de posição → série (suporta PDFs com múltiplas turmas)
+      const turmaPosicoes: Array<{ pos: number; serie: string }> = [];
+      const turmaRe = /Turma:\s*([^T\n]{3,80}?)(?=\s{2,}|Turma:|$)/gi;
+      let tmm: RegExpExecArray | null;
+      while ((tmm = turmaRe.exec(allText)) !== null) {
+        turmaPosicoes.push({ pos: tmm.index, serie: tmm[1].trim() });
+      }
+      // Fallback: turma única
+      if (!turmaPosicoes.length) {
+        const t = allText.match(/Turma:\s*(.+?)(?:\s{2,}|$)/i);
+        if (t) turmaPosicoes.push({ pos: 0, serie: t[1].trim() });
+      }
+      const getSerie = (raPos: number) => {
+        let s = '';
+        for (const t of turmaPosicoes) { if (t.pos <= raPos) s = t.serie; else break; }
+        return s;
+      };
+
+      // Âncora nos RAs de 12 dígitos (padrão SED: 000XXXXXXXXX)
+      const raRe = /\b(0{3}\d{9})\b/g;
+      let raMatch: RegExpExecArray | null;
+      while ((raMatch = raRe.exec(allText)) !== null) {
+        const raStr = raMatch[1];
+        const raPos = raMatch.index;
+
+        // ── Nome: último trecho todo em maiúsculas antes do RA ──
+        const before = allText.substring(Math.max(0, raPos - 160), raPos);
+        const nomeMatch = before.match(/([A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ][A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ\s'-]{3,})$/);
+        if (!nomeMatch) continue;
+        // Remove prefixo "X X " (série + nº do aluno) se presente
+        const nome = nomeMatch[1].replace(/^\d{1,2}\s+\d{1,3}\s+/, '').trim();
+        if (!nome || nome.length < 4) continue;
+
+        // ── Campos após o RA: [dig_ra] [UF] [nasc] [situação] [data_movim] [deficiência] ──
+        const after = allText.substring(raPos + 12, raPos + 320);
+        const afterMatch = after.match(
+          /^\s*\S+\s+\S{2}\s+(\d{2}\/\d{2}\/\d{4})\s+(ATIVO|TRAN|REMA|ABAN|N\s?COM|BXTR|NAO\s?COMPARECEU)\s+(\d{2}\/\d{2}\/\d{4})\s*(.*?)(?=\s*\d{1,2}\s+\d{1,3}\s+[A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ]|\s*0{3}\d{9}|$)/i
+        );
+        if (!afterMatch) continue;
+
+        const [, nascimento, situacaoRaw, dataMovim, defRaw] = afterMatch;
+        const situacao = normalizeSituacao(situacaoRaw.trim());
+        const deficiencia = defRaw.trim().replace(/\s+/g, ' ');
+        const isAtivo = situacao === 'ATIVO';
+
+        alunos.push({
+          nome, nomeNorm: normalizeStr(nome),
+          ra: parseInt(raStr) || null,
+          nascimento,
+          serie: getSerie(raPos),
+          professora: '', situacao, deficiencia,
+          bolsaFamilia: false,
+          dataInicioMatricula: '',
+          dataFimMatricula: isAtivo ? dataMovim : '',
+          dataMovimentacao: isAtivo ? '' : dataMovim,
+          nis: '', responsavel: '', faltas: {},
+        });
       }
     }
     return alunos;
@@ -175,10 +217,14 @@ export default function Importar() {
               let faltasQtd = 0;
               let freqTexto = '';
               if (isDiario) {
-                const freqVal = String(nr['FREQUENCIA DOS ALUNOS(A)'] ?? '').trim();
-                const faltasNum = parseInt(freqVal);
-                faltasQtd = isNaN(faltasNum) ? 0 : faltasNum;
-                freqTexto = isNaN(faltasNum) ? freqVal : '';
+                // Remove aspas que o SED coloca nos valores: '"01 Faltas Injustificadas"' → '01 Faltas Injustificadas'
+                const freqRaw = String(nr['FREQUENCIA DOS ALUNOS(A)'] ?? '').trim().replace(/^["']|["']$/g, '').trim();
+                // Extrai número do prefixo: "01 Faltas Injustificadas" → 1, suporta até 22 dias letivos
+                const freqNumM = freqRaw.match(/^(\d{1,2})/);
+                faltasQtd = freqNumM ? Math.min(parseInt(freqNumM[1]), 22) : 0;
+                // Guarda texto especial (TRANSFERIDO, REMANEJADO, etc.) — ignora "Não há faltas no mês"
+                const freqNorm = normalizeStr(freqRaw);
+                freqTexto = !freqNumM && freqRaw && !freqNorm.startsWith('NAO HA FALTAS') ? freqRaw : '';
               }
 
               const situacao = normalizeSituacao(String(nr['SITUACAO'] ?? 'ATIVO'));

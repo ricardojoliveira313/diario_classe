@@ -44,8 +44,23 @@ export default function Faltas() {
     });
   }, [turmaId, mes]);
 
-  const setFalta = (alunoId: string, val: number) => {
-    setFaltas(prev => ({ ...prev, [alunoId]: Math.max(0, val) }));
+  // Opções de texto especial (igual ao SED)
+  const FREQ_TEXTOS_ESPECIAIS = [
+    'TRANSFERIDO(A)',
+    'BAIXA TRANSFERÊNCIA',
+    'REMANEJADO(A)',
+    'BAIXA POR NÃO COMPARECIMENTO',
+  ];
+
+  const handleFreq = (alunoId: string, val: string) => {
+    const num = parseInt(val);
+    if (!isNaN(num)) {
+      setFaltas(prev => ({ ...prev, [alunoId]: num }));
+      setFreqTextos(prev => { const n = { ...prev }; delete n[alunoId]; return n; });
+    } else {
+      setFaltas(prev => ({ ...prev, [alunoId]: 0 }));
+      setFreqTextos(prev => ({ ...prev, [alunoId]: val }));
+    }
     setSaved(false);
   };
 
@@ -184,17 +199,19 @@ export default function Faltas() {
           </div>
 
           <div style={{ background: 'white', borderRadius: 8, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: 14 }}>
-            <div style={{ background: '#1e40af', color: 'white', padding: '10px 16px', display: 'grid', gridTemplateColumns: '36px 1fr 28px 100px 55px', gap: 8, fontSize: 12, fontWeight: 600 }}>
+            <div style={{ background: '#1e40af', color: 'white', padding: '10px 16px', display: 'grid', gridTemplateColumns: '36px 1fr 28px 190px 55px', gap: 8, fontSize: 12, fontWeight: 600 }}>
               <span>#</span><span>Aluno</span><span title="Bolsa Família">💚</span>
-              <span style={{ textAlign: 'center' }}>Faltas</span><span style={{ textAlign: 'center' }}>%</span>
+              <span style={{ textAlign: 'center' }}>Frequência</span><span style={{ textAlign: 'center' }}>%</span>
             </div>
             {alunos.map((a, i) => {
               const faltasAluno = faltas[a.id] ?? 0;
-              const emAlerta = faltasAluno >= limiteAlerta;
-              const freq = (dl - faltasAluno) / dl * 100;
+              const freqTxt = freqTextos[a.id] ?? '';
+              const emAlerta = faltasAluno >= limiteAlerta && !freqTxt;
+              const freq = freqTxt ? null : (dl - faltasAluno) / dl * 100;
+              const selectVal = freqTxt || String(faltasAluno);
               return (
                 <div key={a.id} style={{
-                  padding: '9px 16px', display: 'grid', gridTemplateColumns: '36px 1fr 28px 100px 55px',
+                  padding: '8px 16px', display: 'grid', gridTemplateColumns: '36px 1fr 28px 190px 55px',
                   gap: 8, alignItems: 'center', borderBottom: '1px solid #f1f5f9',
                   background: emAlerta ? '#fff1f2' : i % 2 === 0 ? 'white' : '#f8fafc',
                 }}>
@@ -204,36 +221,40 @@ export default function Faltas() {
                       {emAlerta && <span title="Frequência abaixo de 75%">⚠️</span>}
                       {a.nome}
                     </div>
+                    {a.deficiencia && (
+                      <span style={{ fontSize: 10, color: '#7c3aed', fontWeight: 600 }}>♿ {a.deficiencia}</span>
+                    )}
                     {a.situacao && a.situacao !== 'ATIVO' && (
-                      <span style={{ fontSize: 10, color: SITUACAO_COR[a.situacao] ?? '#64748b', fontWeight: 700 }}>
+                      <span style={{ fontSize: 10, color: SITUACAO_COR[a.situacao] ?? '#64748b', fontWeight: 700, marginLeft: a.deficiencia ? 6 : 0 }}>
                         {SITUACAO_LABEL[a.situacao] ?? a.situacao}
                       </span>
                     )}
                   </div>
                   <span style={{ textAlign: 'center', fontSize: 13 }}>{a.bolsa_familia ? '✅' : ''}</span>
-                  {freqTextos[a.id] ? (
-                    <span style={{ fontSize: 10, color: '#9333ea', fontWeight: 700, textAlign: 'center', padding: '2px 4px', background: '#f3e8ff', borderRadius: 4 }}>
-                      {freqTextos[a.id]}
-                    </span>
-                  ) : (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}>
-                      <button style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid #cbd5e1', background: '#f1f5f9', cursor: 'pointer', fontWeight: 700, fontSize: 16 }}
-                        onClick={() => setFalta(a.id, faltasAluno - 1)}>−</button>
-                      <span style={{ width: 28, textAlign: 'center', fontWeight: 700, fontSize: 16, color: faltasAluno > 0 ? '#dc2626' : '#1e293b' }}>
-                        {faltasAluno}
-                      </span>
-                      <button style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid #cbd5e1', background: '#f1f5f9', cursor: 'pointer', fontWeight: 700, fontSize: 16 }}
-                        onClick={() => setFalta(a.id, faltasAluno + 1)}>+</button>
-                    </div>
-                  )}
-                  <span style={{ textAlign: 'center', fontWeight: 700, fontSize: 13, color: freq >= 85 ? '#16a34a' : freq >= 75 ? '#ea580c' : '#dc2626' }}>
-                    {freq.toFixed(0)}%
+                  <select
+                    value={selectVal}
+                    onChange={e => handleFreq(a.id, e.target.value)}
+                    style={{ fontSize: 12, padding: '4px 6px', borderRadius: 6, border: `1px solid ${freqTxt ? '#a855f7' : faltasAluno > 0 ? '#fca5a5' : '#cbd5e1'}`, background: freqTxt ? '#f3e8ff' : faltasAluno > 0 ? '#fff1f2' : 'white', width: '100%', color: freqTxt ? '#7c3aed' : faltasAluno > 0 ? '#dc2626' : '#1e293b', fontWeight: freqTxt || faltasAluno > 0 ? 700 : 400 }}
+                  >
+                    <option value="0">Não há faltas no mês</option>
+                    {Array.from({ length: dl }, (_, k) => k + 1).map(n => (
+                      <option key={n} value={String(n)}>
+                        {String(n).padStart(2, '0')} Falta{n > 1 ? 's' : ''} Injustificada{n > 1 ? 's' : ''}
+                      </option>
+                    ))}
+                    <option disabled>──────────────────</option>
+                    {FREQ_TEXTOS_ESPECIAIS.map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                  <span style={{ textAlign: 'center', fontWeight: 700, fontSize: 13, color: freqTxt ? '#7c3aed' : freq !== null && freq >= 85 ? '#16a34a' : freq !== null && freq >= 75 ? '#ea580c' : '#dc2626' }}>
+                    {freqTxt ? '—' : `${freq!.toFixed(0)}%`}
                   </span>
                 </div>
               );
             })}
-            <div style={{ padding: '10px 16px', display: 'grid', gridTemplateColumns: '40px 1fr 110px 55px', gap: 8, background: '#f8fafc', fontWeight: 700, borderTop: '1px solid #e2e8f0' }}>
-              <span></span><span style={{ fontSize: 13 }}>Total</span>
+            <div style={{ padding: '10px 16px', display: 'grid', gridTemplateColumns: '36px 1fr 28px 190px 55px', gap: 8, background: '#f8fafc', fontWeight: 700, borderTop: '1px solid #e2e8f0' }}>
+              <span></span><span style={{ fontSize: 13 }}>Total</span><span></span>
               <span style={{ textAlign: 'center', color: '#dc2626', fontSize: 13 }}>{totalFaltas} faltas</span>
               <span style={{ textAlign: 'center', fontSize: 13 }}>{freqGeral}%</span>
             </div>
