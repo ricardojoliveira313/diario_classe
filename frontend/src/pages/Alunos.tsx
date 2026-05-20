@@ -135,7 +135,7 @@ export default function Alunos() {
     win.document.close();
   };
 
-  const COLUNAS = '44px 1fr 110px 85px 100px 40px';
+  const COLUNAS = '44px 1fr 110px 85px 100px 40px 110px 130px';
 
   return (
     <div style={{ marginTop: 16, animation: 'fadeIn 0.25s ease both' }}>
@@ -231,6 +231,7 @@ export default function Alunos() {
             <span>#</span><span>Nome</span><span>RA</span>
             <span style={{ textAlign: 'center' }}>Situação</span><span style={{ textAlign: 'center' }}>Deficiência</span>
             <span style={{ textAlign: 'center' }}>BF</span>
+            <span>Professora</span><span>Turma</span>
           </div>
 
           {alunosFiltrados.map((a, i) => {
@@ -278,6 +279,8 @@ export default function Alunos() {
                     {a.deficiencia ? '🟣' : '—'}
                   </span>
                   <span style={{ textAlign: 'center', fontSize: 15 }}>{a.bolsa_familia ? '✅' : '—'}</span>
+                  <span style={{ fontSize: 12, color: theme.textSecondary }}>{a.professora || t?.professora || ''}</span>
+                  <span style={{ fontSize: 12, color: theme.textSecondary }}>{t?.nome || ''}</span>
                 </div>
 
                 {/* Detalhes expandidos */}
