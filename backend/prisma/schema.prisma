@@ -9,56 +9,62 @@ datasource db {
 }
 
 model Turma {
-  id        String   @id @default(dbgenerated("gen_random_uuid()::text"))
-  nome      String
-  etapa     String
-  numero    Int
-  letra     String
-  periodo   String
-  professor String   @default("")
-  createdAt DateTime @default(now())
-  alunos    Aluno[]
-  faltas    Falta[]
+  id         String   @id @default(dbgenerated("gen_random_uuid()::text"))
+  nome       String
+  professora String   @default("")
+  periodo    String   @default("")
+  createdAt  DateTime @default(now()) @map("created_at")
+  alunos     Aluno[]
+  faltas     Falta[]
+  pendentes  Pendente[]
 }
 
 model Aluno {
-  id               String   @id @default(dbgenerated("gen_random_uuid()::text"))
-  ra               String
-  digito           String   @default("")
-  nome             String
-  nascimento       String   @default("")
-  situacao         String   @default("ATIVO")
-  dataInicioMatric String   @default("04/02/2026")
-  dataFimMatric    String   @default("18/12/2026")
-  dataMovimentacao String   @default("")
-  bolsaFamilia     Boolean  @default(false)
-  deficiencia      String   @default("")
-  turmaId          String
-  createdAt        DateTime @default(now())
-  turma            Turma    @relation(fields: [turmaId], references: [id], onDelete: Cascade)
-  faltas           Falta[]
-
-  @@unique([ra, turmaId])
+  id                  String   @id @default(dbgenerated("gen_random_uuid()::text"))
+  turmaId             String?  @map("turmaId")
+  nome                String
+  numero              Int      @default(0)
+  ra                  BigInt?
+  digRa               String   @default("") @map("dig_ra")
+  dataNascimento      String   @default("") @map("data_nascimento")
+  dataInicioMatricula String   @default("") @map("data_inicio_matricula")
+  dataFimMatricula    String   @default("") @map("data_fim_matricula")
+  dataMovimentacao    String   @default("") @map("data_movimentacao")
+  deficiencia         String   @default("")
+  bolsaFamilia        Boolean  @default(false) @map("bolsa_familia")
+  situacao            String   @default("ATIVO")
+  professora          String   @default("")
+  nis                 String?
+  responsavel         String?
+  createdAt           DateTime @default(now()) @map("created_at")
+  turma               Turma?   @relation(fields: [turmaId], references: [id], onDelete: Cascade)
+  faltas              Falta[]
 }
 
 model Falta {
-  id         String @id @default(dbgenerated("gen_random_uuid()::text"))
-  alunoId    String
-  turmaId    String
+  id         String   @id @default(dbgenerated("gen_random_uuid()::text"))
+  alunoId    String?  @map("alunoId")
+  turmaId    String?  @map("turmaId")
   mes        Int
-  ano        Int    @default(2026)
-  faltas     Int    @default(0)
-  frequencia String @default("")
-  aluno      Aluno  @relation(fields: [alunoId], references: [id], onDelete: Cascade)
-  turma      Turma  @relation(fields: [turmaId], references: [id], onDelete: Cascade)
+  ano        Int      @default(2026)
+  faltas     Int      @default(0)
+  frequencia String   @default("")
+  createdAt  DateTime @default(now()) @map("created_at")
+  aluno      Aluno?   @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  turma      Turma?   @relation(fields: [turmaId], references: [id], onDelete: Cascade)
 
   @@unique([alunoId, mes, ano])
 }
 
-model Upload {
-  id        String   @id @default(dbgenerated("gen_random_uuid()::text"))
-  tipo      String
-  filename  String
-  path      String
-  createdAt DateTime @default(now())
+model Pendente {
+  id              String   @id @default(dbgenerated("gen_random_uuid()::text"))
+  turmaId         String?  @map("turmaId")
+  mes             Int
+  ano             Int      @default(2026)
+  status          String   @default("pendente")
+  dados           Json     @default("[]")
+  totalEntradas   Int      @default(0) @map("total_entradas")
+  totalProblemas  Int      @default(0) @map("total_problemas")
+  createdAt       DateTime @default(now()) @map("created_at")
+  turma           Turma?   @relation(fields: [turmaId], references: [id], onDelete: Cascade)
 }
