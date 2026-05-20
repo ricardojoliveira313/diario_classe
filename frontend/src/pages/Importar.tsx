@@ -213,13 +213,25 @@ export default function Importar() {
           const wb = XLSX.read(e.target!.result, { type: 'array' });
           const ws = wb.Sheets[wb.SheetNames[0]];
           const rows = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
+          if (rows.length < 2) { pendentes--; if (pendentes === 0) resolve(mapa); return; }
+
+          // Detecta colunas pelos cabeçalhos (linha 0)
+          const headers = rows[0].map((h: any) => normalizeStr(String(h ?? '')));
+          const idxTurma = headers.findIndex((h: string) =>
+            h.includes('TURMA') || h.includes('SERIE') || h.includes('CLASSE'));
+          const idxProf = headers.findIndex((h: string) =>
+            h.includes('PROFESSOR') || h.includes('DOCENTE') || h.includes('PROF'));
+          const idxPer = headers.findIndex((h: string) =>
+            h.includes('PERIOD') || h.includes('TURNO'));
+
           for (let i = 1; i < rows.length; i++) {
             const r = rows[i];
-            if (!r || r.length < 4) continue;
-            const turma = String(r[1] ?? '').trim();
-            const prof = String(r[2] ?? '').trim();
-            const periodo = String(r[3] ?? '').trim();
-            if (turma && prof) mapa.set(normalizeStr(turma), { professor: prof, periodo });
+            if (!r || r.length < 2) continue;
+            // Usa índice detectado, ou cai para posição padrão (col 1, 2, 3)
+            const turma = String(r[idxTurma >= 0 ? idxTurma : 1] ?? '').trim();
+            const prof  = String(r[idxProf  >= 0 ? idxProf  : 2] ?? '').trim();
+            const per   = String(r[idxPer   >= 0 ? idxPer   : 3] ?? '').trim();
+            if (turma && prof) mapa.set(normalizeStr(turma), { professor: prof, periodo: per });
           }
           pendentes--;
           if (pendentes === 0) resolve(mapa);
