@@ -14,11 +14,11 @@ const MES_MAP: Record<string, number> = {
 };
 
 function getMes(sheetName: string, row: any): number {
-  const porAba = MES_MAP[sheetName.toUpperCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '')];
-  if (porAba) return porAba;
   const colMes = String(row['MÊS'] ?? row['MES'] ?? row['Mês'] ?? row['mês'] ?? '')
     .toUpperCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  return MES_MAP[colMes] ?? 0;
+  if (colMes && MES_MAP[colMes]) return MES_MAP[colMes];
+  const porAba = MES_MAP[sheetName.toUpperCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '')];
+  return porAba ?? 0;
 }
 
 function fmtDate(val: any): string {
@@ -194,8 +194,7 @@ export default function Importar() {
   // ─── PARSE: Excel ───
   function parseExcels(files: File[]): Promise<AlunoUnificado[]> {
     return new Promise((resolve) => {
-      const alunos: AlunoUnificado[] = [];
-      const processados = new Set<string>();
+      const alunosMap = new Map<string, AlunoUnificado>();
       let pendentes = 0;
 
       for (const file of files) {
@@ -209,13 +208,11 @@ export default function Importar() {
             const ws = wb.Sheets[sheetName];
             const rows = XLSX.utils.sheet_to_json(ws, { raw: false, dateNF: 'dd/mm/yyyy' }) as any[];
             for (const row of rows) {
-              // Mapa normalizado: chaves sem acento e em maiúsculas para lookup robusto
               const nr: Record<string, any> = {};
               for (const [k, v] of Object.entries(row)) {
                 nr[normalizeStr(String(k).trim())] = v;
               }
 
-              // Detecta formato: DIARIO CLASSE (tem FREQUÊNCIA) ou SED Relação
               const isDiario = 'FREQUENCIA DOS ALUNOS(A)' in nr;
 
               const nome = String(nr['NOME DO ALUNO'] ?? nr['NOME'] ?? '').trim();
@@ -225,35 +222,49 @@ export default function Importar() {
               const ra = parseInt(String(nr['RA'] ?? '')) || null;
               const nasc = fmtDate(nr['DATA DE NASCIMENTO'] ?? nr['DATA NASCIMENTO']);
               const key = `${normalizeStr(nome)}|${ra}|${nasc}`;
-              if (processados.has(key)) continue;
-              processados.add(key);
-
               const mes = getMes(sheetName, nr);
+
               let faltasQtd = 0;
               let freqTexto = '';
               if (isDiario) {
-                // Remove aspas que o SED coloca nos valores: '"01 Faltas Injustificadas"' → '01 Faltas Injustificadas'
                 const freqRaw = String(nr['FREQUENCIA DOS ALUNOS(A)'] ?? '').trim().replace(/^["']|["']$/g, '').trim();
-                // Extrai número do prefixo: "01 Faltas Injustificadas" → 1, suporta até 22 dias letivos
                 const freqNumM = freqRaw.match(/^(\d{1,2})/);
                 faltasQtd = freqNumM ? Math.min(parseInt(freqNumM[1]), 22) : 0;
-                // Guarda texto especial (TRANSFERIDO, REMANEJADO, etc.) — ignora "Não há faltas no mês"
                 const freqNorm = normalizeStr(freqRaw);
                 freqTexto = !freqNumM && freqRaw && !freqNorm.startsWith('NAO HA FALTAS') ? freqRaw : '';
               }
 
               const situacao = normalizeSituacao(String(nr['SITUACAO'] ?? 'ATIVO'));
               const deficiencia = String(nr['DEFICIENCIA'] ?? '').trim();
+              const professora = String(nr['PROFESSORA'] ?? '').trim();
+              const bolsaFamilia = parseBool(nr['BOLSA FAMILIA'] ?? nr['BOLSA FAMLIA']);
+              const dataInicioMatricula = fmtDate(nr['DATA INICIO MATRICULA'] ?? nr['DATA INICIO MATRICULA']);
+              const dataFimMatricula = fmtDate(nr['DATA FIM MATRICULA']);
+              const dataMovimentacao = fmtDate(nr['DATA MOVIMENTACAO']);
 
-              alunos.push({
+              if (alunosMap.has(key)) {
+                const e = alunosMap.get(key)!;
+                if (mes > 0 && faltasQtd >= 0) {
+                  e.faltas[mes] = { faltas: faltasQtd, frequencia: freqTexto };
+                }
+                if (situacao !== 'ATIVO') e.situacao = situacao;
+                if (professora) e.professora = professora;
+                if (dataInicioMatricula) e.dataInicioMatricula = dataInicioMatricula;
+                if (dataFimMatricula) e.dataFimMatricula = dataFimMatricula;
+                if (dataMovimentacao) e.dataMovimentacao = dataMovimentacao;
+                if (deficiencia) e.deficiencia = deficiencia;
+                continue;
+              }
+
+              alunosMap.set(key, {
                 nome, nomeNorm: normalizeStr(nome),
                 ra, nascimento: nasc,
-                serie, professora: String(nr['PROFESSORA'] ?? '').trim(),
+                serie, professora,
                 situacao, deficiencia,
-                bolsaFamilia: parseBool(nr['BOLSA FAMILIA'] ?? nr['BOLSA FAMLIA']),
-                dataInicioMatricula: fmtDate(nr['DATA INICIO MATRICULA'] ?? nr['DATA INICIO MATRICULA']),
-                dataFimMatricula: fmtDate(nr['DATA FIM MATRICULA']),
-                dataMovimentacao: fmtDate(nr['DATA MOVIMENTACAO']),
+                bolsaFamilia,
+                dataInicioMatricula,
+                dataFimMatricula,
+                dataMovimentacao,
                 nis: '',
                 responsavel: '',
                 faltas: mes > 0 && faltasQtd >= 0 ? { [mes]: { faltas: faltasQtd, frequencia: freqTexto } } : {},
@@ -261,11 +272,11 @@ export default function Importar() {
             }
           }
           pendentes--;
-          if (pendentes === 0) resolve(alunos);
+          if (pendentes === 0) resolve(Array.from(alunosMap.values()));
         };
         reader.readAsArrayBuffer(file);
       }
-      if (pendentes === 0) resolve(alunos);
+      if (pendentes === 0) resolve([]);
     });
   }
 
