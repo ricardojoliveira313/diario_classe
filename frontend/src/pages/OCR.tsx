@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
+import { createWorker } from 'tesseract.js';
 import { api } from '../api';
-import { theme, btn, input, label, MESES, card as cardStyle } from '../styles';
-import { Spinner, ErrorBox } from '../components';
+
+const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
 interface AlunoExtrato {
   numero: number;
@@ -9,37 +10,29 @@ interface AlunoExtrato {
   faltas: number;
 }
 
-async function runGoogleVisionOCR(imageBase64: string, apiKey: string): Promise<string> {
-  const res = await fetch(
-    `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        requests: [{
-          image: { content: imageBase64 },
-          features: [{ type: 'DOCUMENT_TEXT_DETECTION', maxResults: 1 }],
-        }],
-      }),
-    }
-  );
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error?.message ?? `Erro HTTP ${res.status}`);
-  }
-  const data = await res.json();
-  const text = data.responses?.[0]?.fullTextAnnotation?.text ?? '';
-  if (!text) throw new Error('Google Vision não encontrou texto na imagem. Tente com melhor iluminação.');
-  return text;
+async function runTesseractOCR(imageDataUrl: string, onProgress: (p: number) => void): Promise<string> {
+  const worker = await createWorker('por', 1, {
+    logger: (m) => {
+      if (m.status === 'recognizing text') onProgress(Math.round(m.progress * 100));
+    },
+  });
+  const { data } = await worker.recognize(imageDataUrl);
+  await worker.terminate();
+  if (!data.text?.trim()) throw new Error('Não foi possível extrair texto. Tente com melhor iluminação e foco.');
+  return data.text;
 }
 
+// Faz parse da tabela extraída: linhas "Nº Nome Faltas"
 function parseOCRText(text: string): AlunoExtrato[] {
   const results: AlunoExtrato[] = [];
   const seen = new Set<number>();
+
   for (const raw of text.split('\n')) {
     const line = raw.trim();
     if (!line || line.length < 4 || line.length > 120) continue;
     if (/^(nº|nome|aluno|prof|turma|série|serie|mês|mes|escola|data|total|freq|emei)/i.test(line)) continue;
+
+    // "1 NOME COMPLETO DO ALUNO 3"  ou  "01. NOME 0"
     const m = line.match(/^(\d{1,2})\.?\s{1,3}([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇÀ][A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇÀa-záéíóúâêîôûãõçà\s]{3,55?}?)\s{1,4}(\d{1,2})\s*$/);
     if (m) {
       const num = parseInt(m[1]);
@@ -48,6 +41,7 @@ function parseOCRText(text: string): AlunoExtrato[] {
       results.push({ numero: num, nome: m[2].trim().toUpperCase(), faltas: parseInt(m[3]) });
       continue;
     }
+    // Linha só com número e nome (sem faltas = assume 0)
     const m2 = line.match(/^(\d{1,2})\.?\s{1,3}([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇÀ][A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇÀa-záéíóúâêîôûãõçà\s]{4,55})\s*$/);
     if (m2 && /[A-ZÁÉÍÓÚ]{3,}/.test(m2[2])) {
       const num = parseInt(m2[1]);
@@ -56,20 +50,20 @@ function parseOCRText(text: string): AlunoExtrato[] {
       results.push({ numero: num, nome: m2[2].trim().toUpperCase(), faltas: 0 });
     }
   }
+
   return results.sort((a, b) => a.numero - b.numero);
 }
 
 export default function OCR() {
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('gvision_key') ?? '');
   const [turmas, setTurmas] = useState<any[]>([]);
   const [turmaId, setTurmaId] = useState('');
   const [mes, setMes] = useState(new Date().getMonth() + 1);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [imageBase64, setImageBase64] = useState('');
   const [rawText, setRawText] = useState('');
   const [extratos, setExtratos] = useState<AlunoExtrato[]>([]);
   const [step, setStep] = useState<'upload' | 'review' | 'done'>('upload');
   const [status, setStatus] = useState('');
+  const [progresso, setProgresso] = useState(0);
   const [erro, setErro] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -77,31 +71,39 @@ export default function OCR() {
     api.getTurmas().then(t => { setTurmas(t); if (t.length) setTurmaId(t[0].id); });
   }, []);
 
-  const salvarKey = () => { localStorage.setItem('gvision_key', apiKey); };
-
   const handleImage = (file: File) => {
     const reader = new FileReader();
     reader.onload = e => {
-      const result = e.target?.result as string;
-      setImagePreview(result);
-      setImageBase64(result.split(',')[1]);
-      setExtratos([]); setRawText(''); setStep('upload'); setErro('');
+      setImagePreview(e.target?.result as string);
+      setExtratos([]);
+      setRawText('');
+      setStep('upload');
+      setErro('');
+      setProgresso(0);
     };
     reader.readAsDataURL(file);
   };
 
   const analisar = async () => {
-    if (!apiKey.trim()) { setErro('Informe a chave da API Google Cloud Vision.'); return; }
-    if (!imageBase64) { setErro('Selecione uma imagem.'); return; }
-    setErro(''); setStatus('Enviando para Google Cloud Vision...');
+    if (!imagePreview) { setErro('Selecione uma imagem.'); return; }
+    setErro('');
+    setProgresso(0);
+    setStatus('Carregando motor OCR (primeira vez é mais lento)...');
     try {
-      const text = await runGoogleVisionOCR(imageBase64, apiKey);
+      const text = await runTesseractOCR(imagePreview, (p) => {
+        setProgresso(p);
+        setStatus(`Reconhecendo texto... ${p}%`);
+      });
       setRawText(text);
       const parsed = parseOCRText(text);
-      setExtratos(parsed.length > 0 ? parsed : []);
-      setStep('review'); setStatus('');
+      setExtratos(parsed);
+      setStep('review');
+      setStatus('');
       if (parsed.length === 0) setErro('Não foi possível extrair alunos automaticamente. Revise o texto bruto abaixo e edite manualmente.');
-    } catch (ex: any) { setErro(ex.message); setStatus(''); }
+    } catch (ex: any) {
+      setErro(ex.message);
+      setStatus('');
+    }
   };
 
   const adicionarLinha = () => setExtratos(prev => [...prev, { numero: prev.length + 1, nome: '', faltas: 0 }]);
@@ -110,16 +112,14 @@ export default function OCR() {
     if (!turmaId) { setErro('Selecione a turma.'); return; }
     const validos = extratos.filter(e => e.nome.trim().length > 2);
     if (validos.length === 0) { setErro('Nenhum aluno para salvar.'); return; }
-    setStatus('Salvando...'); setErro('');
+    setStatus('Salvando...');
+    setErro('');
     try {
       const alunosTurma = await api.getAlunos(turmaId);
       const registros: any[] = [];
       for (const e of validos) {
         let aluno = alunosTurma.find(a => a.numero === e.numero);
-        if (!aluno) {
-          const nomeNorm = e.nome.toUpperCase().trim();
-          aluno = alunosTurma.find(a => a.nome?.toUpperCase().trim() === nomeNorm);
-        }
+        if (!aluno) aluno = alunosTurma.find(a => a.nome?.toUpperCase().trim() === e.nome);
         if (!aluno) {
           const partes = e.nome.split(' ').filter(Boolean);
           aluno = alunosTurma.find(a => {
@@ -130,161 +130,165 @@ export default function OCR() {
         if (!aluno) continue;
         registros.push({ alunoId: aluno.id, turmaId, mes, ano: 2026, faltas: e.faltas, frequencia: '' });
       }
-      if (registros.length === 0) throw new Error('Não foi possível cruzar os nomes com os alunos da turma. Verifique se a turma selecionada está correta.');
+      if (registros.length === 0) throw new Error('Não foi possível cruzar os nomes. Verifique se a turma selecionada está correta.');
       await api.upsertFaltasBatch(registros);
-      setStep('done'); setStatus('');
-    } catch (ex: any) { setErro(ex.message); setStatus(''); }
+      setStep('done');
+      setStatus('');
+    } catch (ex: any) {
+      setErro(ex.message);
+      setStatus('');
+    }
   };
 
   const reiniciar = () => {
-    setImagePreview(null); setImageBase64(''); setExtratos([]);
-    setRawText(''); setStep('upload'); setErro('');
+    setImagePreview(null);
+    setExtratos([]);
+    setRawText('');
+    setStep('upload');
+    setErro('');
+    setProgresso(0);
+    setStatus('');
   };
 
   const turma = turmas.find(t => t.id === turmaId);
 
   return (
-    <div style={{ marginTop: 16, animation: 'fadeIn 0.25s ease both' }}>
-      <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>📷 OCR — Diário Físico</h1>
-      <p style={{ fontSize: 13, color: theme.textSecondary, marginBottom: 16, lineHeight: 1.5 }}>
-        Fotografe a página do diário impresso. O Google Cloud Vision extrai o texto e lança as faltas automaticamente.
-        <strong style={{ color: theme.primary }}> Grátis até 1.000 imagens/mês.</strong>
+    <div style={{ marginTop: 16 }}>
+      <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>📷 OCR — Diário Físico</h1>
+      <p style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>
+        Fotografe a página do diário impresso. O texto é extraído <strong style={{ color: '#16a34a' }}>direto no seu celular — 100% gratuito, sem internet extra.</strong>
       </p>
 
-      <div style={cardStyle({ padding: 14, marginBottom: 14 })}>
-        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>🔑 Google Cloud Vision API Key</div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)}
-            placeholder="AIzaSy..." style={{ ...input, marginBottom: 0, flex: 1 }} />
-          <button onClick={salvarKey} style={btn('primary', { small: true })}>Salvar</button>
-        </div>
-        <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 6 }}>
-          Crie em <strong>console.cloud.google.com</strong> → APIs → Cloud Vision API → Credenciais → Chave de API
-        </div>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+      {/* Turma e mês */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
         <div>
-          <label style={label}>Turma</label>
-          <select style={input} value={turmaId} onChange={e => setTurmaId(e.target.value)}>
+          <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Turma</div>
+          <select value={turmaId} onChange={e => setTurmaId(e.target.value)}
+            style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #cbd5e1', width: '100%', fontSize: 13 }}>
             {turmas.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
           </select>
         </div>
         <div>
-          <label style={label}>Mês</label>
-          <select style={input} value={mes} onChange={e => setMes(Number(e.target.value))}>
+          <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Mês</div>
+          <select value={mes} onChange={e => setMes(Number(e.target.value))}
+            style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #cbd5e1', width: '100%', fontSize: 13 }}>
             {MESES.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
           </select>
         </div>
       </div>
 
       {step === 'done' ? (
-        <div className="scale-in" style={{
-          background: theme.successLight, border: `2px solid ${theme.success}`,
-          borderRadius: theme.radiusMd, padding: 28, textAlign: 'center',
-        }}>
+        <div style={{ background: '#f0fdf4', border: '2px solid #16a34a', borderRadius: 12, padding: 28, textAlign: 'center' }}>
           <div style={{ fontSize: 48 }}>✅</div>
-          <p style={{ fontWeight: 800, color: theme.successHover, marginTop: 8, fontSize: 16 }}>Faltas salvas com sucesso!</p>
-          <p style={{ fontSize: 13, color: theme.textSecondary, marginTop: 4 }}>{turma?.nome} — {MESES[mes - 1]} 2026</p>
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 16 }}>
-            <button onClick={reiniciar} style={btn('primary')}>📷 Nova foto</button>
-            <a href="/faltas" style={{ ...btn('ghost'), textDecoration: 'none' }}>📋 Ver Faltas</a>
+          <p style={{ fontWeight: 700, color: '#16a34a', marginTop: 8, fontSize: 16 }}>Faltas salvas com sucesso!</p>
+          <p style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>{turma?.nome} — {MESES[mes - 1]} 2026</p>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 16 }}>
+            <button onClick={reiniciar}
+              style={{ padding: '10px 20px', borderRadius: 8, background: '#1e40af', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 700 }}>
+              📷 Nova foto
+            </button>
+            <a href="/faltas" style={{ padding: '10px 20px', borderRadius: 8, background: '#f1f5f9', border: '1px solid #cbd5e1', textDecoration: 'none', color: '#1e293b', fontWeight: 600 }}>
+              📋 Ver Faltas
+            </a>
           </div>
         </div>
       ) : step === 'review' ? (
-        <div className="fade-in">
-          <div style={cardStyle({ marginBottom: 14 })}>
-            <div style={{
-              background: `linear-gradient(135deg, ${theme.sky}, ${theme.skyHover})`,
-              color: 'white', padding: '10px 14px',
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            }}>
+        <div>
+          <div style={{ background: 'white', borderRadius: 8, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: 14 }}>
+            <div style={{ background: '#0284c7', color: 'white', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 13, fontWeight: 700 }}>📝 Revisão — {extratos.length} linha(s) extraída(s)</span>
               <button onClick={adicionarLinha}
                 style={{ padding: '4px 10px', borderRadius: 4, background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.4)', color: 'white', cursor: 'pointer', fontSize: 12 }}>
                 + Linha
               </button>
             </div>
-            <div style={{ background: '#f8fafc', padding: '6px 14px', display: 'grid', gridTemplateColumns: '40px 1fr 80px 32px', gap: 8, fontSize: 11, color: theme.textSecondary, fontWeight: 700 }}>
+            <div style={{ background: '#f8fafc', padding: '6px 14px', display: 'grid', gridTemplateColumns: '40px 1fr 80px 32px', gap: 8, fontSize: 11, color: '#64748b', fontWeight: 700 }}>
               <span>Nº</span><span>Nome</span><span style={{ textAlign: 'center' }}>Faltas</span><span></span>
             </div>
             <div style={{ maxHeight: 380, overflowY: 'auto' }}>
               {extratos.map((e, i) => (
-                <div key={i} style={{
-                  display: 'grid', gridTemplateColumns: '40px 1fr 80px 32px', gap: 8,
-                  padding: '6px 14px', borderBottom: `1px solid ${theme.borderLight}`, alignItems: 'center',
-                  background: i % 2 === 0 ? 'white' : '#f8fafc',
-                }}>
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: '40px 1fr 80px 32px', gap: 8, padding: '6px 14px', borderBottom: '1px solid #f1f5f9', alignItems: 'center' }}>
                   <input type="number" value={e.numero}
                     onChange={v => setExtratos(p => p.map((x, j) => j === i ? { ...x, numero: Number(v.target.value) } : x))}
-                    style={{ padding: '4px 6px', borderRadius: 4, border: `1px solid ${theme.border}`, fontSize: 13, width: '100%', textAlign: 'center' }} />
+                    style={{ padding: '4px 6px', borderRadius: 4, border: '1px solid #e2e8f0', fontSize: 13, width: '100%', textAlign: 'center' }} />
                   <input value={e.nome}
                     onChange={v => setExtratos(p => p.map((x, j) => j === i ? { ...x, nome: v.target.value } : x))}
-                    style={{ padding: '4px 8px', borderRadius: 4, border: `1px solid ${theme.border}`, fontSize: 13, width: '100%' }} />
+                    style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #e2e8f0', fontSize: 13, width: '100%' }} />
                   <input type="number" min={0} max={31} value={e.faltas}
                     onChange={v => setExtratos(p => p.map((x, j) => j === i ? { ...x, faltas: Number(v.target.value) } : x))}
-                    style={{ padding: '4px 8px', borderRadius: 4, border: `1px solid ${theme.border}`, fontSize: 13, textAlign: 'center', width: '100%' }} />
+                    style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #e2e8f0', fontSize: 13, textAlign: 'center', width: '100%' }} />
                   <button onClick={() => setExtratos(p => p.filter((_, j) => j !== i))}
-                    style={{ border: 'none', background: 'none', color: theme.danger, cursor: 'pointer', fontSize: 16 }}>×</button>
+                    style={{ border: 'none', background: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 16 }}>×</button>
                 </div>
               ))}
             </div>
           </div>
 
           {rawText && extratos.length === 0 && (
-            <div style={{ background: theme.warningLight, border: `1px solid #fde68a`, borderRadius: theme.radius, padding: 12, marginBottom: 14 }}>
+            <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: 12, marginBottom: 14 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#92400e', marginBottom: 6 }}>Texto bruto extraído:</div>
               <pre style={{ fontSize: 11, color: '#78350f', whiteSpace: 'pre-wrap', maxHeight: 200, overflowY: 'auto', margin: 0 }}>{rawText}</pre>
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button onClick={reiniciar} style={btn('ghost', { full: true })}>← Nova foto</button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={reiniciar}
+              style={{ flex: 1, padding: '11px', borderRadius: 8, background: '#f1f5f9', border: '1px solid #cbd5e1', cursor: 'pointer', fontWeight: 600, fontSize: 14 }}>
+              ← Nova foto
+            </button>
             <button onClick={salvar} disabled={!!status}
-              style={{ ...btn('success', { full: true }), fontSize: 15 }}>
-              {status ? <><Spinner size={16} /> {status}</> : '💾 Salvar Faltas'}
+              style={{ flex: 2, padding: '11px', borderRadius: 8, background: '#16a34a', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 15 }}>
+              {status || '💾 Salvar Faltas'}
             </button>
           </div>
         </div>
       ) : (
         <>
           <div
-            style={{
-              border: `2px dashed ${theme.border}`, borderRadius: theme.radiusMd,
-              padding: imagePreview ? 12 : 48, textAlign: 'center',
-              marginBottom: 14, background: '#f8fafc', cursor: 'pointer',
-              transition: 'border-color 0.2s ease, background 0.2s ease',
-            }}
+            style={{ border: '2px dashed #cbd5e1', borderRadius: 12, padding: imagePreview ? 12 : 48, textAlign: 'center', marginBottom: 14, background: '#f8fafc', cursor: 'pointer' }}
             onClick={() => fileRef.current?.click()}
-            onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = theme.primary; e.currentTarget.style.background = theme.primaryBg; }}
-            onDragLeave={e => { e.currentTarget.style.borderColor = theme.border; e.currentTarget.style.background = '#f8fafc'; }}
-            onDrop={e => { e.preventDefault(); e.currentTarget.style.borderColor = theme.border; e.currentTarget.style.background = '#f8fafc'; const f = e.dataTransfer.files[0]; if (f) handleImage(f); }}
+            onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = '#1e40af'; }}
+            onDragLeave={e => { e.currentTarget.style.borderColor = '#cbd5e1'; }}
+            onDrop={e => { e.preventDefault(); e.currentTarget.style.borderColor = '#cbd5e1'; const f = e.dataTransfer.files[0]; if (f) handleImage(f); }}
           >
             <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
               onChange={e => { const f = e.target.files?.[0]; if (f) handleImage(f); }} />
             {imagePreview ? (
-              <img src={imagePreview} alt="Prévia" style={{ maxWidth: '100%', maxHeight: 280, borderRadius: theme.radius, objectFit: 'contain' }} />
+              <img src={imagePreview} alt="Prévia" style={{ maxWidth: '100%', maxHeight: 280, borderRadius: 8, objectFit: 'contain' }} />
             ) : (
               <>
                 <div style={{ fontSize: 44, marginBottom: 10 }}>📷</div>
-                <p style={{ fontWeight: 700, color: theme.primary, marginBottom: 4, fontSize: 15 }}>
-                  Toque para fotografar ou escolher imagem
-                </p>
-                <p style={{ fontSize: 12, color: theme.textMuted }}>Câmera do celular · Galeria · JPG / PNG</p>
+                <p style={{ fontWeight: 700, color: '#1e40af', marginBottom: 4, fontSize: 15 }}>Toque para fotografar ou escolher imagem</p>
+                <p style={{ fontSize: 12, color: '#94a3b8' }}>Câmera do celular · Galeria · JPG / PNG</p>
               </>
             )}
           </div>
 
-          {imagePreview && (
-            <button onClick={analisar} disabled={!!status}
-              style={{ ...btn('sky', { full: true }), padding: '13px', fontSize: 16, borderRadius: theme.radiusMd, marginBottom: 14 }}>
-              {status ? <><Spinner size={18} /> {status}</> : '🔍 Extrair texto com Google Vision'}
+          {imagePreview && !status && (
+            <button onClick={analisar}
+              style={{ width: '100%', padding: '13px', borderRadius: 8, background: '#0284c7', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 16, marginBottom: 14 }}>
+              🔍 Extrair Texto (Grátis)
             </button>
+          )}
+
+          {status && (
+            <div style={{ marginBottom: 14 }}>
+              <p style={{ fontSize: 13, color: '#64748b', textAlign: 'center', marginBottom: 6 }}>{status}</p>
+              {progresso > 0 && (
+                <div style={{ height: 8, background: '#e2e8f0', borderRadius: 4, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', background: '#0284c7', width: `${progresso}%`, transition: 'width 0.3s', borderRadius: 4 }} />
+                </div>
+              )}
+            </div>
           )}
         </>
       )}
 
-      {erro && <ErrorBox message={erro} />}
+      {erro && (
+        <div style={{ padding: 12, background: '#fef2f2', borderRadius: 8, border: '1px solid #fecaca', color: '#dc2626', fontSize: 13, marginTop: 10 }}>
+          ⚠️ {erro}
+        </div>
+      )}
     </div>
   );
 }

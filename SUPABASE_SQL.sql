@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS "Falta" (
   mes             INTEGER NOT NULL,
   ano             INTEGER NOT NULL DEFAULT 2026,
   faltas          INTEGER DEFAULT 0,
-  frequencia_texto TEXT DEFAULT '',
+  frequencia      TEXT DEFAULT '',
   created_at      TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE ("alunoId", mes, ano)
 );
@@ -76,7 +76,7 @@ ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS responsavel           TEXT DEFAULT 
 ALTER TABLE "Turma" ADD COLUMN IF NOT EXISTS professora TEXT DEFAULT '';
 ALTER TABLE "Turma" ADD COLUMN IF NOT EXISTS periodo    TEXT DEFAULT '';
 
-ALTER TABLE "Falta" ADD COLUMN IF NOT EXISTS frequencia_texto TEXT DEFAULT '';
+ALTER TABLE "Falta" ADD COLUMN IF NOT EXISTS frequencia      TEXT DEFAULT '';
 
 -- ─── 3. Desativa RLS (Row Level Security) nas tabelas ─────────
 
