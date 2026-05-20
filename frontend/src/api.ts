@@ -103,7 +103,28 @@ export const api = {
     return count ?? 0;
   },
 
+  reloadSchema: async () => {
+    const { error } = await supabase.rpc('pgrst_reload_schema' as any);
+    if (error) {
+      // fallback: exec_sql se tiver sido criada
+      const { error: e2 } = await supabase.rpc('exec_sql' as any, { sql: "NOTIFY pgrst, 'reload schema';" }).single();
+      if (e2) throw new Error(`Cache do Supabase desatualizado. Vá no SQL Editor do Supabase e execute: NOTIFY pgrst, 'reload schema';`);
+    }
+  },
+  checkSchema: async () => {
+    const { error } = await supabase.from('Turma').select('id').limit(1);
+    if (error && error.message?.includes('schema cache')) {
+      await api.reloadSchema();
+      // tenta de novo
+      const { error: e2 } = await supabase.from('Turma').select('id').limit(1);
+      if (e2 && e2.message?.includes('schema cache')) {
+        throw new Error('Execute no SQL Editor do Supabase: NOTIFY pgrst, \'reload schema\';');
+      }
+    }
+    return true;
+  },
   clearAll: async () => {
+    await api.checkSchema();
     await supabase.from('Falta').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('Aluno').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('Turma').delete().neq('id', '00000000-0000-0000-0000-000000000000');

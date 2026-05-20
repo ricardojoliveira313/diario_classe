@@ -1,22 +1,8 @@
 import { useEffect, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { api } from '../api';
-
-const btn = { padding: '8px 16px', borderRadius: 6, border: 'none', cursor: 'pointer', fontWeight: 600 } as const;
-const input = { padding: '8px 12px', borderRadius: 6, border: '1px solid #cbd5e1', width: '100%', marginBottom: 8 } as const;
-const label = { fontSize: 12, color: '#64748b', marginBottom: 4, display: 'block' } as const;
-
-const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-const DIAS_LETIVOS: Record<number, number> = {
-  1: 4, 2: 13, 3: 22, 4: 18, 5: 20, 6: 21,
-  7: 9, 8: 21, 9: 22, 10: 18, 11: 20, 12: 17,
-};
-const SITUACAO_COR: Record<string, string> = {
-  REMA: '#ea580c', BXTR: '#9333ea', TRAN: '#0284c7', 'N COM': '#dc2626',
-};
-const SITUACAO_LABEL: Record<string, string> = {
-  REMA: 'Remanejado', BXTR: 'Baixa Transf.', TRAN: 'Transferido', 'N COM': 'N. Compareceu',
-};
+import { theme, btn, input, label, MESES, DIAS_LETIVOS, SITUACAO_COR, SITUACAO_LABEL, row, card as cardStyle } from '../styles';
+import { Loading, EmptyState, StatCard, Spinner } from '../components';
 
 export default function Faltas() {
   const [turmas, setTurmas] = useState<any[]>([]);
@@ -28,11 +14,15 @@ export default function Faltas() {
   const [freqTextos, setFreqTextos] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => { api.getTurmas().then(t => { setTurmas(t); if (t.length) setTurmaId(t[0].id); }); }, []);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!turmaId) return;
+    api.getTurmas().then(t => { setTurmas(t); if (t.length) setTurmaId(t[0].id); });
+  }, []);
+
+  useEffect(() => {
+    if (!turmaId) { setLoading(false); return; }
+    setLoading(true);
     Promise.all([api.getAlunos(turmaId), api.getFaltas(turmaId, mes, ano)]).then(([al, fa]) => {
       setAlunos(al);
       const mapF: Record<string, number> = {};
@@ -41,26 +31,12 @@ export default function Faltas() {
       setFaltas(mapF);
       setFreqTextos(mapT);
       setSaved(false);
+      setLoading(false);
     });
   }, [turmaId, mes]);
 
-  // Opções de texto especial (igual ao SED)
-  const FREQ_TEXTOS_ESPECIAIS = [
-    'TRANSFERIDO(A)',
-    'BAIXA TRANSFERÊNCIA',
-    'REMANEJADO(A)',
-    'BAIXA POR NÃO COMPARECIMENTO',
-  ];
-
-  const handleFreq = (alunoId: string, val: string) => {
-    const num = parseInt(val);
-    if (!isNaN(num)) {
-      setFaltas(prev => ({ ...prev, [alunoId]: num }));
-      setFreqTextos(prev => { const n = { ...prev }; delete n[alunoId]; return n; });
-    } else {
-      setFaltas(prev => ({ ...prev, [alunoId]: 0 }));
-      setFreqTextos(prev => ({ ...prev, [alunoId]: val }));
-    }
+  const setFalta = (alunoId: string, val: number) => {
+    setFaltas(prev => ({ ...prev, [alunoId]: Math.max(0, val) }));
     setSaved(false);
   };
 
@@ -140,133 +116,171 @@ export default function Faltas() {
   const limiteAlerta = Math.ceil(dl * 0.25);
   const alertas = alunos.filter(a => (faltas[a.id] ?? 0) >= limiteAlerta);
 
+  const turma = turmas.find(t => t.id === turmaId);
+
   return (
-    <div>
-      <div style={{ marginTop: 16, marginBottom: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <h1 style={{ fontSize: 20, fontWeight: 700 }}>Lançamento de Faltas</h1>
+    <div style={{ marginTop: 16, animation: 'fadeIn 0.25s ease both' }}>
+      <div style={{
+        background: theme.card, borderRadius: theme.radiusMd,
+        padding: 16, marginBottom: 16, boxShadow: theme.shadow,
+        border: `1px solid ${theme.borderLight}`,
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <h1 style={{ fontSize: 22, fontWeight: 800 }}>📋 Lançamento de Faltas</h1>
           {alunos.length > 0 && (
             <div style={{ display: 'flex', gap: 6 }}>
-              <button onClick={exportarExcel} style={{ ...btn, background: '#f0fdf4', border: '1px solid #86efac', color: '#16a34a', fontSize: 12 }}>
+              <button onClick={exportarExcel} style={btn('success', { small: true, outline: true })}>
                 📊 Excel
               </button>
-              <button onClick={exportarPDF} style={{ ...btn, background: '#fef2f2', border: '1px solid #fca5a5', color: '#dc2626', fontSize: 12 }}>
+              <button onClick={exportarPDF} style={btn('danger', { small: true, outline: true })}>
                 📄 PDF
               </button>
             </div>
           )}
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <div>
             <label style={label}>Turma</label>
-            <select style={{ ...input, marginBottom: 0 }} value={turmaId} onChange={e => setTurmaId(e.target.value)}>
+            <select style={input} value={turmaId} onChange={e => setTurmaId(e.target.value)}>
               {turmas.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
             </select>
           </div>
           <div>
             <label style={label}>Mês</label>
-            <select style={{ ...input, marginBottom: 0 }} value={mes} onChange={e => setMes(Number(e.target.value))}>
+            <select style={input} value={mes} onChange={e => setMes(Number(e.target.value))}>
               {MESES.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
             </select>
           </div>
         </div>
+        {turma?.professora && (
+          <div style={{ marginTop: 8, fontSize: 13, color: theme.textSecondary }}>
+            👩‍🏫 Prof. {turma.professora}
+          </div>
+        )}
       </div>
 
-      {alunos.length === 0 && (
-        <p style={{ textAlign: 'center', color: '#64748b', marginTop: 32 }}>
-          {turmas.length === 0 ? 'Cadastre turmas e alunos primeiro.' : 'Nenhum aluno nesta turma.'}
-        </p>
+      {loading ? <Loading /> : alunos.length === 0 && (
+        <EmptyState icon="📋" message={turmas.length === 0 ? 'Cadastre turmas e alunos primeiro.' : 'Nenhum aluno nesta turma.'} />
       )}
 
-      {alunos.length > 0 && (
-        <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 12 }}>
-            {[
-              { label: 'Dias Letivos', val: dl, cor: '#1e40af' },
-              { label: 'Total Faltas', val: totalFaltas, cor: '#dc2626' },
-              { label: 'Freq. Geral', val: `${freqGeral}%`, cor: Number(freqGeral) >= 85 ? '#16a34a' : '#dc2626' },
-              { label: '⚠️ Alertas', val: alertas.length, cor: alertas.length > 0 ? '#dc2626' : '#94a3b8' },
-            ].map(({ label: l, val, cor }) => (
-              <div key={l} style={{ background: 'white', borderRadius: 8, padding: 10, textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-                <div style={{ fontSize: 10, color: '#64748b' }}>{l}</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: cor }}>{val}</div>
-              </div>
-            ))}
+      {alunos.length > 0 && !loading && (
+        <div className="fade-in">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 14 }}>
+            <StatCard label="Dias Letivos" val={dl} cor={theme.primary} />
+            <StatCard label="Total Faltas" val={totalFaltas} cor={theme.danger} />
+            <StatCard label="Freq. Geral" val={`${freqGeral}%`} cor={Number(freqGeral) >= 85 ? theme.success : theme.danger} />
+            <StatCard label="⚠️ Alertas" val={alertas.length} cor={alertas.length > 0 ? theme.danger : theme.textMuted} />
           </div>
 
-          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8, textAlign: 'right' }}>
-            ⚠️ Alerta: ≥ {limiteAlerta} faltas (menos de 75% de frequência)
+          <div style={{ fontSize: 11, color: theme.textMuted, marginBottom: 10, textAlign: 'right' }}>
+            ⚠️ Alerta: ≥ {limiteAlerta} faltas (&lt;75% frequência)
           </div>
 
-          <div style={{ background: 'white', borderRadius: 8, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: 14 }}>
-            <div style={{ background: '#1e40af', color: 'white', padding: '10px 16px', display: 'grid', gridTemplateColumns: '36px 1fr 28px 190px 55px', gap: 8, fontSize: 12, fontWeight: 600 }}>
+          <div style={cardStyle({ marginBottom: 14 })}>
+            <div style={{
+              background: `linear-gradient(135deg, ${theme.primary}, ${theme.primaryHover})`,
+              color: 'white', padding: '10px 16px',
+              display: 'grid', gridTemplateColumns: '36px 1fr 28px 100px 55px',
+              gap: 8, fontSize: 12, fontWeight: 600,
+            }}>
               <span>#</span><span>Aluno</span><span title="Bolsa Família">💚</span>
-              <span style={{ textAlign: 'center' }}>Frequência</span><span style={{ textAlign: 'center' }}>%</span>
+              <span style={{ textAlign: 'center' }}>Faltas</span><span style={{ textAlign: 'center' }}>%</span>
             </div>
             {alunos.map((a, i) => {
               const faltasAluno = faltas[a.id] ?? 0;
-              const freqTxt = freqTextos[a.id] ?? '';
-              const emAlerta = faltasAluno >= limiteAlerta && !freqTxt;
-              const freq = freqTxt ? null : (dl - faltasAluno) / dl * 100;
-              const selectVal = freqTxt || String(faltasAluno);
+              const emAlerta = faltasAluno >= limiteAlerta;
+              const freq = (dl - faltasAluno) / dl * 100;
               return (
                 <div key={a.id} style={{
-                  padding: '8px 16px', display: 'grid', gridTemplateColumns: '36px 1fr 28px 190px 55px',
-                  gap: 8, alignItems: 'center', borderBottom: '1px solid #f1f5f9',
+                    ...row(i, { gridTemplateColumns: '36px 1fr 28px 100px 55px', gap: 8, padding: '9px 16px' }),
                   background: emAlerta ? '#fff1f2' : i % 2 === 0 ? 'white' : '#f8fafc',
                 }}>
-                  <span style={{ fontSize: 12, color: '#94a3b8' }}>{a.numero || i + 1}</span>
+                  <span style={{ fontSize: 12, color: theme.textMuted }}>{a.numero || i + 1}</span>
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
                       {emAlerta && <span title="Frequência abaixo de 75%">⚠️</span>}
                       {a.nome}
                     </div>
-                    {a.deficiencia && (
-                      <span style={{ fontSize: 10, color: '#7c3aed', fontWeight: 600 }}>♿ {a.deficiencia}</span>
-                    )}
                     {a.situacao && a.situacao !== 'ATIVO' && (
-                      <span style={{ fontSize: 10, color: SITUACAO_COR[a.situacao] ?? '#64748b', fontWeight: 700, marginLeft: a.deficiencia ? 6 : 0 }}>
+                      <span style={{ fontSize: 10, color: SITUACAO_COR[a.situacao] ?? theme.textSecondary, fontWeight: 700 }}>
                         {SITUACAO_LABEL[a.situacao] ?? a.situacao}
                       </span>
                     )}
                   </div>
                   <span style={{ textAlign: 'center', fontSize: 13 }}>{a.bolsa_familia ? '✅' : ''}</span>
-                  <select
-                    value={selectVal}
-                    onChange={e => handleFreq(a.id, e.target.value)}
-                    style={{ fontSize: 12, padding: '4px 6px', borderRadius: 6, border: `1px solid ${freqTxt ? '#a855f7' : faltasAluno > 0 ? '#fca5a5' : '#cbd5e1'}`, background: freqTxt ? '#f3e8ff' : faltasAluno > 0 ? '#fff1f2' : 'white', width: '100%', color: freqTxt ? '#7c3aed' : faltasAluno > 0 ? '#dc2626' : '#1e293b', fontWeight: freqTxt || faltasAluno > 0 ? 700 : 400 }}
-                  >
-                    <option value="0">Não há faltas no mês</option>
-                    {Array.from({ length: dl }, (_, k) => k + 1).map(n => (
-                      <option key={n} value={String(n)}>
-                        {String(n).padStart(2, '0')} Falta{n > 1 ? 's' : ''} Injustificada{n > 1 ? 's' : ''}
-                      </option>
-                    ))}
-                    <option disabled>──────────────────</option>
-                    {FREQ_TEXTOS_ESPECIAIS.map(t => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
-                  <span style={{ textAlign: 'center', fontWeight: 700, fontSize: 13, color: freqTxt ? '#7c3aed' : freq !== null && freq >= 85 ? '#16a34a' : freq !== null && freq >= 75 ? '#ea580c' : '#dc2626' }}>
-                    {freqTxt ? '—' : `${freq!.toFixed(0)}%`}
+                  {freqTextos[a.id] ? (
+                    <span style={{
+                      fontSize: 10, color: theme.purple, fontWeight: 700, textAlign: 'center',
+                      padding: '2px 6px', background: theme.purpleLight, borderRadius: 4, display: 'inline-block',
+                    }}>
+                      {freqTextos[a.id]}
+                    </span>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}>
+                      <button
+                        onClick={() => setFalta(a.id, faltasAluno - 1)}
+                        style={{
+                          width: 30, height: 30, borderRadius: 8,
+                          border: `1.5px solid ${theme.border}`,
+                          background: '#f8fafc',
+                          cursor: 'pointer', fontWeight: 700, fontSize: 18,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          transition: 'all 0.15s ease', color: theme.danger,
+                          lineHeight: 1,
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background = theme.dangerLight; e.currentTarget.style.borderColor = theme.danger; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = theme.border; }}>
+                        −
+                      </button>
+                      <span style={{
+                        width: 32, textAlign: 'center', fontWeight: 800, fontSize: 17,
+                        color: faltasAluno > 0 ? theme.danger : theme.text,
+                      }}>
+                        {faltasAluno}
+                      </span>
+                      <button
+                        onClick={() => setFalta(a.id, faltasAluno + 1)}
+                        style={{
+                          width: 30, height: 30, borderRadius: 8,
+                          border: `1.5px solid ${theme.border}`,
+                          background: '#f8fafc',
+                          cursor: 'pointer', fontWeight: 700, fontSize: 18,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          transition: 'all 0.15s ease', color: theme.success,
+                          lineHeight: 1,
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background = theme.successLight; e.currentTarget.style.borderColor = theme.success; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = theme.border; }}>
+                        +
+                      </button>
+                    </div>
+                  )}
+                  <span style={{ textAlign: 'center', fontWeight: 700, fontSize: 13, color: freq >= 85 ? theme.success : freq >= 75 ? theme.orange : theme.danger }}>
+                    {freq.toFixed(0)}%
                   </span>
                 </div>
               );
             })}
-            <div style={{ padding: '10px 16px', display: 'grid', gridTemplateColumns: '36px 1fr 28px 190px 55px', gap: 8, background: '#f8fafc', fontWeight: 700, borderTop: '1px solid #e2e8f0' }}>
-              <span></span><span style={{ fontSize: 13 }}>Total</span><span></span>
-              <span style={{ textAlign: 'center', color: '#dc2626', fontSize: 13 }}>{totalFaltas} faltas</span>
+            <div style={{ padding: '10px 16px', display: 'grid', gridTemplateColumns: '40px 1fr 110px 55px', gap: 8, background: '#f8fafc', fontWeight: 700, borderTop: `1px solid ${theme.borderLight}` }}>
+              <span></span><span style={{ fontSize: 13 }}>Total</span>
+              <span style={{ textAlign: 'center', color: theme.danger, fontSize: 13 }}>{totalFaltas} faltas</span>
               <span style={{ textAlign: 'center', fontSize: 13 }}>{freqGeral}%</span>
             </div>
           </div>
 
           <button
-            style={{ ...btn, background: saved ? '#16a34a' : '#1e40af', color: 'white', width: '100%', padding: '13px', fontSize: 15 }}
+            style={{
+              ...btn('primary', { full: true }),
+              padding: '13px', fontSize: 16,
+              background: saved ? theme.success : theme.primary,
+              transition: 'all 0.2s ease',
+              borderRadius: theme.radiusMd,
+            }}
             onClick={salvar} disabled={saving}
           >
-            {saving ? 'Salvando...' : saved ? '✓ Salvo!' : '💾 Salvar Faltas'}
+            {saving ? <><Spinner size={18} /> Salvando...</> : saved ? '✅ Salvo!' : '💾 Salvar Faltas'}
           </button>
-        </>
+        </div>
       )}
     </div>
   );
