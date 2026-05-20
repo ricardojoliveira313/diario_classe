@@ -1,9 +1,10 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 import * as pdfjsLib from 'pdfjs-dist';
 import { api, supabase } from '../api';
+import { theme, btn, card as cardStyle } from '../styles';
+import { FileRow, ProgressBar, ErrorBox, Spinner } from '../components';
 
-// Worker do PDF.js — caminho relativo p/ vite
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs`;
 
 const MES_MAP: Record<string, number> = {
@@ -27,7 +28,10 @@ function fmtDate(val: any): string {
     const m = String(val.getMonth() + 1).padStart(2, '0');
     return `${d}/${m}/${val.getFullYear()}`;
   }
-  return String(val);
+  const s = String(val).trim();
+  const dm = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (dm) return `${dm[1].padStart(2,'0')}/${dm[2].padStart(2,'0')}/${dm[3]}`;
+  return s;
 }
 
 function parseBool(val: any): boolean {
@@ -38,7 +42,26 @@ function normalizeStr(s: string): string {
   return s.toUpperCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
-// ─── Registro unificado do aluno ───
+const ARTIGOS = new Set(['DE', 'DA', 'DO', 'DOS', 'DAS', 'E', 'NO', 'NA']);
+
+function nomeSignificativo(nome: string): string {
+  return nome.split(' ').filter(p => p.length >= 2 && !ARTIGOS.has(p)).join(' ');
+}
+
+const SITUACAO_MAP: Record<string, string> = {
+  ATIVO: 'ATIVO', REMA: 'REMA', REMANEJADO: 'REMA', 'REMANEJADA': 'REMA', 'REMANEJADO(A)': 'REMA',
+  BXTR: 'BXTR', 'BAIXA TRANSF.': 'BXTR', 'BAIXA TRANSFERENCIA': 'BXTR', 'BAIXA TRANSFER\u00caNCIA': 'BXTR',
+  TRAN: 'TRAN', 'TRANSF.': 'TRAN', TRANSFERIDO: 'TRAN', TRANSFERIDA: 'TRAN',
+  'N COM': 'N COM', 'NAO COMPARECEU': 'N COM', 'N\u00c3O COMPARECEU': 'N COM', 'NCOM': 'N COM',
+  'BAIXA POR NAO COMPARECIMENTO': 'N COM', 'BAIXA POR N\u00c3O COMPARECIMENTO': 'N COM',
+  ABAN: 'ABAN', ABANDONO: 'ABAN',
+};
+
+function normalizeSituacao(s: string): string {
+  const key = normalizeStr(s);
+  return SITUACAO_MAP[key] ?? SITUACAO_MAP[s.trim().toUpperCase()] ?? s.trim();
+}
+
 interface AlunoUnificado {
   nome: string;
   nomeNorm: string;
@@ -67,14 +90,33 @@ export default function Importar() {
   const [total, setTotal] = useState(0);
   const [erro, setErro] = useState('');
   const [sucesso, setSucesso] = useState(false);
+  const [fixing, setFixing] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const dadosRef = useRef<{ turmas: any[]; alunos: AlunoUnificado[]; faltasArr: any[] } | null>(null);
 
-  // ─── PARSE: PDF ───
+  const fixSchema = useCallback(async () => {
+    setFixing(true);
+    setErro('');
+    try {
+      await api.reloadSchema();
+      setErro('');
+      setStatus('Schema recarregado! Tente importar novamente.');
+    } catch (ex: any) {
+      setErro('Execute no SQL Editor do Supabase:\nNOTIFY pgrst, \'reload schema\';');
+    } finally {
+      setFixing(false);
+    }
+  }, []);
+
+  // ─── PARSE: PDF SED (Relação de Alunos por Classe) ───
   async function parsePDFs(files: File[]): Promise<AlunoUnificado[]> {
     const alunos: AlunoUnificado[] = [];
     for (const file of files) {
       if (!file.name.toLowerCase().endsWith('.pdf')) continue;
+      // PDFs do Bolsa Família têm parser próprio — pula aqui
+      const nomeArq = normalizeFileName(file.name);
+      if (nomeArq.includes('BOLSA') || nomeArq.includes('FORMULARIO')) continue;
+
       const arrayBuf = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: arrayBuf }).promise;
       let texto = '';
@@ -83,29 +125,67 @@ export default function Importar() {
         const content = await page.getTextContent();
         texto += content.items.map((item: any) => item.str).join(' ') + '\n';
       }
-      // Extrai turma do PDF
-      const turmaMatch = texto.match(/Turma:\s*\n?\s*(.+)/i);
-      const serie = turmaMatch?.[1]?.trim() || '';
-      // Extrai alunos do PDF (formato SED: Nome, RA, Data Nasc)
-      const linhas = texto.split('\n').map(l => l.trim()).filter(Boolean);
-      for (let i = 0; i < linhas.length; i++) {
-        const nome = linhas[i];
-        if (nome.length < 5 || /^\d/.test(nome)) continue;
-        const raStr = linhas[i + 1]?.trim();
-        const ra = parseInt(raStr) || null;
-        const nascStr = linhas[i + 2]?.trim();
-        if (nascStr && /^\d{2}\/\d{2}\/\d{4}$/.test(nascStr)) {
-          alunos.push({
-            nome, nomeNorm: normalizeStr(nome),
-            ra, nascimento: nascStr,
-            serie: serie, professora: '', situacao: 'ATIVO', deficiencia: '',
-            bolsaFamilia: false,
-            dataInicioMatricula: '', dataFimMatricula: '', dataMovimentacao: '',
-            nis: '', responsavel: '',
-            faltas: {},
-          });
-          i += 2;
-        }
+
+      // Texto em uma linha única para busca posicional
+      const allText = texto.replace(/\n/g, ' ').replace(/\s{2,}/g, ' ');
+
+      // Mapa de posição → série (suporta PDFs com múltiplas turmas)
+      const turmaPosicoes: Array<{ pos: number; serie: string }> = [];
+      const turmaRe = /Turma:\s*([^T\n]{3,80}?)(?=\s{2,}|Turma:|$)/gi;
+      let tmm: RegExpExecArray | null;
+      while ((tmm = turmaRe.exec(allText)) !== null) {
+        turmaPosicoes.push({ pos: tmm.index, serie: tmm[1].trim() });
+      }
+      // Fallback: turma única
+      if (!turmaPosicoes.length) {
+        const t = allText.match(/Turma:\s*(.+?)(?:\s{2,}|$)/i);
+        if (t) turmaPosicoes.push({ pos: 0, serie: t[1].trim() });
+      }
+      const getSerie = (raPos: number) => {
+        let s = '';
+        for (const t of turmaPosicoes) { if (t.pos <= raPos) s = t.serie; else break; }
+        return s;
+      };
+
+      // Âncora nos RAs de 12 dígitos (padrão SED: 000XXXXXXXXX)
+      const raRe = /\b(0{3}\d{9})\b/g;
+      let raMatch: RegExpExecArray | null;
+      while ((raMatch = raRe.exec(allText)) !== null) {
+        const raStr = raMatch[1];
+        const raPos = raMatch.index;
+
+        // ── Nome: último trecho todo em maiúsculas antes do RA ──
+        const before = allText.substring(Math.max(0, raPos - 160), raPos);
+        const nomeMatch = before.match(/([A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ][A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ\s'-]{3,})$/);
+        if (!nomeMatch) continue;
+        // Remove prefixo "X X " (série + nº do aluno) se presente
+        const nome = nomeMatch[1].replace(/^\d{1,2}\s+\d{1,3}\s+/, '').trim();
+        if (!nome || nome.length < 4) continue;
+
+        // ── Campos após o RA: [dig_ra] [UF] [nasc] [situação] [data_movim] [deficiência] ──
+        const after = allText.substring(raPos + 12, raPos + 320);
+        const afterMatch = after.match(
+          /^\s*\S+\s+\S{2}\s+(\d{2}\/\d{2}\/\d{4})\s+(ATIVO|TRAN|REMA|ABAN|N\s?COM|BXTR|NAO\s?COMPARECEU)\s+(\d{2}\/\d{2}\/\d{4})\s*(.*?)(?=\s*\d{1,2}\s+\d{1,3}\s+[A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ]|\s*0{3}\d{9}|$)/i
+        );
+        if (!afterMatch) continue;
+
+        const [, nascimento, situacaoRaw, dataMovim, defRaw] = afterMatch;
+        const situacao = normalizeSituacao(situacaoRaw.trim());
+        const deficiencia = defRaw.trim().replace(/\s+/g, ' ');
+        const isAtivo = situacao === 'ATIVO';
+
+        alunos.push({
+          nome, nomeNorm: normalizeStr(nome),
+          ra: parseInt(raStr) || null,
+          nascimento,
+          serie: getSerie(raPos),
+          professora: '', situacao, deficiencia,
+          bolsaFamilia: false,
+          dataInicioMatricula: '',
+          dataFimMatricula: isAtivo ? dataMovim : '',
+          dataMovimentacao: isAtivo ? '' : dataMovim,
+          nis: '', responsavel: '', faltas: {},
+        });
       }
     }
     return alunos;
@@ -129,41 +209,51 @@ export default function Importar() {
             const ws = wb.Sheets[sheetName];
             const rows = XLSX.utils.sheet_to_json(ws, { raw: false, dateNF: 'dd/mm/yyyy' }) as any[];
             for (const row of rows) {
-              // Detecta formato: DIARIO CLASSE (tem FREQUÊNCIA) ou SED Relação (tem Nome do Aluno sem FREQUÊNCIA)
-              const isDiario = 'FREQUÊNCIA DOS ALUNOS(A)' in row || 'FREQUENCIA DOS ALUNOS(A)' in row;
-              
-              const nome = String(row['NOME DO ALUNO'] ?? row['Nome do Aluno'] ?? row['Nome'] ?? '').trim();
-              const serie = String(row['SÉRIE'] ?? row['SERIE'] ?? row['Série'] ?? row['Turma'] ?? '').trim();
+              // Mapa normalizado: chaves sem acento e em maiúsculas para lookup robusto
+              const nr: Record<string, any> = {};
+              for (const [k, v] of Object.entries(row)) {
+                nr[normalizeStr(String(k).trim())] = v;
+              }
+
+              // Detecta formato: DIARIO CLASSE (tem FREQUÊNCIA) ou SED Relação
+              const isDiario = 'FREQUENCIA DOS ALUNOS(A)' in nr;
+
+              const nome = String(nr['NOME DO ALUNO'] ?? nr['NOME'] ?? '').trim();
+              const serie = String(nr['SERIE'] ?? nr['TURMA'] ?? '').trim();
               if (!nome) continue;
-              
-              const ra = parseInt(String(row['RA'] ?? row['RA'] ?? '')) || null;
-              const nasc = fmtDate(row['DATA DE NASCIMENTO'] ?? row['Data de Nascimento'] ?? row['Data Nascimento']);
+
+              const ra = parseInt(String(nr['RA'] ?? '')) || null;
+              const nasc = fmtDate(nr['DATA DE NASCIMENTO'] ?? nr['DATA NASCIMENTO']);
               const key = `${normalizeStr(nome)}|${ra}|${nasc}`;
               if (processados.has(key)) continue;
               processados.add(key);
 
-              const mes = getMes(sheetName, row);
+              const mes = getMes(sheetName, nr);
               let faltasQtd = 0;
               let freqTexto = '';
               if (isDiario) {
-                const freqVal = String(row['FREQUÊNCIA DOS ALUNOS(A)'] ?? '').trim();
-                const faltasNum = parseInt(freqVal);
-                faltasQtd = isNaN(faltasNum) ? 0 : faltasNum;
-                freqTexto = isNaN(faltasNum) ? freqVal : '';
+                // Remove aspas que o SED coloca nos valores: '"01 Faltas Injustificadas"' → '01 Faltas Injustificadas'
+                const freqRaw = String(nr['FREQUENCIA DOS ALUNOS(A)'] ?? '').trim().replace(/^["']|["']$/g, '').trim();
+                // Extrai número do prefixo: "01 Faltas Injustificadas" → 1, suporta até 22 dias letivos
+                const freqNumM = freqRaw.match(/^(\d{1,2})/);
+                faltasQtd = freqNumM ? Math.min(parseInt(freqNumM[1]), 22) : 0;
+                // Guarda texto especial (TRANSFERIDO, REMANEJADO, etc.) — ignora "Não há faltas no mês"
+                const freqNorm = normalizeStr(freqRaw);
+                freqTexto = !freqNumM && freqRaw && !freqNorm.startsWith('NAO HA FALTAS') ? freqRaw : '';
               }
 
-              const situacao = String(row['SITUAÇÃO'] ?? row['SITUACAO'] ?? row['Situação'] ?? 'ATIVO').trim();
-              const deficiencia = String(row['DEFICIÊNCIA'] ?? row['DEFICIENCIA'] ?? row['Deficiência'] ?? '').trim();
+              const situacao = normalizeSituacao(String(nr['SITUACAO'] ?? 'ATIVO'));
+              const deficiencia = String(nr['DEFICIENCIA'] ?? '').trim();
 
               alunos.push({
                 nome, nomeNorm: normalizeStr(nome),
                 ra, nascimento: nasc,
-                serie, professora: String(row['PROFESSORA'] ?? row['Professora'] ?? '').trim(),
+                serie, professora: String(nr['PROFESSORA'] ?? '').trim(),
                 situacao, deficiencia,
-                bolsaFamilia: parseBool(row['BOLSA FAMÍLIA'] ?? row['BOLSA FAMILIA']),
-                dataInicioMatricula: fmtDate(row['DATA INÍCIO MATRÍCULA'] ?? row['Data Início Matrícula']),
-                dataFimMatricula: fmtDate(row['DATA FIM MATRÍCULA'] ?? row['Data Fim Matrícula']),
-                dataMovimentacao: fmtDate(row['DATA MOVIMENTAÇÃO'] ?? row['Data Movimentação']),
+                bolsaFamilia: parseBool(nr['BOLSA FAMILIA'] ?? nr['BOLSA FAMLIA']),
+                dataInicioMatricula: fmtDate(nr['DATA INICIO MATRICULA'] ?? nr['DATA INICIO MATRICULA']),
+                dataFimMatricula: fmtDate(nr['DATA FIM MATRICULA']),
+                dataMovimentacao: fmtDate(nr['DATA MOVIMENTACAO']),
                 nis: '',
                 responsavel: '',
                 faltas: mes > 0 && faltasQtd >= 0 ? { [mes]: { faltas: faltasQtd, frequencia: freqTexto } } : {},
@@ -194,13 +284,29 @@ export default function Importar() {
           const wb = XLSX.read(e.target!.result, { type: 'array' });
           const ws = wb.Sheets[wb.SheetNames[0]];
           const rows = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
-          for (let i = 1; i < rows.length; i++) {
+          if (rows.length < 2) { pendentes--; if (pendentes === 0) resolve(mapa); return; }
+
+          // Encontra a linha real de cabeçalho (pode ter nome da escola na linha 0)
+          let headerRowIdx = 0;
+          for (let i = 0; i < Math.min(rows.length, 5); i++) {
+            const joined = rows[i].map((h: any) => normalizeStr(String(h ?? ''))).join('|');
+            if (joined.includes('TURMA') || joined.includes('PROFESSOR') || joined.includes('SALA')) {
+              headerRowIdx = i;
+              break;
+            }
+          }
+          const headers = rows[headerRowIdx].map((h: any) => normalizeStr(String(h ?? '')));
+          const idxTurma = headers.findIndex((h: string) => h.includes('TURMA') || h.includes('SERIE') || h.includes('CLASSE'));
+          const idxProf  = headers.findIndex((h: string) => h.includes('PROFESSOR') || h.includes('DOCENTE'));
+          const idxPer   = headers.findIndex((h: string) => h.includes('PERIOD') || h.includes('TURNO'));
+
+          for (let i = headerRowIdx + 1; i < rows.length; i++) {
             const r = rows[i];
-            if (!r || r.length < 4) continue;
-            const turma = String(r[1] ?? '').trim();
-            const prof = String(r[2] ?? '').trim();
-            const periodo = String(r[3] ?? '').trim();
-            if (turma && prof) mapa.set(normalizeStr(turma), { professor: prof, periodo });
+            if (!r || r.every((c: any) => !String(c ?? '').trim())) continue; // pula linhas vazias
+            const turma = String(r[idxTurma >= 0 ? idxTurma : 1] ?? '').trim();
+            const prof  = String(r[idxProf  >= 0 ? idxProf  : 2] ?? '').trim();
+            const per   = String(r[idxPer   >= 0 ? idxPer   : 3] ?? '').trim();
+            if (turma && prof) mapa.set(normalizeStr(turma), { professor: prof, periodo: per });
           }
           pendentes--;
           if (pendentes === 0) resolve(mapa);
@@ -261,7 +367,7 @@ export default function Importar() {
               for (let j = 1; j < vals.length; j++) {
                 const v = vals[j];
                 if (/^\d{6,12}$/.test(v)) raStr = v;
-                else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(v) && !nasc) nasc = v;
+                else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(v) && !nasc) nasc = fmtDate(v);
                 else if (/^(ATIVO|N\s?COM|BAIXA|REMA|TRANSF)/.test(v.toUpperCase())) situ = v;
                 else if (v.length > 2 && !/^\d/.test(v) && !nasc) defi = v;
               }
@@ -288,49 +394,127 @@ export default function Importar() {
     });
   }
 
-  // ─── PARSE: Formulário Bolsa Família — PDF ou TXT ───
-  async function parseBolsaFamilia(files: File[]): Promise<Map<string, { nis: string; responsavel: string }>> {
+  // ─── PARSE: PDF Bolsa Família (NIS) ───
+  async function parseBolsaFamiliaPDF(files: File[]): Promise<Map<string, { nis: string; responsavel: string }>> {
     const mapa = new Map<string, { nis: string; responsavel: string }>();
+
+    const indexar = (nome: string, nasc: string, nis: string, responsavel: string) => {
+      if (nome.length < 3 || !/^\d{11}$/.test(nis)) return;
+      mapa.set(`${nome}|${nasc}`, { nis, responsavel });
+      // Chave fuzzy: nome sem artigos + data (tolera variações de "DA"/"DE" entre sistemas)
+      const nomeSimp = nomeSignificativo(nome);
+      if (nomeSimp.length >= 3 && nasc) {
+        mapa.set(`~${nomeSimp}|${nasc}`, { nis, responsavel });
+      }
+    };
+
     for (const file of files) {
       const name = normalizeFileName(file.name);
-      const isPdf = file.name.toLowerCase().endsWith('.pdf');
-      const isTxt = file.name.toLowerCase().endsWith('.txt');
-      if (!isPdf && !isTxt) continue;
+      if (!file.name.toLowerCase().endsWith('.pdf')) continue;
       if (!name.includes('FORMULARIO') && !name.includes('BOLSA')) continue;
+      const arrayBuf = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuf }).promise;
 
+      // Usa hasEOL para preservar quebras de linha reais do PDF
       let texto = '';
-      if (isPdf) {
-        const arrayBuf = await file.arrayBuffer();
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuf }).promise;
-        for (let p = 1; p <= Math.min(pdf.numPages, 200); p++) {
-          const page = await pdf.getPage(p);
-          const content = await page.getTextContent();
-          texto += content.items.map((item: any) => item.str).join(' ') + '\n';
+      for (let p = 1; p <= pdf.numPages; p++) {
+        const page = await pdf.getPage(p);
+        const content = await page.getTextContent();
+        for (const item of content.items) {
+          const it = item as any;
+          texto += it.str + ((it.hasEOL || it.str.endsWith('\n')) ? '\n' : ' ');
         }
-      } else {
-        texto = await file.text();
+        texto += '\n';
       }
 
-      // PDF: campos juntos por espaço. TXT: separados por newlines (e possíveis \f entre páginas).
-      // Regex único: Nome ... Dt.Nasc ... NIS ... Responsável familiar
-      const regex = isPdf
-        ? /Nome:\s*(.+?)\s+Dt\.\s*Nasc\.:\s*(\d{2}\/\d{2}\/\d{4}).*?NIS:\s*(\d{11})(?:.*?Respons.vel\s*familiar:\s*(.+?)(?=Nome:|$))?/gs
-        : /Nome:\s*(.+?)\n[\s\S]*?Dt\.\s*Nasc\.:\s*(\d{2}\/\d{2}\/\d{4})\n[\s\S]*?NIS:\s*(\d{11})\n[\s\S]*?Respons.vel\s*familiar:\s*(.+?)(?=\n)/g;
+      // Abordagem 1: âncora no NIS → busca Nome: e Dt. Nasc.: imediatamente antes
+      const nisRe = /\bNIS:\s*(\d{11})/g;
+      let m: RegExpExecArray | null;
+      while ((m = nisRe.exec(texto)) !== null) {
+        const nis = m[1];
+        const endPos = m.index;
+        const lookback = texto.substring(Math.max(0, endPos - 800), endPos);
 
-      let m;
-      while ((m = regex.exec(texto)) !== null) {
-        const nome = m[1].trim();
-        const nasc = m[2];
-        const nis = m[3];
-        const responsavel = (m[4] ?? '').trim();
-        const key = `${normalizeStr(nome)}|${nasc}`;
-        if (!mapa.has(key)) {
-          mapa.set(key, { nis, responsavel });
+        const lastNomeIdx = lookback.lastIndexOf('Nome:');
+        if (lastNomeIdx < 0) continue;
+        const afterNome = lookback.substring(lastNomeIdx + 5).trimStart();
+        const nameStop = afterNome.search(/Dt\.\s*Nasc\.|NIS:|S[eé]rie:|Respons/);
+        const nome = normalizeStr((nameStop > 0 ? afterNome.substring(0, nameStop) : afterNome).trim());
+
+        const nascMatches = [...lookback.matchAll(/Dt\.\s*Nasc\.:\s*(\d{2}\/\d{2}\/\d{4})/g)];
+        const nasc = nascMatches.length > 0 ? nascMatches[nascMatches.length - 1][1] : '';
+
+        indexar(nome, nasc, nis, '');
+      }
+
+      // Abordagem 2 (fallback): split por bloco
+      if (mapa.size < 5) {
+        const blocos = texto.split(/(?=\bNome:\s)/);
+        for (const bloco of blocos) {
+          if (!bloco.includes('Nome:')) continue;
+          const nomeM = bloco.match(/\bNome:\s*(.+?)(?=\s*Dt\.\s*Nasc\.|\s*NIS:|\s*S[eé]rie:|\s*Respons|$)/s);
+          const nascM = bloco.match(/Dt\.\s*Nasc\.:\s*(\d{2}\/\d{2}\/\d{4})/);
+          const nisM = bloco.match(/\bNIS:\s*(\d{11})/);
+          if (nomeM?.[1] && nisM?.[1]) {
+            indexar(normalizeStr(nomeM[1].trim()), nascM?.[1] ?? '', nisM[1], '');
+          }
         }
       }
     }
     return mapa;
   }
+  // ─── PARSE: TXT Bolsa Família (formato linearizado campo a campo) ───
+  async function parseBolsaFamiliaTXT(files: File[]): Promise<Map<string, { nis: string; responsavel: string }>> {
+    const mapa = new Map<string, { nis: string; responsavel: string }>();
+
+    const indexar = (nome: string, nasc: string, nis: string, responsavel: string) => {
+      if (nome.length < 3 || !/^\d{11}$/.test(nis)) return;
+      mapa.set(`${nome}|${nasc}`, { nis, responsavel });
+      const nomeSimp = nomeSignificativo(nome);
+      if (nomeSimp.length >= 3 && nasc) {
+        mapa.set(`~${nomeSimp}|${nasc}`, { nis, responsavel });
+      }
+    };
+
+    for (const file of files) {
+      const name = normalizeFileName(file.name);
+      if (!file.name.toLowerCase().endsWith('.txt')) continue;
+      if (!name.includes('FORMULARIO') && !name.includes('BOLSA')) continue;
+      const texto = await file.text();
+
+      // Formato: cada campo em linha própria com rótulo
+      // "Nome: NOME\n...\nDt. Nasc.: DD/MM/YYYY\n...\nNIS: 11DIGITS"
+      let currentNome = '';
+      let currentNasc = '';
+      let currentResp = '';
+
+      for (const linha of texto.split('\n')) {
+        const l = linha.trim();
+        const nomeM = l.match(/^Nome:\s*(.+)/i);
+        if (nomeM) {
+          currentNome = normalizeStr(nomeM[1].trim());
+          currentNasc = '';
+          currentResp = '';
+          continue;
+        }
+        const nascM = l.match(/^Dt\.\s*Nasc\.:\s*(\d{1,2}\/\d{1,2}\/\d{4})/i);
+        if (nascM) { currentNasc = fmtDate(nascM[1]); continue; }
+
+        const respM = l.match(/^Respons[áa]vel\s+familiar:\s*(.+)/i);
+        if (respM) { currentResp = normalizeStr(respM[1].trim()); continue; }
+
+        const nisM = l.match(/^NIS:\s*(\d{11})/i);
+        if (nisM && currentNome) {
+          indexar(currentNome, currentNasc, nisM[1], currentResp);
+          currentNome = '';
+          currentNasc = '';
+          currentResp = '';
+        }
+      }
+    }
+    return mapa;
+  }
+
   const handleFiles = (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
     setFiles(prev => [...prev, ...Array.from(fileList)]);
@@ -354,14 +538,18 @@ export default function Importar() {
       const pdfFiles = files.filter(f => f.name.toLowerCase().endsWith('.pdf'));
       const xlsFiles = files.filter(f => f.name.toLowerCase().endsWith('.xls'));
       const xlsxFiles = files.filter(f => f.name.toLowerCase().endsWith('.xlsx'));
+      const txtFiles = files.filter(f => f.name.toLowerCase().endsWith('.txt'));
 
-      const [alunosPDF, alunosHTML, alunosExcel, turmasMap, bolsaMap] = await Promise.all([
+      const [alunosPDF, alunosHTML, alunosExcel, turmasMap, bolsaMapPDF, bolsaMapTXT] = await Promise.all([
         parsePDFs(pdfFiles),
         parseHTMLSED(xlsFiles),
         parseExcels(xlsxFiles),
         parseTurmasProfessores(files),
-        parseBolsaFamilia(files),
+        parseBolsaFamiliaPDF(pdfFiles),
+        parseBolsaFamiliaTXT(txtFiles),
       ]);
+      // Merge: TXT tem prioridade (mais confiável), PDF completa o que faltar
+      const bolsaMap = new Map([...bolsaMapPDF, ...bolsaMapTXT]);
 
       // ─── Cruzamento ───
       const todosAlunos = new Map<string, AlunoUnificado>();
@@ -376,6 +564,10 @@ export default function Importar() {
           existente.professora = existente.professora || a.professora;
           existente.situacao = a.situacao !== 'ATIVO' ? a.situacao : existente.situacao;
           existente.deficiencia = existente.deficiencia || a.deficiencia;
+          // Prefere a série mais específica: PDF tem "1º ano A", Excel tem só "1"
+          if (a.serie && a.serie.length > (existente.serie?.length ?? 0)) {
+            existente.serie = a.serie;
+          }
           Object.assign(existente.faltas, a.faltas);
         } else {
           todosAlunos.set(key, a);
@@ -385,33 +577,33 @@ export default function Importar() {
       alunosHTML.forEach(mergeAluno);
       alunosPDF.forEach(mergeAluno);
 
-      // Índice secundário: apenas por nome (fallback quando data não casa)
-      // Só inclui nomes únicos para evitar ambiguidade
-      const bfNomeCount = new Map<string, number>();
-      for (const key of bolsaMap.keys()) {
-        const nome = key.split('|')[0];
-        bfNomeCount.set(nome, (bfNomeCount.get(nome) ?? 0) + 1);
-      }
-      const bolsaByNome = new Map<string, { nis: string; responsavel: string }>();
-      for (const [key, val] of bolsaMap.entries()) {
-        const nome = key.split('|')[0];
-        if (bfNomeCount.get(nome) === 1) bolsaByNome.set(nome, val);
-      }
-
       // Enriquece com professor da tabela TURMA-PROFESSORES
       const alunosArr = Array.from(todosAlunos.values());
       for (const a of alunosArr) {
-        const tp = turmasMap.get(normalizeStr(a.serie));
+        // Busca exata, depois parcial (ex: "1 ANO A" bate "1 ANO A MANHA")
+        const serieNorm = normalizeStr(a.serie);
+        let tp = turmasMap.get(serieNorm);
+        if (!tp) {
+          // Tenta bater por prefixo: chave do mapa contém a série ou vice-versa
+          for (const [k, v] of turmasMap.entries()) {
+            if (k.startsWith(serieNorm) || serieNorm.startsWith(k)) { tp = v; break; }
+          }
+        }
         if (tp) {
           if (tp.professor && !a.professora) a.professora = tp.professor;
+          if (tp.periodo && !a.serie.toLowerCase().includes(tp.periodo.toLowerCase())) {
+            // Não sobrescreve o nome da turma, só usa o período para enriquecer se necessário
+          }
         }
-        // Enriquece com NIS do Bolsa Família — exato (nome+data) ou só nome (fallback)
+        // Cruzamento Bolsa Família: nome+data (exato), depois nome sem artigos+data (fuzzy)
         const bfExato = bolsaMap.get(`${a.nomeNorm}|${a.nascimento}`);
-        const bf = bfExato ?? bolsaByNome.get(a.nomeNorm);
+        const nomeSimp = nomeSignificativo(a.nomeNorm);
+        const bfFuzzy = a.nascimento ? bolsaMap.get(`~${nomeSimp}|${a.nascimento}`) : undefined;
+        const bf = bfExato ?? bfFuzzy;
         if (bf) {
-          a.nis = bf.nis;
-          a.responsavel = bf.responsavel || a.responsavel;
-          a.bolsaFamilia = true; // confirmado pelo formulário BF
+          a.nis = a.nis || bf.nis;
+          a.responsavel = a.responsavel || bf.responsavel;
+          a.bolsaFamilia = true;
         }
       }
 
@@ -431,7 +623,7 @@ export default function Importar() {
         turmas: turmasUnicas.size,
         alunos: alunosArr.length,
         bolsaFamilia: alunosArr.filter(a => a.bolsaFamilia).length,
-        noFormularioBF: bolsaMap.size,
+        bolsaMapSize: bolsaMap.size,
         arquivos: files.length,
         faltas: totalFaltas,
       };
@@ -509,112 +701,133 @@ export default function Importar() {
       setStatus('');
       setSucesso(true);
     } catch (ex: any) {
-      setErro('Erro na importação: ' + ex.message);
+      const msg = ex.message ?? String(ex);
+      setErro(msg);
       setStatus('');
     }
   };
 
-  const s = (n: number) => (
-    <span style={{ fontSize: 24, fontWeight: 700, color: '#1e40af' }}>{n}</span>
-  );
-
   return (
-    <div style={{ marginTop: 16 }}>
-      <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>📥 Importar Dados da SED</h1>
-      <p style={{ color: '#64748b', fontSize: 14, marginBottom: 20 }}>
-        Selecione todos os arquivos exportados da Secretaria Escolar Digital: PDFs (Alunos por Classe) + Excels (Diário de Classe, Turmas-Professores) + <strong>TXT do Bolsa Família</strong> (salvar PDF como texto no leitor de PDF). O sistema cruza automaticamente por nome, RA e data de nascimento.
+    <div style={{ marginTop: 16, animation: 'fadeIn 0.25s ease both' }}>
+      <h1 style={{ fontSize: 26, fontWeight: 800, marginBottom: 4 }}>📥 Importar Dados da SED</h1>
+      <p style={{ color: theme.textSecondary, fontSize: 15, lineHeight: 1.6, marginBottom: 20 }}>
+        Selecione todos os arquivos exportados da Secretaria Escolar Digital:
+        PDFs (Alunos por Classe) + Excels (Diário de Classe, Turmas-Professores) + <strong>TXT do Bolsa Família</strong>.
+        O sistema cruza automaticamente por nome, RA e data de nascimento.
       </p>
 
       {/* Upload zone */}
-      <div style={{ border: '2px dashed #cbd5e1', borderRadius: 12, padding: files.length > 0 ? 16 : 40, textAlign: 'center', marginBottom: 16, background: '#f8fafc', cursor: 'pointer' }}
-        onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = '#1e40af'; }}
-        onDragLeave={e => e.currentTarget.style.borderColor = '#cbd5e1'}
-        onDrop={e => { e.preventDefault(); e.currentTarget.style.borderColor = '#cbd5e1'; handleFiles(e.dataTransfer.files); }}
+      <div style={{
+        border: `2px dashed ${theme.border}`,
+        borderRadius: theme.radiusMd,
+        padding: files.length > 0 ? 16 : 48,
+        textAlign: 'center', marginBottom: 16,
+        background: '#f8fafc', cursor: 'pointer',
+        transition: 'border-color 0.2s ease, background 0.2s ease',
+      }}
+        onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = theme.primary; e.currentTarget.style.background = theme.primaryBg; }}
+        onDragLeave={e => { e.currentTarget.style.borderColor = theme.border; e.currentTarget.style.background = '#f8fafc'; }}
+        onDrop={e => { e.preventDefault(); e.currentTarget.style.borderColor = theme.border; e.currentTarget.style.background = '#f8fafc'; handleFiles(e.dataTransfer.files); }}
         onClick={() => fileRef.current?.click()}>
         <input ref={fileRef} type="file" multiple accept=".xlsx,.xls,.pdf,.txt"
           style={{ display: 'none' }} onChange={e => handleFiles(e.target.files)} />
-        <div style={{ fontSize: 32, marginBottom: 8 }}>📂</div>
-        <p style={{ fontWeight: 600, color: '#1e40af', marginBottom: 4 }}>
+        <div style={{ fontSize: 42, marginBottom: 8 }}>📂</div>
+        <p style={{ fontWeight: 700, color: theme.primary, marginBottom: 4, fontSize: 17 }}>
           {files.length > 0 ? `${files.length} arquivo(s) selecionado(s)` : 'Clique ou arraste arquivos aqui'}
         </p>
-        <p style={{ fontSize: 12, color: '#64748b' }}>.xlsx .xls .pdf .txt — múltiplos arquivos</p>
+        <p style={{ fontSize: 13, color: theme.textMuted }}>.xlsx .xls .pdf .txt — múltiplos arquivos</p>
       </div>
 
       {/* Lista de arquivos */}
       {files.map((f, i) => (
-        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: 'white', borderRadius: 8, marginBottom: 4, fontSize: 13 }}>
-          <span>{f.name.endsWith('.pdf') ? '📄' : f.name.endsWith('.xlsx') ? '📊' : '📋'}</span>
-          <span style={{ flex: 1 }}>{f.name}</span>
-          <span style={{ fontSize: 11, color: '#94a3b8' }}>{(f.size / 1024).toFixed(0)} KB</span>
-          <button onClick={() => removerArquivo(i)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#dc2626', fontSize: 16 }}>✕</button>
-        </div>
+        <FileRow key={i} name={f.name} size={f.size} onRemove={() => removerArquivo(i)} />
       ))}
 
       {files.length > 0 && !preview && !status && (
-        <button onClick={analisar}
-          style={{ padding: '12px 24px', borderRadius: 8, background: '#1e40af', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 15, marginTop: 12, width: '100%' }}>
+        <button onClick={analisar} style={{ ...btn('primary', { full: true }), marginTop: 12, borderRadius: theme.radiusMd, padding: '13px', fontSize: 16 }}>
           🔍 Analisar Arquivos
         </button>
       )}
 
       {status && !sucesso && (
-        <div style={{ marginTop: 16, textAlign: 'center' }}>
-          <p style={{ color: '#64748b', marginBottom: 8 }}>{status}</p>
-          {total > 0 && (
-            <div style={{ height: 8, background: '#e2e8f0', borderRadius: 4, overflow: 'hidden', maxWidth: 400, margin: '0 auto' }}>
-              <div style={{ height: '100%', background: '#1e40af', transition: 'width 0.2s', width: `${(progresso / total) * 100}%`, borderRadius: 4 }} />
-            </div>
-          )}
+        <div className="fade-in" style={{ marginTop: 20, textAlign: 'center' }}>
+          <p style={{ color: theme.textSecondary, marginBottom: 10, fontSize: 14 }}>{status}</p>
+          <ProgressBar current={progresso} total={total} />
         </div>
       )}
 
       {/* Preview do cruzamento */}
       {preview && !sucesso && (
-        <div style={{ marginTop: 16, background: 'white', borderRadius: 12, padding: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-          <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>📊 Resultado do Cruzamento</h2>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8 }}>
+        <div className="scale-in" style={cardStyle({ marginTop: 16, padding: 20 })}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 14, color: theme.text }}>📊 Resultado do Cruzamento</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10 }}>
             {[
               ['🏫 Turmas', preview.turmas],
               ['👥 Alunos', preview.alunos],
               ['🟢 Bolsa Família', preview.bolsaFamilia],
-              ['📋 No Formulário BF', preview.noFormularioBF],
-              ['📝 Registros Faltas', preview.faltas],
+              ['📄 Registros Faltas', preview.faltas],
               ['📂 Arquivos', preview.arquivos],
             ].map(([label, val]) => (
-              <div key={label as string} style={{ textAlign: 'center', padding: 12, background: '#f8fafc', borderRadius: 8 }}>
-                <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>{label}</div>
-                <div style={{ fontSize: 22, fontWeight: 700, color: '#1e40af' }}>{(val as number)}</div>
+                <div key={label as string} style={{ textAlign: 'center', padding: 16, background: theme.primaryBg, borderRadius: theme.radius }}>
+                <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 4, fontWeight: 600 }}>{label as string}</div>
+                <div style={{ fontSize: 28, fontWeight: 800, color: theme.primary }}>{val as number}</div>
               </div>
             ))}
           </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-            <button onClick={() => { setPreview(null); dadosRef.current = null; }} style={{ flex: 1, padding: 12, borderRadius: 8, background: '#f1f5f9', border: '1px solid #cbd5e1', cursor: 'pointer', fontWeight: 600 }}>
-              Reanalisar
-            </button>
-            <button onClick={importar} style={{ flex: 2, padding: 12, borderRadius: 8, background: '#dc2626', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 15 }}>
-              Confirmar Importação (apaga dados anteriores)
+          <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+            <button onClick={() => { setPreview(null); dadosRef.current = null; }}
+              style={btn('ghost', { full: true })}>Reanalisar</button>
+            <button onClick={importar}
+              style={{ ...btn('danger', { full: true }), fontWeight: 700, fontSize: 15 }}>
+              ⚠️ Confirmar Importação (apaga dados anteriores)
             </button>
           </div>
         </div>
       )}
 
       {sucesso && (
-        <div style={{ marginTop: 16, background: '#f0fdf4', borderRadius: 12, padding: 24, textAlign: 'center', border: '2px solid #16a34a' }}>
-          <div style={{ fontSize: 40 }}>✅</div>
-          <p style={{ fontSize: 16, fontWeight: 700, color: '#16a34a', marginTop: 8 }}>Importação concluída!</p>
-          {preview && <p style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>
+        <div className="scale-in" style={{
+          background: theme.successLight, borderRadius: theme.radiusMd,
+          padding: 28, textAlign: 'center',
+          border: `2px solid ${theme.success}`,
+          marginTop: 16,
+        }}>
+          <div style={{ fontSize: 48 }}>✅</div>
+          <p style={{ fontSize: 18, fontWeight: 800, color: theme.successHover, marginTop: 10 }}>Importação concluída!</p>
+          {preview && <p style={{ fontSize: 14, color: theme.textSecondary, marginTop: 6 }}>
             {preview.turmas} turmas, {preview.alunos} alunos, {preview.faltas} registros de frequência
           </p>}
-          <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'center' }}>
-            <a href="/alunos" style={{ padding: '10px 20px', borderRadius: 8, background: '#1e40af', color: 'white', textDecoration: 'none', fontWeight: 600 }}>👥 Ver Alunos</a>
-            <a href="/faltas" style={{ padding: '10px 20px', borderRadius: 8, background: '#16a34a', color: 'white', textDecoration: 'none', fontWeight: 600 }}>📋 Lançar Faltas</a>
+          <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'center' }}>
+            <a href="/alunos" style={{ ...btn('primary'), textDecoration: 'none' }}>👥 Ver Alunos</a>
+            <a href="/faltas" style={{ ...btn('success'), textDecoration: 'none' }}>📋 Lançar Faltas</a>
           </div>
         </div>
       )}
 
       {erro && (
-        <div style={{ marginTop: 16, padding: 12, background: '#fef2f2', borderRadius: 8, border: '1px solid #dc2626', color: '#dc2626', fontSize: 13 }}>
-          {erro}
+        <div className="fade-in" style={{ marginTop: 16 }}>
+          {erro.includes('schema cache') || erro.includes('Could not find the table') ? (
+            <div style={{
+              padding: 16, background: theme.warningLight, borderRadius: theme.radiusMd,
+              border: `2px solid ${theme.warning}`,
+            }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#92400e', marginBottom: 8 }}>
+                ⚠️ Cache do Supabase desatualizado
+              </div>
+              <p style={{ fontSize: 13, color: '#78350f', marginBottom: 12 }}>
+                O Supabase precisa recarregar o cache das tabelas. Clique no botão abaixo para tentar automaticamente,
+                ou execute no SQL Editor do Supabase:
+              </p>
+              <pre style={{ background: '#1e293b', color: '#e2e8f0', padding: '10px 14px', borderRadius: theme.radius, fontSize: 12, marginBottom: 12, overflow: 'auto' }}>
+                NOTIFY pgrst, 'reload schema';
+              </pre>
+              <button onClick={fixSchema} disabled={fixing} style={btn('warning', { full: true })}>
+                {fixing ? <Spinner size={16} /> : '🔄 Recarregar Schema'}
+              </button>
+            </div>
+          ) : (
+            <ErrorBox message={erro} />
+          )}
         </div>
       )}
     </div>
