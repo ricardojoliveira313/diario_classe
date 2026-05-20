@@ -385,6 +385,19 @@ export default function Importar() {
       alunosHTML.forEach(mergeAluno);
       alunosPDF.forEach(mergeAluno);
 
+      // Índice secundário: apenas por nome (fallback quando data não casa)
+      // Só inclui nomes únicos para evitar ambiguidade
+      const bfNomeCount = new Map<string, number>();
+      for (const key of bolsaMap.keys()) {
+        const nome = key.split('|')[0];
+        bfNomeCount.set(nome, (bfNomeCount.get(nome) ?? 0) + 1);
+      }
+      const bolsaByNome = new Map<string, { nis: string; responsavel: string }>();
+      for (const [key, val] of bolsaMap.entries()) {
+        const nome = key.split('|')[0];
+        if (bfNomeCount.get(nome) === 1) bolsaByNome.set(nome, val);
+      }
+
       // Enriquece com professor da tabela TURMA-PROFESSORES
       const alunosArr = Array.from(todosAlunos.values());
       for (const a of alunosArr) {
@@ -392,9 +405,9 @@ export default function Importar() {
         if (tp) {
           if (tp.professor && !a.professora) a.professora = tp.professor;
         }
-        // Enriquece com NIS do Bolsa Família
-        const bfKey = `${a.nomeNorm}|${a.nascimento}`;
-        const bf = bolsaMap.get(bfKey);
+        // Enriquece com NIS do Bolsa Família — exato (nome+data) ou só nome (fallback)
+        const bfExato = bolsaMap.get(`${a.nomeNorm}|${a.nascimento}`);
+        const bf = bfExato ?? bolsaByNome.get(a.nomeNorm);
         if (bf) {
           a.nis = bf.nis;
           a.responsavel = bf.responsavel || a.responsavel;
