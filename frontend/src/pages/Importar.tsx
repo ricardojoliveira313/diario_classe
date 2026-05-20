@@ -549,6 +549,10 @@ export default function Importar() {
           existente.professora = existente.professora || a.professora;
           existente.situacao = a.situacao !== 'ATIVO' ? a.situacao : existente.situacao;
           existente.deficiencia = existente.deficiencia || a.deficiencia;
+          // Prefere a série mais específica: PDF tem "1º ano A", Excel tem só "1"
+          if (a.serie && a.serie.length > (existente.serie?.length ?? 0)) {
+            existente.serie = a.serie;
+          }
           Object.assign(existente.faltas, a.faltas);
         } else {
           todosAlunos.set(key, a);
@@ -561,9 +565,20 @@ export default function Importar() {
       // Enriquece com professor da tabela TURMA-PROFESSORES
       const alunosArr = Array.from(todosAlunos.values());
       for (const a of alunosArr) {
-        const tp = turmasMap.get(normalizeStr(a.serie));
+        // Busca exata, depois parcial (ex: "1 ANO A" bate "1 ANO A MANHA")
+        const serieNorm = normalizeStr(a.serie);
+        let tp = turmasMap.get(serieNorm);
+        if (!tp) {
+          // Tenta bater por prefixo: chave do mapa contém a série ou vice-versa
+          for (const [k, v] of turmasMap.entries()) {
+            if (k.startsWith(serieNorm) || serieNorm.startsWith(k)) { tp = v; break; }
+          }
+        }
         if (tp) {
           if (tp.professor && !a.professora) a.professora = tp.professor;
+          if (tp.periodo && !a.serie.toLowerCase().includes(tp.periodo.toLowerCase())) {
+            // Não sobrescreve o nome da turma, só usa o período para enriquecer se necessário
+          }
         }
         // Cruzamento Bolsa Família: nome+data (exato), depois nome sem artigos+data (fuzzy)
         const bfExato = bolsaMap.get(`${a.nomeNorm}|${a.nascimento}`);
