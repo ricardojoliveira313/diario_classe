@@ -559,7 +559,7 @@ export default function Importar() {
         onDragLeave={e => e.currentTarget.style.borderColor = '#cbd5e1'}
         onDrop={e => { e.preventDefault(); e.currentTarget.style.borderColor = '#cbd5e1'; handleFiles(e.dataTransfer.files); }}
         onClick={() => fileRef.current?.click()}>
-        <input ref={fileRef} type="file" multiple accept=".xlsx,.xls,.pdf"
+        <input ref={fileRef} type="file" multiple accept=".xlsx,.xls,.pdf,.txt"
           style={{ display: 'none' }} onChange={e => handleFiles(e.target.files)} />
         <div style={{ fontSize: 32, marginBottom: 8 }}>📂</div>
         <p style={{ fontWeight: 600, color: '#1e40af', marginBottom: 4 }}>
