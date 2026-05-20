@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import { createWorker } from 'tesseract.js';
 import { api } from '../api';
 
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
@@ -9,28 +10,16 @@ interface AlunoExtrato {
   faltas: number;
 }
 
-async function runGoogleVisionOCR(imageBase64: string, apiKey: string): Promise<string> {
-  const res = await fetch(
-    `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        requests: [{
-          image: { content: imageBase64 },
-          features: [{ type: 'DOCUMENT_TEXT_DETECTION', maxResults: 1 }],
-        }],
-      }),
-    }
-  );
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error?.message ?? `Erro HTTP ${res.status}`);
-  }
-  const data = await res.json();
-  const text = data.responses?.[0]?.fullTextAnnotation?.text ?? '';
-  if (!text) throw new Error('Google Vision não encontrou texto na imagem. Tente com melhor iluminação.');
-  return text;
+async function runTesseractOCR(imageDataUrl: string, onProgress: (p: number) => void): Promise<string> {
+  const worker = await createWorker('por', 1, {
+    logger: (m) => {
+      if (m.status === 'recognizing text') onProgress(Math.round(m.progress * 100));
+    },
+  });
+  const { data } = await worker.recognize(imageDataUrl);
+  await worker.terminate();
+  if (!data.text?.trim()) throw new Error('Não foi possível extrair texto. Tente com melhor iluminação e foco.');
+  return data.text;
 }
 
 // Faz parse da tabela extraída: linhas "Nº Nome Faltas"
@@ -66,16 +55,15 @@ function parseOCRText(text: string): AlunoExtrato[] {
 }
 
 export default function OCR() {
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('gvision_key') ?? '');
   const [turmas, setTurmas] = useState<any[]>([]);
   const [turmaId, setTurmaId] = useState('');
   const [mes, setMes] = useState(new Date().getMonth() + 1);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [imageBase64, setImageBase64] = useState('');
   const [rawText, setRawText] = useState('');
   const [extratos, setExtratos] = useState<AlunoExtrato[]>([]);
   const [step, setStep] = useState<'upload' | 'review' | 'done'>('upload');
   const [status, setStatus] = useState('');
+  const [progresso, setProgresso] = useState(0);
   const [erro, setErro] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -83,32 +71,32 @@ export default function OCR() {
     api.getTurmas().then(t => { setTurmas(t); if (t.length) setTurmaId(t[0].id); });
   }, []);
 
-  const salvarKey = () => { localStorage.setItem('gvision_key', apiKey); };
-
   const handleImage = (file: File) => {
     const reader = new FileReader();
     reader.onload = e => {
-      const result = e.target?.result as string;
-      setImagePreview(result);
-      setImageBase64(result.split(',')[1]);
+      setImagePreview(e.target?.result as string);
       setExtratos([]);
       setRawText('');
       setStep('upload');
       setErro('');
+      setProgresso(0);
     };
     reader.readAsDataURL(file);
   };
 
   const analisar = async () => {
-    if (!apiKey.trim()) { setErro('Informe a chave da API Google Cloud Vision.'); return; }
-    if (!imageBase64) { setErro('Selecione uma imagem.'); return; }
+    if (!imagePreview) { setErro('Selecione uma imagem.'); return; }
     setErro('');
-    setStatus('Enviando para Google Cloud Vision...');
+    setProgresso(0);
+    setStatus('Carregando motor OCR (primeira vez é mais lento)...');
     try {
-      const text = await runGoogleVisionOCR(imageBase64, apiKey);
+      const text = await runTesseractOCR(imagePreview, (p) => {
+        setProgresso(p);
+        setStatus(`Reconhecendo texto... ${p}%`);
+      });
       setRawText(text);
       const parsed = parseOCRText(text);
-      setExtratos(parsed.length > 0 ? parsed : []);
+      setExtratos(parsed);
       setStep('review');
       setStatus('');
       if (parsed.length === 0) setErro('Não foi possível extrair alunos automaticamente. Revise o texto bruto abaixo e edite manualmente.');
@@ -131,12 +119,8 @@ export default function OCR() {
       const registros: any[] = [];
       for (const e of validos) {
         let aluno = alunosTurma.find(a => a.numero === e.numero);
+        if (!aluno) aluno = alunosTurma.find(a => a.nome?.toUpperCase().trim() === e.nome);
         if (!aluno) {
-          const nomeNorm = e.nome.toUpperCase().trim();
-          aluno = alunosTurma.find(a => a.nome?.toUpperCase().trim() === nomeNorm);
-        }
-        if (!aluno) {
-          // Busca parcial (primeiro + último nome)
           const partes = e.nome.split(' ').filter(Boolean);
           aluno = alunosTurma.find(a => {
             const an = a.nome?.toUpperCase() ?? '';
@@ -146,7 +130,7 @@ export default function OCR() {
         if (!aluno) continue;
         registros.push({ alunoId: aluno.id, turmaId, mes, ano: 2026, faltas: e.faltas, frequencia: '' });
       }
-      if (registros.length === 0) throw new Error('Não foi possível cruzar os nomes com os alunos da turma. Verifique se a turma selecionada está correta.');
+      if (registros.length === 0) throw new Error('Não foi possível cruzar os nomes. Verifique se a turma selecionada está correta.');
       await api.upsertFaltasBatch(registros);
       setStep('done');
       setStatus('');
@@ -158,11 +142,12 @@ export default function OCR() {
 
   const reiniciar = () => {
     setImagePreview(null);
-    setImageBase64('');
     setExtratos([]);
     setRawText('');
     setStep('upload');
     setErro('');
+    setProgresso(0);
+    setStatus('');
   };
 
   const turma = turmas.find(t => t.id === turmaId);
@@ -171,29 +156,8 @@ export default function OCR() {
     <div style={{ marginTop: 16 }}>
       <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>📷 OCR — Diário Físico</h1>
       <p style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>
-        Fotografe a página do diário impresso. O Google Cloud Vision extrai o texto e lança as faltas automaticamente.
-        <strong style={{ color: '#1e40af' }}> Grátis até 1.000 imagens/mês.</strong>
+        Fotografe a página do diário impresso. O texto é extraído <strong style={{ color: '#16a34a' }}>direto no seu celular — 100% gratuito, sem internet extra.</strong>
       </p>
-
-      {/* Chave da API */}
-      <div style={{ background: 'white', borderRadius: 8, padding: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: 14 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: '#1e293b' }}>🔑 Google Cloud Vision API Key</div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input
-            type="password" value={apiKey}
-            onChange={e => setApiKey(e.target.value)}
-            placeholder="AIzaSy..."
-            style={{ flex: 1, padding: '8px 12px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 13 }}
-          />
-          <button onClick={salvarKey}
-            style={{ padding: '8px 14px', borderRadius: 6, background: '#1e40af', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>
-            Salvar
-          </button>
-        </div>
-        <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>
-          Crie em <strong>console.cloud.google.com</strong> → APIs → Cloud Vision API → Credenciais → Criar chave de API
-        </div>
-      </div>
 
       {/* Turma e mês */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
@@ -232,7 +196,7 @@ export default function OCR() {
         <div>
           <div style={{ background: 'white', borderRadius: 8, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: 14 }}>
             <div style={{ background: '#0284c7', color: 'white', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 13, fontWeight: 700 }}>📝 Revisão — {extratos.length} linha(s) extraída(s) (edite se necessário)</span>
+              <span style={{ fontSize: 13, fontWeight: 700 }}>📝 Revisão — {extratos.length} linha(s) extraída(s)</span>
               <button onClick={adicionarLinha}
                 style={{ padding: '4px 10px', borderRadius: 4, background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.4)', color: 'white', cursor: 'pointer', fontSize: 12 }}>
                 + Linha
@@ -262,7 +226,7 @@ export default function OCR() {
 
           {rawText && extratos.length === 0 && (
             <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: 12, marginBottom: 14 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#92400e', marginBottom: 6 }}>Texto bruto extraído (use para digitar manualmente):</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#92400e', marginBottom: 6 }}>Texto bruto extraído:</div>
               <pre style={{ fontSize: 11, color: '#78350f', whiteSpace: 'pre-wrap', maxHeight: 200, overflowY: 'auto', margin: 0 }}>{rawText}</pre>
             </div>
           )}
@@ -280,9 +244,8 @@ export default function OCR() {
         </div>
       ) : (
         <>
-          {/* Zona de upload / câmera */}
           <div
-            style={{ border: '2px dashed #cbd5e1', borderRadius: 12, padding: imagePreview ? 12 : 48, textAlign: 'center', marginBottom: 14, background: '#f8fafc', cursor: 'pointer', transition: 'border-color 0.15s' }}
+            style={{ border: '2px dashed #cbd5e1', borderRadius: 12, padding: imagePreview ? 12 : 48, textAlign: 'center', marginBottom: 14, background: '#f8fafc', cursor: 'pointer' }}
             onClick={() => fileRef.current?.click()}
             onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = '#1e40af'; }}
             onDragLeave={e => { e.currentTarget.style.borderColor = '#cbd5e1'; }}
@@ -301,11 +264,22 @@ export default function OCR() {
             )}
           </div>
 
-          {imagePreview && (
-            <button onClick={analisar} disabled={!!status}
+          {imagePreview && !status && (
+            <button onClick={analisar}
               style={{ width: '100%', padding: '13px', borderRadius: 8, background: '#0284c7', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 16, marginBottom: 14 }}>
-              {status || '🔍 Extrair texto com Google Vision'}
+              🔍 Extrair Texto (Grátis)
             </button>
+          )}
+
+          {status && (
+            <div style={{ marginBottom: 14 }}>
+              <p style={{ fontSize: 13, color: '#64748b', textAlign: 'center', marginBottom: 6 }}>{status}</p>
+              {progresso > 0 && (
+                <div style={{ height: 8, background: '#e2e8f0', borderRadius: 4, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', background: '#0284c7', width: `${progresso}%`, transition: 'width 0.3s', borderRadius: 4 }} />
+                </div>
+              )}
+            </div>
           )}
         </>
       )}
