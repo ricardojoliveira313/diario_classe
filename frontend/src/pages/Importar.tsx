@@ -689,9 +689,18 @@ export default function Importar() {
         .replace(/[ªº°]/g, '').replace(/[-]/g, ' ').replace(/\s+/g, ' ').trim();
       const ALIASES2: Record<string, string> = {
         'ALFABETIZACAO': 'EJA I', 'EJA ALFABETIZACAO': 'EJA I',
-        'POS ALFABETIZACAO': 'EJA II', 'EJA POS ALFABETIZACAO': 'EJA II',
+        'TURMA ALFABETIZACAO': 'EJA I',
+        'POS ALFABETIZACAO': 'EJA I', 'EJA POS ALFABETIZACAO': 'EJA I',
+        'TURMA POS ALFABETIZACAO': 'EJA I',
       };
-      const applyAlias2 = (s: string) => ALIASES2[normT2(s)] ?? s;
+      // Catch-all para nomes SED: "MULTISSERIADA" = Alfabetização, "TERMO" = Pós-Alfa
+      const applyAlias2 = (s: string): string => {
+        const n = normT2(s);
+        if (ALIASES2[n]) return ALIASES2[n];
+        if (n.includes('MULTISSERIADA')) return 'EJA I';
+        if (/\bTERMO\b/.test(n)) return 'EJA I';
+        return s;
+      };
       const nomesNoBanco = new Set(turmasNoBanco.map((t: any) => normT2(t.nome)));
       // Strip SED verboso: "1ª ETAPA PRÉ-ESCOLA A MANHA ANUAL" → "1 ETAPA A"
       const normSed2 = (s: string) => s
@@ -751,7 +760,7 @@ export default function Importar() {
       .trim();
 
     // Aliases: nomes usados no SED/PDF → nome cadastrado no sistema
-    // Ambas as turmas EJA são "EJA I" no banco; o resolveId usa professora para desempatar
+    // EJA no SED usa nomes como "MULTISSERIADA A NOITE ANUAL" e "SÉRIE 10 - 3º TERMO A NOITE ANUAL"
     const ALIASES: Record<string, string> = {
       'ALFABETIZACAO':           'EJA I',
       'EJA ALFABETIZACAO':       'EJA I',
@@ -760,7 +769,14 @@ export default function Importar() {
       'EJA POS ALFABETIZACAO':   'EJA I',
       'TURMA POS ALFABETIZACAO': 'EJA I',
     };
-    const applyAlias = (serie: string) => ALIASES[normT(serie)] ?? serie;
+    // Catch-all para nomes SED não padronizados: "MULTISSERIADA" e "TERMO" → EJA I
+    const applyAlias = (serie: string): string => {
+      const n = normT(serie);
+      if (ALIASES[n]) return ALIASES[n];
+      if (n.includes('MULTISSERIADA')) return 'EJA I';
+      if (/\bTERMO\b/.test(n)) return 'EJA I';
+      return serie;
+    };
 
     try {
       setStatus('Limpando alunos e faltas anteriores (turmas preservadas)...');
