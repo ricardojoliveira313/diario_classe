@@ -693,12 +693,19 @@ export default function Importar() {
       };
       const applyAlias2 = (s: string) => ALIASES2[normT2(s)] ?? s;
       const nomesNoBanco = new Set(turmasNoBanco.map((t: any) => normT2(t.nome)));
+      // Strip SED verboso: "1ª ETAPA PRÉ-ESCOLA A MANHA ANUAL" → "1 ETAPA A"
+      const normSed2 = (s: string) => s
+        .replace(/\bPRE\s*ESCOLA\b/g, '')
+        .replace(/\b(MANHA|TARDE|NOTURNO|MATUTINO|VESPERTINO|NOITE|ANUAL|INTEGRAL)\b/g, '')
+        .replace(/\s+/g, ' ').trim();
       const turmasReconhecidas = Array.from(turmasUnicas.keys())
         .filter(s => {
           const n = normT2(applyAlias2(s));
-          if (nomesNoBanco.has(n)) return true;
-          // prefixo
-          for (const nb of nomesNoBanco) { if (nb.startsWith(n) || n.startsWith(nb)) return true; }
+          const nSed = normSed2(n);
+          for (const key of [n, nSed]) {
+            if (nomesNoBanco.has(key)) return true;
+            for (const nb of nomesNoBanco) { if (nb.startsWith(key) || key.startsWith(nb)) return true; }
+          }
           return false;
         }).length;
 
