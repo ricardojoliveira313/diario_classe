@@ -126,25 +126,32 @@ export default function Importar() {
         texto += content.items.map((item: any) => item.str).join(' ') + '\n';
       }
 
-      // Texto em uma linha única para busca posicional
-      const allText = texto.replace(/\n/g, ' ').replace(/\s{2,}/g, ' ');
+      // Preserva espaços múltiplos — são delimitadores de coluna nos PDFs SED
+      // (NÃO colapsar: o lookahead (?=\s{3,}) depende deles para achar fim do nome da turma)
+      const allText = texto.replace(/\n/g, ' ');
 
-      // Mapa de posição → série (suporta PDFs com múltiplas turmas)
+      // Mapa de posição → série + professora (suporta PDFs com múltiplas turmas)
       // Para no primeiro rótulo de campo (Professora:, Período:, Turno:…) ou no próximo Turma:
-      const turmaPosicoes: Array<{ pos: number; serie: string }> = [];
+      const turmaPosicoes: Array<{ pos: number; serie: string; professora: string }> = [];
       const turmaRe = /Turma:\s*(.+?)(?=\s+(?:Professora?|Per[ií]odo|Turno|Modalidade|Escola|Coordenador|Turma)\s*:|Turma:|$)/gi;
       let tmm: RegExpExecArray | null;
       while ((tmm = turmaRe.exec(allText)) !== null) {
-        turmaPosicoes.push({ pos: tmm.index, serie: tmm[1].trim() });
+        const serie = tmm[1].trim();
+        // Extrai professora próxima ao cabeçalho (PDFs SED têm "Professora: NOME" perto de "Turma:")
+        const win = allText.substring(tmm.index, Math.min(allText.length, tmm.index + 500));
+        const profM = win.match(/Professora?:?\s*([A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ][A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ\s'-]{5,60}?)(?=\s{3,}|\s*RA:|\s*N[º°]|\s*\d|$)/i);
+        const professora = profM ? normalizeStr(profM[1].trim()) : '';
+        turmaPosicoes.push({ pos: tmm.index, serie, professora });
       }
       // Fallback: turma única — captura até o primeiro rótulo de campo ou fim
       if (!turmaPosicoes.length) {
         const t = allText.match(/Turma:\s*(.+?)(?=\s+[A-Za-záàãâéêíóôõúüçÁÀÃÂÉÊÍÓÔÕÚÜÇ]{4,}\s*:|$)/i);
-        if (t) turmaPosicoes.push({ pos: 0, serie: t[1].trim() });
+        const profFb = allText.match(/Professora?:?\s*([A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ][A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ\s'-]{5,60}?)(?=\s{3,}|$)/i);
+        if (t) turmaPosicoes.push({ pos: 0, serie: t[1].trim(), professora: profFb ? normalizeStr(profFb[1].trim()) : '' });
       }
       const getSerie = (raPos: number) => {
-        let s = '';
-        for (const t of turmaPosicoes) { if (t.pos <= raPos) s = t.serie; else break; }
+        let s = { serie: '', professora: '' };
+        for (const t of turmaPosicoes) { if (t.pos <= raPos) s = t; else break; }
         return s;
       };
 
@@ -191,13 +198,14 @@ export default function Importar() {
         const deficiencia = /^(ATIVO|REMA|TRAN|BXTR|ABAN|N\s?COM|\d{2}\/\d{2}\/\d{4}|$)/i.test(defRawClean)
           ? '' : defRawClean;
         const isAtivo = situacao === 'ATIVO';
+        const { serie: serieAluno, professora: profAluno } = getSerie(raPos);
 
         alunos.push({
           nome, nomeNorm: normalizeStr(nome),
           ra: parseInt(raStr) || null,
           nascimento,
-          serie: getSerie(raPos),
-          professora: getProfessora(raPos),
+          serie: serieAluno,
+          professora: profAluno || getProfessora(raPos),
           situacao, deficiencia,
           bolsaFamilia: false,
           dataInicioMatricula: '',
@@ -651,8 +659,29 @@ export default function Importar() {
       let totalFaltas = 0;
       for (const a of alunosArr) totalFaltas += Object.keys(a.faltas).length;
 
+      // Verifica quantas turmas do arquivo existem no banco (com aliases)
+      const turmasNoBanco = await api.getTurmas();
+      const normT2 = (s: string) => (s ?? '').toUpperCase()
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .replace(/[ªº°]/g, '').replace(/[-]/g, ' ').replace(/\s+/g, ' ').trim();
+      const ALIASES2: Record<string, string> = {
+        'ALFABETIZACAO': 'EJA I', 'EJA ALFABETIZACAO': 'EJA I',
+        'POS ALFABETIZACAO': 'EJA II', 'EJA POS ALFABETIZACAO': 'EJA II',
+      };
+      const applyAlias2 = (s: string) => ALIASES2[normT2(s)] ?? s;
+      const nomesNoBanco = new Set(turmasNoBanco.map((t: any) => normT2(t.nome)));
+      const turmasReconhecidas = Array.from(turmasUnicas.keys())
+        .filter(s => {
+          const n = normT2(applyAlias2(s));
+          if (nomesNoBanco.has(n)) return true;
+          // prefixo
+          for (const nb of nomesNoBanco) { if (nb.startsWith(n) || n.startsWith(nb)) return true; }
+          return false;
+        }).length;
+
       const prev = {
         turmas: turmasUnicas.size,
+        turmasReconhecidas,
         alunos: alunosArr.length,
         bolsaFamilia: alunosArr.filter(a => a.bolsaFamilia).length,
         bolsaMapSize: bolsaMap.size,
@@ -671,23 +700,76 @@ export default function Importar() {
   // ─── IMPORTAR ───
   const importar = async () => {
     if (!dadosRef.current) return;
-    const { turmas, alunos } = dadosRef.current;
+    const { alunos } = dadosRef.current;
     setErro('');
     setSucesso(false);
     setTotal(alunos.length);
     setProgresso(0);
 
-    try {
-      setStatus('Limpando dados anteriores...');
-      await api.clearAll();
+    // Normaliza para matching: sem acento, sem ordinal, maiúsculas, espaço simples
+    const normT = (s: string) => (s ?? '').toUpperCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[ªº°]/g, '')
+      .replace(/[-]/g, ' ')
+      .replace(/\s+/g, ' ').trim();
 
-      setStatus('Inserindo turmas...');
-      const turmasInseridas = await api.bulkInsertTurmas(turmas.map(t => ({ nome: t.nome, professora: t.professora })));
-      const serieToId = new Map<string, string>(turmasInseridas.map((t: any) => [t.nome, t.id]));
+    // Aliases: nomes usados no SED/PDF → nome cadastrado no sistema
+    // Ambas as turmas EJA são "EJA I" no banco; o resolveId usa professora para desempatar
+    const ALIASES: Record<string, string> = {
+      'ALFABETIZACAO':           'EJA I',
+      'EJA ALFABETIZACAO':       'EJA I',
+      'TURMA ALFABETIZACAO':     'EJA I',
+      'POS ALFABETIZACAO':       'EJA I',
+      'EJA POS ALFABETIZACAO':   'EJA I',
+      'TURMA POS ALFABETIZACAO': 'EJA I',
+    };
+    const applyAlias = (serie: string) => ALIASES[normT(serie)] ?? serie;
+
+    try {
+      setStatus('Limpando alunos e faltas anteriores (turmas preservadas)...');
+      await api.clearAlunos();
+
+      setStatus('Carregando turmas cadastradas...');
+      const turmasExistentes = await api.getTurmas();
+      // Mapa: nome normalizado → lista de {id, professora} (suporta duplicatas como EJA I)
+      const serieToTurmasList = new Map<string, Array<{ id: string; professora: string }>>();
+      for (const t of turmasExistentes) {
+        const key = normT(t.nome);
+        if (!serieToTurmasList.has(key)) serieToTurmasList.set(key, []);
+        serieToTurmasList.get(key)!.push({ id: t.id, professora: normT(t.professora ?? '') });
+      }
+      // Matching: aplica alias → exato → prefixo → desempata por professora
+      const resolveId = (serie: string, professora?: string): string | null => {
+        const aliased = applyAlias(serie);
+        const n = normT(aliased);
+        let candidates = serieToTurmasList.get(n) ?? [];
+        if (!candidates.length) {
+          // Prefixo: "1 ANO A MANHA" bate "1 ANO A"
+          for (const [k, v] of serieToTurmasList.entries()) {
+            if (k.startsWith(n) || n.startsWith(k)) { candidates = v; break; }
+          }
+        }
+        if (!candidates.length) return null;
+        if (candidates.length === 1) return candidates[0].id;
+        // Múltiplas turmas com mesmo nome (ex: duas "EJA I") → desempata pela professora
+        if (professora) {
+          const pn = normT(professora);
+          const words = pn.split(' ').filter((w: string) => w.length > 4 && !ARTIGOS.has(w));
+          // 1ª tentativa: alguma palavra significativa do nome da professora bate
+          for (const c of candidates) {
+            if (c.professora && words.some((w: string) => c.professora.includes(w))) return c.id;
+          }
+          // 2ª tentativa: contains completo
+          for (const c of candidates) {
+            if (c.professora && (c.professora.includes(pn) || pn.includes(c.professora))) return c.id;
+          }
+        }
+        return candidates[0].id; // fallback: primeira
+      };
 
       setStatus('Inserindo alunos...');
       const alunosInsert = alunos.map(a => ({
-        nome: a.nome, turmaId: serieToId.get(a.serie) ?? null,
+        nome: a.nome, turmaId: resolveId(a.serie, a.professora),
         ra: a.ra, numero: 0,
         data_nascimento: a.nascimento,
         data_inicio_matricula: a.dataInicioMatricula,
@@ -716,7 +798,7 @@ export default function Importar() {
       const faltasParaInserir: any[] = [];
       for (const a of alunos) {
         const alunoId = raToId.get(String(a.ra ?? '')) ?? nomeToId.get(a.nomeNorm);
-        const turmaId = serieToId.get(a.serie);
+        const turmaId = resolveId(a.serie, a.professora);
         if (!alunoId || !turmaId) continue;
         for (const [mes, f] of Object.entries(a.faltas)) {
           faltasParaInserir.push({
@@ -794,7 +876,8 @@ export default function Importar() {
           <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 14, color: theme.text }}>📊 Resultado do Cruzamento</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10 }}>
             {[
-              ['🏫 Turmas', preview.turmas],
+              ['🏫 Turmas no arquivo', preview.turmas],
+              [`✅ Turmas reconhecidas`, preview.turmasReconhecidas],
               ['👥 Alunos', preview.alunos],
               ['🟢 Bolsa Família', preview.bolsaFamilia],
               ['📄 Registros Faltas', preview.faltas],
@@ -811,7 +894,7 @@ export default function Importar() {
               style={btn('ghost', { full: true })}>Reanalisar</button>
             <button onClick={importar}
               style={{ ...btn('danger', { full: true }), fontWeight: 700, fontSize: 15 }}>
-              ⚠️ Confirmar Importação (apaga dados anteriores)
+              ✅ Confirmar Importação (preserva turmas e professoras)
             </button>
           </div>
         </div>
