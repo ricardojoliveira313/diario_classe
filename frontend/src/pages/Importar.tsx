@@ -131,9 +131,11 @@ export default function Importar() {
       const allText = texto.replace(/\n/g, ' ');
 
       // Mapa de posição → série + professora (suporta PDFs com múltiplas turmas)
-      // Para no primeiro rótulo de campo (Professora:, Período:, Turno:…) ou no próximo Turma:
+      // Para no primeiro rótulo estatístico (Ativos:, Professora:, Período:…) ou no próximo Turma:
       const turmaPosicoes: Array<{ pos: number; serie: string; professora: string }> = [];
-      const turmaRe = /Turma:\s*(.+?)(?=\s+(?:Professora?|Per[ií]odo|Turno|Modalidade|Escola|Coordenador|Turma)\s*:|Turma:|$)/gi;
+      // PDFs "Relação de Alunos" SED: após o nome da turma vem "Ativos: N"
+      // PDFs "Diário de Classe" SED: após o nome vem "Professora:" ou "Período:"
+      const turmaRe = /Turma:\s*(.+?)(?=\s+(?:Ativos|Transferidos|Abandonos|NCOM|Cadastrados|Sala|NR\.|Professora?|Per[ií]odo|Turno|Modalidade|Escola|Coordenador|Turma)\s*[:.]|Turma:|$)/gi;
       let tmm: RegExpExecArray | null;
       while ((tmm = turmaRe.exec(allText)) !== null) {
         const serie = tmm[1].trim();
@@ -189,7 +191,26 @@ export default function Importar() {
         const afterMatch = after.match(
           /^\s*\S+\s+\S{2}\s+(\d{2}\/\d{2}\/\d{4})\s+(ATIVO|TRAN|REMA|ABAN|N\s?COM|BXTR|NAO\s?COMPARECEU)(?:\s+(\d{2}\/\d{2}\/\d{4}))?\s*(.*?)(?=\s*\d{1,2}\s+\d{1,3}\s+[A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ]|\s*0{3}\d{9}|$)/i
         );
-        if (!afterMatch) continue;
+        const { serie: serieAluno, professora: profAluno } = getSerie(raPos);
+
+        if (!afterMatch) {
+          // Fallback: PDF "Relação de Alunos" SED — colunas em ordem invertida
+          // (datas/situações extraídas antes dos nomes pelo pdfjs). Salva nome+RA+série;
+          // o merge com Excel preencherá nascimento, situação e deficiência via RA.
+          if (!serieAluno) continue; // sem turma identificada, descarta
+          alunos.push({
+            nome, nomeNorm: normalizeStr(nome),
+            ra: parseInt(raStr) || null,
+            nascimento: '',
+            serie: serieAluno,
+            professora: profAluno || getProfessora(raPos),
+            situacao: 'ATIVO', deficiencia: '',
+            bolsaFamilia: false,
+            dataInicioMatricula: '', dataFimMatricula: '', dataMovimentacao: '',
+            nis: '', responsavel: '', faltas: {},
+          });
+          continue;
+        }
 
         const [, nascimento, situacaoRaw, dataMovim, defRaw] = afterMatch;
         const situacao = normalizeSituacao(situacaoRaw.trim());
@@ -198,7 +219,6 @@ export default function Importar() {
         const deficiencia = /^(ATIVO|REMA|TRAN|BXTR|ABAN|N\s?COM|\d{2}\/\d{2}\/\d{4}|$)/i.test(defRawClean)
           ? '' : defRawClean;
         const isAtivo = situacao === 'ATIVO';
-        const { serie: serieAluno, professora: profAluno } = getSerie(raPos);
 
         alunos.push({
           nome, nomeNorm: normalizeStr(nome),
@@ -591,9 +611,12 @@ export default function Importar() {
 
       // ─── Cruzamento ───
       const todosAlunos = new Map<string, AlunoUnificado>();
+      // Chave: RA (quando disponível) para cruzar PDF + Excel mesmo sem data de nascimento
+      const mkKey = (a: AlunoUnificado) =>
+        a.ra ? `RA:${a.ra}` : `${a.nomeNorm}|${a.nascimento}`;
       // Prioridade: Excel primeiro (dados mais completos), depois PDF
       const mergeAluno = (a: AlunoUnificado) => {
-        const key = `${a.nomeNorm}|${a.ra}|${a.nascimento}`;
+        const key = mkKey(a);
         if (todosAlunos.has(key)) {
           const existente = todosAlunos.get(key)!;
           existente.bolsaFamilia = existente.bolsaFamilia || a.bolsaFamilia;
@@ -713,6 +736,13 @@ export default function Importar() {
       .replace(/[-]/g, ' ')
       .replace(/\s+/g, ' ').trim();
 
+    // Remove sufixos verbosos do SED: "1ª ETAPA PRÉ-ESCOLA A MANHA ANUAL" → "1 ETAPA A"
+    const normSerieSED = (s: string) => normT(s)
+      .replace(/\bPRE\s*ESCOLA\b/g, '')
+      .replace(/\b(MANHA|TARDE|NOTURNO|MATUTINO|VESPERTINO|NOITE|ANUAL|INTEGRAL|SEMI\s*INTEGRAL)\b/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
     // Aliases: nomes usados no SED/PDF → nome cadastrado no sistema
     // Ambas as turmas EJA são "EJA I" no banco; o resolveId usa professora para desempatar
     const ALIASES: Record<string, string> = {
@@ -738,16 +768,21 @@ export default function Importar() {
         if (!serieToTurmasList.has(key)) serieToTurmasList.set(key, []);
         serieToTurmasList.get(key)!.push({ id: t.id, professora: normT(t.professora ?? '') });
       }
-      // Matching: aplica alias → exato → prefixo → desempata por professora
+      // Matching: aplica alias → exato → prefixo → versão SED sem sufixos → desempata por professora
       const resolveId = (serie: string, professora?: string): string | null => {
         const aliased = applyAlias(serie);
         const n = normT(aliased);
-        let candidates = serieToTurmasList.get(n) ?? [];
-        if (!candidates.length) {
-          // Prefixo: "1 ANO A MANHA" bate "1 ANO A"
-          for (const [k, v] of serieToTurmasList.entries()) {
-            if (k.startsWith(n) || n.startsWith(k)) { candidates = v; break; }
+        const nSed = normSerieSED(aliased); // versão sem "PRE ESCOLA", "MANHA", "ANUAL" etc.
+        let candidates: Array<{ id: string; professora: string }> = [];
+        // Tenta em ordem: exato → prefixo → exato SED → prefixo SED
+        for (const key of [n, nSed]) {
+          candidates = serieToTurmasList.get(key) ?? [];
+          if (!candidates.length) {
+            for (const [k, v] of serieToTurmasList.entries()) {
+              if (k.startsWith(key) || key.startsWith(k)) { candidates = v; break; }
+            }
           }
+          if (candidates.length) break;
         }
         if (!candidates.length) return null;
         if (candidates.length === 1) return candidates[0].id;
