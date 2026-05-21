@@ -696,7 +696,11 @@ export default function Importar() {
       // Catch-all para nomes SED: "MULTISSERIADA" = Alfabetização, "TERMO" = Pós-Alfa
       const applyAlias2 = (s: string): string => {
         const n = normT2(s);
-        if (ALIASES2[n]) return ALIASES2[n];
+        const nSemSufixo = n
+          .replace(/\bPRE\s*ESCOLA\b/g, '')
+          .replace(/\b(MANHA|TARDE|NOTURNO|MATUTINO|VESPERTINO|NOITE|ANUAL|INTEGRAL)\b/g, '')
+          .replace(/\s+/g, ' ').trim();
+        if (ALIASES2[nSemSufixo]) return ALIASES2[nSemSufixo];
         if (n.includes('MULTISSERIADA')) return 'EJA I';
         if (/\bTERMO\b/.test(n)) return 'EJA I';
         return s;
@@ -772,7 +776,11 @@ export default function Importar() {
     // Catch-all para nomes SED não padronizados: "MULTISSERIADA" e "TERMO" → EJA I
     const applyAlias = (serie: string): string => {
       const n = normT(serie);
-      if (ALIASES[n]) return ALIASES[n];
+      const nSemSufixo = n
+        .replace(/\bPRE\s*ESCOLA\b/g, '')
+        .replace(/\b(MANHA|TARDE|NOTURNO|MATUTINO|VESPERTINO|NOITE|ANUAL|INTEGRAL|SEMI\s*INTEGRAL)\b/g, '')
+        .replace(/\s+/g, ' ').trim();
+      if (ALIASES[nSemSufixo]) return ALIASES[nSemSufixo];
       if (n.includes('MULTISSERIADA')) return 'EJA I';
       if (/\bTERMO\b/.test(n)) return 'EJA I';
       return serie;
