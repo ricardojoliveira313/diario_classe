@@ -78,6 +78,9 @@ interface AlunoUnificado {
   nis: string;
   responsavel: string;
   faltas: Record<number, { faltas: number; frequencia: string }>;
+  // Remanejamento: turma/professor de origem (preenchido no registro ATIVO)
+  turmaOrigem?: string;
+  professoraOrigem?: string;
 }
 
 const normalizeFileName = (s: string) => s.toUpperCase();
@@ -553,24 +556,62 @@ export default function Importar() {
 
       // ─── Cruzamento ───
       const todosAlunos = new Map<string, AlunoUnificado>();
+
+      // Verifica se duas séries são realmente diferentes (não só variações da mesma)
+      const seriesDiferentes = (s1: string, s2: string): boolean => {
+        if (!s1 || !s2) return false;
+        const n1 = normalizeStr(s1);
+        const n2 = normalizeStr(s2);
+        if (n1 === n2) return false;
+        // Se uma é prefixo da outra (ex: "1" é prefixo de "1 ANO A"), é a mesma série
+        if (n1.startsWith(n2) || n2.startsWith(n1)) return false;
+        return true;
+      };
+
       // Prioridade: Excel primeiro (dados mais completos), depois PDF
       const mergeAluno = (a: AlunoUnificado) => {
-        const key = `${a.nomeNorm}|${a.ra}|${a.nascimento}`;
-        if (todosAlunos.has(key)) {
-          const existente = todosAlunos.get(key)!;
+        const keyBase = `${a.nomeNorm}|${a.ra}|${a.nascimento}`;
+        const existente = todosAlunos.get(keyBase);
+
+        if (existente) {
+          // ── Remanejamento: mesmo aluno, séries DIFERENTES e situações ATIVO↔REMA ──
+          // → cria dois registros separados (um por turma)
+          const ehRemanejamento = seriesDiferentes(existente.serie, a.serie) &&
+            ((existente.situacao === 'ATIVO' && a.situacao === 'REMA') ||
+             (existente.situacao === 'REMA' && a.situacao === 'ATIVO'));
+
+          if (ehRemanejamento) {
+            // Garante que o registro na chave BASE é sempre o ATIVO
+            // e o REMA vai para chave com sufixo |REMA
+            if (existente.situacao === 'REMA' && a.situacao === 'ATIVO') {
+              // Existente é REMA: move para sufixo, coloca ATIVO na chave base
+              todosAlunos.delete(keyBase);
+              todosAlunos.set(`${keyBase}|REMA`, existente);
+              todosAlunos.set(keyBase, a);
+            } else {
+              // Existente é ATIVO, novo é REMA: REMA vai para chave com sufixo
+              if (!todosAlunos.has(`${keyBase}|REMA`)) {
+                todosAlunos.set(`${keyBase}|REMA`, a);
+              }
+            }
+            return;
+          }
+
+          // ── Merge normal (mesma série ou série indefinida) ──
           existente.bolsaFamilia = existente.bolsaFamilia || a.bolsaFamilia;
           existente.nis = existente.nis || a.nis;
           existente.responsavel = existente.responsavel || a.responsavel;
           existente.professora = existente.professora || a.professora;
-          existente.situacao = a.situacao !== 'ATIVO' ? a.situacao : existente.situacao;
           existente.deficiencia = existente.deficiencia || a.deficiencia;
           // Prefere a série mais específica: PDF tem "1º ano A", Excel tem só "1"
           if (a.serie && a.serie.length > (existente.serie?.length ?? 0)) {
             existente.serie = a.serie;
           }
+          // Atualiza situação só se o novo for mais específico
+          if (a.situacao !== 'ATIVO') existente.situacao = a.situacao;
           Object.assign(existente.faltas, a.faltas);
         } else {
-          todosAlunos.set(key, a);
+          todosAlunos.set(keyBase, a);
         }
       };
       alunosExcel.forEach(mergeAluno);
@@ -607,21 +648,39 @@ export default function Importar() {
         }
       }
 
-      // Turmas únicas
+      // ── Vincula remanejamentos: registros ATIVO recebem turma/prof de origem ──
+      const raParaAtivo = new Map<string, AlunoUnificado>();
+      for (const a of alunosArr) {
+        if (a.situacao === 'ATIVO' && a.ra) raParaAtivo.set(String(a.ra), a);
+      }
+      for (const a of alunosArr) {
+        if (a.situacao === 'REMA' && a.ra) {
+          const ativo = raParaAtivo.get(String(a.ra));
+          if (ativo && !ativo.turmaOrigem) {
+            // Registro ATIVO sabe de onde o aluno veio
+            ativo.turmaOrigem = a.serie;
+            ativo.professoraOrigem = a.professora;
+          }
+        }
+      }
+
+      // Turmas únicas — inclui AMBAS as turmas de remanejados
       const turmasUnicas = new Map<string, { nome: string; professora: string }>();
       for (const a of alunosArr) {
-        if (!turmasUnicas.has(a.serie)) {
+        if (a.serie && !turmasUnicas.has(a.serie)) {
           turmasUnicas.set(a.serie, { nome: a.serie, professora: a.professora });
         }
       }
 
-      // Conta faltas
+      // Conta faltas e remanejados
       let totalFaltas = 0;
       for (const a of alunosArr) totalFaltas += Object.keys(a.faltas).length;
+      const totalRema = alunosArr.filter(a => a.situacao === 'REMA' && raParaAtivo.has(String(a.ra ?? ''))).length;
 
       const prev = {
         turmas: turmasUnicas.size,
         alunos: alunosArr.length,
+        remanejados: totalRema,
         bolsaFamilia: alunosArr.filter(a => a.bolsaFamilia).length,
         bolsaMapSize: bolsaMap.size,
         arquivos: files.length,
@@ -664,6 +723,8 @@ export default function Importar() {
         deficiencia: a.deficiencia, situacao: a.situacao,
         bolsa_familia: a.bolsaFamilia, professora: a.professora,
         nis: a.nis || null, responsavel: a.responsavel || null,
+        turma_origem: a.turmaOrigem || '',
+        professora_origem: a.professoraOrigem || '',
       }));
 
       await api.bulkInsertAlunos(alunosInsert, (n) => {
@@ -689,7 +750,7 @@ export default function Importar() {
         for (const [mes, f] of Object.entries(a.faltas)) {
           faltasParaInserir.push({
             alunoId, turmaId,
-            mes: Number(mes), ano: 2026,
+            mes: Number(mes), ano: new Date().getFullYear(),
             faltas: f.faltas, frequencia: f.frequencia,
           });
         }
@@ -762,15 +823,16 @@ export default function Importar() {
           <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 14, color: theme.text }}>📊 Resultado do Cruzamento</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10 }}>
             {[
-              ['🏫 Turmas', preview.turmas],
-              ['👥 Alunos', preview.alunos],
-              ['🟢 Bolsa Família', preview.bolsaFamilia],
-              ['📄 Registros Faltas', preview.faltas],
-              ['📂 Arquivos', preview.arquivos],
-            ].map(([label, val]) => (
-              <div key={label as string} style={{ textAlign: 'center', padding: 14, background: theme.primaryBg, borderRadius: theme.radius }}>
-                <div style={{ fontSize: 11, color: theme.textSecondary, marginBottom: 4, fontWeight: 600 }}>{label as string}</div>
-                <div style={{ fontSize: 24, fontWeight: 800, color: theme.primary }}>{val as number}</div>
+              ['🏫 Turmas', preview.turmas, theme.primary],
+              ['👥 Alunos', preview.alunos, theme.primary],
+              ['↩️ Remanejados', preview.remanejados ?? 0, preview.remanejados > 0 ? theme.orange : theme.textMuted],
+              ['🟢 Bolsa Família', preview.bolsaFamilia, theme.success],
+              ['📄 Reg. Frequência', preview.faltas, theme.sky],
+              ['📂 Arquivos', preview.arquivos, theme.textSecondary],
+            ].map(([lbl, val, cor]) => (
+              <div key={lbl as string} style={{ textAlign: 'center', padding: 14, background: theme.primaryBg, borderRadius: theme.radius }}>
+                <div style={{ fontSize: 11, color: theme.textSecondary, marginBottom: 4, fontWeight: 600 }}>{lbl as string}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: cor as string }}>{val as number}</div>
               </div>
             ))}
           </div>

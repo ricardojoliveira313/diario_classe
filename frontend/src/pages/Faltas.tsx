@@ -205,7 +205,23 @@ export default function Faltas() {
                     {a.situacao && a.situacao !== 'ATIVO' && (
                       <span style={{ fontSize: 10, color: SITUACAO_COR[a.situacao] ?? theme.textSecondary, fontWeight: 700 }}>
                         {SITUACAO_LABEL[a.situacao] ?? a.situacao}
+                        {/* Para REMA: mostra para onde foi (se vier de outra turma, mostra origem) */}
+                        {a.situacao === 'REMA' && a.data_movimentacao ? ` em ${a.data_movimentacao}` : ''}
                       </span>
+                    )}
+                    {/* Aluno REMA: era desta turma, foi remanejado */}
+                    {a.situacao === 'REMA' && (
+                      <div style={{ fontSize: 10, color: theme.orange, marginTop: 1 }}>
+                        ↗ Saiu desta turma{a.data_movimentacao ? ` em ${a.data_movimentacao}` : ''}
+                      </div>
+                    )}
+                    {/* Aluno ATIVO que veio de outra turma: mostra a origem */}
+                    {a.situacao === 'ATIVO' && a.turma_origem && (
+                      <div style={{ fontSize: 10, color: theme.orange, fontWeight: 600, marginTop: 1 }}>
+                        ↩ Remanejado(a) de: {a.turma_origem}
+                        {a.professora_origem ? ` — Prof. ${a.professora_origem}` : ''}
+                        {a.data_inicio_matricula ? ` em ${a.data_inicio_matricula}` : ''}
+                      </div>
                     )}
                   </div>
                   <span style={{ textAlign: 'center', fontSize: 13 }}>{a.bolsa_familia ? '✅' : ''}</span>

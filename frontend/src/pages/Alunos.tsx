@@ -342,6 +342,19 @@ export default function Alunos() {
                       {a.deficiencia ? ` · ♿ ${a.deficiencia}` : ''}
                       {turmaId === '__all__' && t ? ` · ${t.nome}` : ''}
                     </div>
+                    {/* Origem do remanejamento — aparece no registro ATIVO */}
+                    {a.turma_origem && (
+                      <div style={{ fontSize: 10, color: theme.orange, fontWeight: 600, marginTop: 2 }}>
+                        ↩ Remanejado(a) de: {a.turma_origem}
+                        {a.professora_origem ? ` (Prof. ${a.professora_origem})` : ''}
+                      </div>
+                    )}
+                    {/* Registro de origem do remanejamento — aparece no registro REMA */}
+                    {a.situacao === 'REMA' && turmaId === '__all__' && (
+                      <div style={{ fontSize: 10, color: theme.orange, fontWeight: 600, marginTop: 2 }}>
+                        ↗ Saiu desta turma (registro histórico)
+                      </div>
+                    )}
                   </div>
                   <span style={{ fontSize: 12, color: theme.textSecondary, fontFamily: 'monospace' }}>
                     {a.ra}{a.dig_ra ? `-${a.dig_ra}` : ''}
