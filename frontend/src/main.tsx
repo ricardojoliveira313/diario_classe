@@ -54,27 +54,31 @@ function AppContent() {
     background: theme.primary,
     boxShadow: scrolled ? theme.shadowMd : 'none',
     transition: 'box-shadow 0.2s ease',
+    userSelect: 'none',
+    WebkitUserSelect: 'none',
   };
 
   const innerStyle: React.CSSProperties = {
     display: 'flex',
     alignItems: 'center',
     gap: 2,
-    maxWidth: 960,
+    maxWidth: 1200,
     margin: '0 auto',
-    padding: '0 8px',
-    minHeight: 48,
+    padding: '0 10px',
+    minHeight: 52,
   };
 
   const linkBase: React.CSSProperties = {
     color: '#bfdbfe',
     textDecoration: 'none',
-    padding: '8px 10px',
+    padding: '10px 12px',
     borderRadius: theme.radius,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: 500,
     transition: 'all 0.15s ease',
     whiteSpace: 'nowrap',
+    userSelect: 'none',
+    WebkitUserSelect: 'none',
   };
 
   const linkActive: React.CSSProperties = {
@@ -89,8 +93,8 @@ function AppContent() {
       <div style={{ minHeight: '100vh', background: theme.bg }}>
         <nav style={navStyle}>
           <div style={innerStyle}>
-            <NavLink to="/" end style={{ color: 'white', fontWeight: 800, marginRight: 6, fontSize: 15, textDecoration: 'none', whiteSpace: 'nowrap', letterSpacing: '-0.3px' }}>
-              📚 Diário
+            <NavLink to="/" end style={{ color: 'white', fontWeight: 800, marginRight: 8, fontSize: 17, textDecoration: 'none', whiteSpace: 'nowrap', letterSpacing: '-0.3px' }}>
+              📚 Diário de Classe
             </NavLink>
 
             {/* Desktop menu */}
@@ -212,7 +216,7 @@ function AppContent() {
           )}
         </nav>
 
-        <div style={{ padding: 16, maxWidth: 960, margin: '0 auto' }}>
+        <div style={{ padding: 20, maxWidth: 1200, margin: '0 auto' }}>
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/importar" element={<Importar />} />

@@ -16,8 +16,8 @@ export function Spinner({ size = 20 }: { size?: number }) {
 export function Loading({ text = 'Carregando...' }: { text?: string }) {
   return (
     <div style={{ textAlign: 'center', marginTop: 48, color: theme.textSecondary }}>
-      <Spinner size={28} />
-      <p style={{ marginTop: 12, fontSize: 14 }}>{text}</p>
+      <Spinner size={32} />
+      <p style={{ marginTop: 12, fontSize: 16 }}>{text}</p>
     </div>
   );
 }
@@ -25,9 +25,9 @@ export function Loading({ text = 'Carregando...' }: { text?: string }) {
 export function EmptyState({ icon, message, action }: { icon: string; message: string; action?: { label: string; href: string } }) {
   return (
     <div style={{ textAlign: 'center', color: theme.textSecondary, marginTop: 60, animation: 'fadeIn 0.3s ease both' }}>
-      <div style={{ fontSize: 48, marginBottom: 12 }}>{icon}</div>
-      <p style={{ fontSize: 15, marginBottom: action ? 12 : 0 }}>{message}</p>
-      {action && <a href={action.href} style={{ color: theme.primary, fontWeight: 600, fontSize: 14 }}>→ {action.label}</a>}
+      <div style={{ fontSize: 56, marginBottom: 12 }}>{icon}</div>
+      <p style={{ fontSize: 17, marginBottom: action ? 12 : 0 }}>{message}</p>
+      {action && <a href={action.href} style={{ color: theme.primary, fontWeight: 600, fontSize: 15 }}>→ {action.label}</a>}
     </div>
   );
 }
@@ -37,14 +37,14 @@ export function StatCard({ label, val, color, sub }: { label: string; val: strin
     <div style={{
       background: theme.card,
       borderRadius: theme.radius,
-      padding: '12px 14px',
+      padding: '14px 16px',
       boxShadow: theme.shadow,
       textAlign: 'center',
       transition: 'transform 0.15s ease, box-shadow 0.15s ease',
     }}>
-      <div style={{ fontSize: 11, color: theme.textSecondary, fontWeight: 600, marginBottom: 2 }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 800, color, lineHeight: 1.2 }}>{val}</div>
-      {sub && <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 2 }}>{sub}</div>}
+      <div style={{ fontSize: 12, color: theme.textSecondary, fontWeight: 600, marginBottom: 3 }}>{label}</div>
+      <div style={{ fontSize: 26, fontWeight: 800, color, lineHeight: 1.2 }}>{val}</div>
+      {sub && <div style={{ fontSize: 12, color: theme.textMuted, marginTop: 3 }}>{sub}</div>}
     </div>
   );
 }
@@ -53,10 +53,10 @@ export function BadgeSituacao({ situacao }: { situacao: string }) {
   const cor = SITUACAO_COR[situacao] ?? theme.textSecondary;
   return (
     <span style={{
-      fontSize: 10, fontWeight: 700,
+      fontSize: 11, fontWeight: 700,
       color: cor, background: `${cor}18`,
       border: `1px solid ${cor}40`,
-      borderRadius: 4, padding: '2px 6px',
+      borderRadius: 4, padding: '3px 8px',
       display: 'inline-block',
     }}>
       {SITUACAO_LABEL[situacao] ?? situacao}
@@ -67,12 +67,12 @@ export function BadgeSituacao({ situacao }: { situacao: string }) {
 export function ErrorBox({ message }: { message: string }) {
   return (
     <div style={{
-      padding: 12,
+      padding: 14,
       background: theme.dangerLight,
       borderRadius: theme.radius,
       border: `1px solid ${theme.danger}`,
       color: theme.danger,
-      fontSize: 13,
+      fontSize: 14,
       animation: 'fadeIn 0.2s ease both',
     }}>
       ⚠️ {message}
@@ -90,8 +90,8 @@ export function SuccessBox({ title, children }: { title: string; children?: Reac
       border: `2px solid ${theme.success}`,
       animation: 'scaleIn 0.3s ease both',
     }}>
-      <div style={{ fontSize: 40 }}>✅</div>
-      <p style={{ fontSize: 16, fontWeight: 700, color: theme.successHover, marginTop: 8 }}>{title}</p>
+      <div style={{ fontSize: 48 }}>✅</div>
+      <p style={{ fontSize: 18, fontWeight: 700, color: theme.successHover, marginTop: 8 }}>{title}</p>
       {children}
     </div>
   );
@@ -118,16 +118,16 @@ export function FileRow({ name, size, onRemove }: { name: string; size: number; 
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 8,
-      padding: '8px 12px', background: theme.card,
-      borderRadius: theme.radius, marginBottom: 4, fontSize: 13,
+      padding: '10px 14px', background: theme.card,
+      borderRadius: theme.radius, marginBottom: 4, fontSize: 14,
       border: `1px solid ${theme.borderLight}`,
     }}>
       <span>{icon}</span>
       <span style={{ flex: 1, fontWeight: 500 }}>{name}</span>
-      <span style={{ fontSize: 11, color: theme.textMuted }}>{(size / 1024).toFixed(0)} KB</span>
+      <span style={{ fontSize: 12, color: theme.textMuted }}>{(size / 1024).toFixed(0)} KB</span>
       <button onClick={onRemove} style={{
         border: 'none', background: 'none', cursor: 'pointer',
-        color: theme.danger, fontSize: 16, padding: '2px 4px', borderRadius: 4,
+        color: theme.danger, fontSize: 18, padding: '4px 6px', borderRadius: 4,
       }}>✕</button>
     </div>
   );

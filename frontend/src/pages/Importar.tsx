@@ -14,11 +14,11 @@ const MES_MAP: Record<string, number> = {
 };
 
 function getMes(sheetName: string, row: any): number {
-  const porAba = MES_MAP[sheetName.toUpperCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '')];
-  if (porAba) return porAba;
   const colMes = String(row['MÊS'] ?? row['MES'] ?? row['Mês'] ?? row['mês'] ?? '')
     .toUpperCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  return MES_MAP[colMes] ?? 0;
+  if (colMes && MES_MAP[colMes]) return MES_MAP[colMes];
+  const porAba = MES_MAP[sheetName.toUpperCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '')];
+  return porAba ?? 0;
 }
 
 function fmtDate(val: any): string {
@@ -78,9 +78,6 @@ interface AlunoUnificado {
   nis: string;
   responsavel: string;
   faltas: Record<number, { faltas: number; frequencia: string }>;
-  // Remanejamento: turma/professor de origem (preenchido no registro ATIVO)
-  turmaOrigem?: string;
-  professoraOrigem?: string;
 }
 
 const normalizeFileName = (s: string) => s.toUpperCase();
@@ -197,8 +194,7 @@ export default function Importar() {
   // ─── PARSE: Excel ───
   function parseExcels(files: File[]): Promise<AlunoUnificado[]> {
     return new Promise((resolve) => {
-      const alunos: AlunoUnificado[] = [];
-      const processados = new Set<string>();
+      const alunosMap = new Map<string, AlunoUnificado>();
       let pendentes = 0;
 
       for (const file of files) {
@@ -212,13 +208,11 @@ export default function Importar() {
             const ws = wb.Sheets[sheetName];
             const rows = XLSX.utils.sheet_to_json(ws, { raw: false, dateNF: 'dd/mm/yyyy' }) as any[];
             for (const row of rows) {
-              // Mapa normalizado: chaves sem acento e em maiúsculas para lookup robusto
               const nr: Record<string, any> = {};
               for (const [k, v] of Object.entries(row)) {
                 nr[normalizeStr(String(k).trim())] = v;
               }
 
-              // Detecta formato: DIARIO CLASSE (tem FREQUÊNCIA) ou SED Relação
               const isDiario = 'FREQUENCIA DOS ALUNOS(A)' in nr;
 
               const nome = String(nr['NOME DO ALUNO'] ?? nr['NOME'] ?? '').trim();
@@ -228,35 +222,49 @@ export default function Importar() {
               const ra = parseInt(String(nr['RA'] ?? '')) || null;
               const nasc = fmtDate(nr['DATA DE NASCIMENTO'] ?? nr['DATA NASCIMENTO']);
               const key = `${normalizeStr(nome)}|${ra}|${nasc}`;
-              if (processados.has(key)) continue;
-              processados.add(key);
-
               const mes = getMes(sheetName, nr);
+
               let faltasQtd = 0;
               let freqTexto = '';
               if (isDiario) {
-                // Remove aspas que o SED coloca nos valores: '"01 Faltas Injustificadas"' → '01 Faltas Injustificadas'
                 const freqRaw = String(nr['FREQUENCIA DOS ALUNOS(A)'] ?? '').trim().replace(/^["']|["']$/g, '').trim();
-                // Extrai número do prefixo: "01 Faltas Injustificadas" → 1, suporta até 22 dias letivos
                 const freqNumM = freqRaw.match(/^(\d{1,2})/);
                 faltasQtd = freqNumM ? Math.min(parseInt(freqNumM[1]), 22) : 0;
-                // Guarda texto especial (TRANSFERIDO, REMANEJADO, etc.) — ignora "Não há faltas no mês"
                 const freqNorm = normalizeStr(freqRaw);
                 freqTexto = !freqNumM && freqRaw && !freqNorm.startsWith('NAO HA FALTAS') ? freqRaw : '';
               }
 
               const situacao = normalizeSituacao(String(nr['SITUACAO'] ?? 'ATIVO'));
               const deficiencia = String(nr['DEFICIENCIA'] ?? '').trim();
+              const professora = String(nr['PROFESSORA'] ?? '').trim();
+              const bolsaFamilia = parseBool(nr['BOLSA FAMILIA'] ?? nr['BOLSA FAMLIA']);
+              const dataInicioMatricula = fmtDate(nr['DATA INICIO MATRICULA'] ?? nr['DATA INICIO MATRICULA']);
+              const dataFimMatricula = fmtDate(nr['DATA FIM MATRICULA']);
+              const dataMovimentacao = fmtDate(nr['DATA MOVIMENTACAO']);
 
-              alunos.push({
+              if (alunosMap.has(key)) {
+                const e = alunosMap.get(key)!;
+                if (mes > 0 && faltasQtd >= 0) {
+                  e.faltas[mes] = { faltas: faltasQtd, frequencia: freqTexto };
+                }
+                if (situacao !== 'ATIVO') e.situacao = situacao;
+                if (professora) e.professora = professora;
+                if (dataInicioMatricula) e.dataInicioMatricula = dataInicioMatricula;
+                if (dataFimMatricula) e.dataFimMatricula = dataFimMatricula;
+                if (dataMovimentacao) e.dataMovimentacao = dataMovimentacao;
+                if (deficiencia) e.deficiencia = deficiencia;
+                continue;
+              }
+
+              alunosMap.set(key, {
                 nome, nomeNorm: normalizeStr(nome),
                 ra, nascimento: nasc,
-                serie, professora: String(nr['PROFESSORA'] ?? '').trim(),
+                serie, professora,
                 situacao, deficiencia,
-                bolsaFamilia: parseBool(nr['BOLSA FAMILIA'] ?? nr['BOLSA FAMLIA']),
-                dataInicioMatricula: fmtDate(nr['DATA INICIO MATRICULA'] ?? nr['DATA INICIO MATRICULA']),
-                dataFimMatricula: fmtDate(nr['DATA FIM MATRICULA']),
-                dataMovimentacao: fmtDate(nr['DATA MOVIMENTACAO']),
+                bolsaFamilia,
+                dataInicioMatricula,
+                dataFimMatricula,
+                dataMovimentacao,
                 nis: '',
                 responsavel: '',
                 faltas: mes > 0 && faltasQtd >= 0 ? { [mes]: { faltas: faltasQtd, frequencia: freqTexto } } : {},
@@ -264,11 +272,11 @@ export default function Importar() {
             }
           }
           pendentes--;
-          if (pendentes === 0) resolve(alunos);
+          if (pendentes === 0) resolve(Array.from(alunosMap.values()));
         };
         reader.readAsArrayBuffer(file);
       }
-      if (pendentes === 0) resolve(alunos);
+      if (pendentes === 0) resolve([]);
     });
   }
 
@@ -556,62 +564,24 @@ export default function Importar() {
 
       // ─── Cruzamento ───
       const todosAlunos = new Map<string, AlunoUnificado>();
-
-      // Verifica se duas séries são realmente diferentes (não só variações da mesma)
-      const seriesDiferentes = (s1: string, s2: string): boolean => {
-        if (!s1 || !s2) return false;
-        const n1 = normalizeStr(s1);
-        const n2 = normalizeStr(s2);
-        if (n1 === n2) return false;
-        // Se uma é prefixo da outra (ex: "1" é prefixo de "1 ANO A"), é a mesma série
-        if (n1.startsWith(n2) || n2.startsWith(n1)) return false;
-        return true;
-      };
-
       // Prioridade: Excel primeiro (dados mais completos), depois PDF
       const mergeAluno = (a: AlunoUnificado) => {
-        const keyBase = `${a.nomeNorm}|${a.ra}|${a.nascimento}`;
-        const existente = todosAlunos.get(keyBase);
-
-        if (existente) {
-          // ── Remanejamento: mesmo aluno, séries DIFERENTES e situações ATIVO↔REMA ──
-          // → cria dois registros separados (um por turma)
-          const ehRemanejamento = seriesDiferentes(existente.serie, a.serie) &&
-            ((existente.situacao === 'ATIVO' && a.situacao === 'REMA') ||
-             (existente.situacao === 'REMA' && a.situacao === 'ATIVO'));
-
-          if (ehRemanejamento) {
-            // Garante que o registro na chave BASE é sempre o ATIVO
-            // e o REMA vai para chave com sufixo |REMA
-            if (existente.situacao === 'REMA' && a.situacao === 'ATIVO') {
-              // Existente é REMA: move para sufixo, coloca ATIVO na chave base
-              todosAlunos.delete(keyBase);
-              todosAlunos.set(`${keyBase}|REMA`, existente);
-              todosAlunos.set(keyBase, a);
-            } else {
-              // Existente é ATIVO, novo é REMA: REMA vai para chave com sufixo
-              if (!todosAlunos.has(`${keyBase}|REMA`)) {
-                todosAlunos.set(`${keyBase}|REMA`, a);
-              }
-            }
-            return;
-          }
-
-          // ── Merge normal (mesma série ou série indefinida) ──
+        const key = `${a.nomeNorm}|${a.ra}|${a.nascimento}`;
+        if (todosAlunos.has(key)) {
+          const existente = todosAlunos.get(key)!;
           existente.bolsaFamilia = existente.bolsaFamilia || a.bolsaFamilia;
           existente.nis = existente.nis || a.nis;
           existente.responsavel = existente.responsavel || a.responsavel;
           existente.professora = existente.professora || a.professora;
+          existente.situacao = a.situacao !== 'ATIVO' ? a.situacao : existente.situacao;
           existente.deficiencia = existente.deficiencia || a.deficiencia;
           // Prefere a série mais específica: PDF tem "1º ano A", Excel tem só "1"
           if (a.serie && a.serie.length > (existente.serie?.length ?? 0)) {
             existente.serie = a.serie;
           }
-          // Atualiza situação só se o novo for mais específico
-          if (a.situacao !== 'ATIVO') existente.situacao = a.situacao;
           Object.assign(existente.faltas, a.faltas);
         } else {
-          todosAlunos.set(keyBase, a);
+          todosAlunos.set(key, a);
         }
       };
       alunosExcel.forEach(mergeAluno);
@@ -648,39 +618,21 @@ export default function Importar() {
         }
       }
 
-      // ── Vincula remanejamentos: registros ATIVO recebem turma/prof de origem ──
-      const raParaAtivo = new Map<string, AlunoUnificado>();
-      for (const a of alunosArr) {
-        if (a.situacao === 'ATIVO' && a.ra) raParaAtivo.set(String(a.ra), a);
-      }
-      for (const a of alunosArr) {
-        if (a.situacao === 'REMA' && a.ra) {
-          const ativo = raParaAtivo.get(String(a.ra));
-          if (ativo && !ativo.turmaOrigem) {
-            // Registro ATIVO sabe de onde o aluno veio
-            ativo.turmaOrigem = a.serie;
-            ativo.professoraOrigem = a.professora;
-          }
-        }
-      }
-
-      // Turmas únicas — inclui AMBAS as turmas de remanejados
+      // Turmas únicas
       const turmasUnicas = new Map<string, { nome: string; professora: string }>();
       for (const a of alunosArr) {
-        if (a.serie && !turmasUnicas.has(a.serie)) {
+        if (!turmasUnicas.has(a.serie)) {
           turmasUnicas.set(a.serie, { nome: a.serie, professora: a.professora });
         }
       }
 
-      // Conta faltas e remanejados
+      // Conta faltas
       let totalFaltas = 0;
       for (const a of alunosArr) totalFaltas += Object.keys(a.faltas).length;
-      const totalRema = alunosArr.filter(a => a.situacao === 'REMA' && raParaAtivo.has(String(a.ra ?? ''))).length;
 
       const prev = {
         turmas: turmasUnicas.size,
         alunos: alunosArr.length,
-        remanejados: totalRema,
         bolsaFamilia: alunosArr.filter(a => a.bolsaFamilia).length,
         bolsaMapSize: bolsaMap.size,
         arquivos: files.length,
@@ -723,8 +675,6 @@ export default function Importar() {
         deficiencia: a.deficiencia, situacao: a.situacao,
         bolsa_familia: a.bolsaFamilia, professora: a.professora,
         nis: a.nis || null, responsavel: a.responsavel || null,
-        turma_origem: a.turmaOrigem || '',
-        professora_origem: a.professoraOrigem || '',
       }));
 
       await api.bulkInsertAlunos(alunosInsert, (n) => {
@@ -750,7 +700,7 @@ export default function Importar() {
         for (const [mes, f] of Object.entries(a.faltas)) {
           faltasParaInserir.push({
             alunoId, turmaId,
-            mes: Number(mes), ano: new Date().getFullYear(),
+            mes: Number(mes), ano: 2026,
             faltas: f.faltas, frequencia: f.frequencia,
           });
         }
@@ -770,8 +720,8 @@ export default function Importar() {
 
   return (
     <div style={{ marginTop: 16, animation: 'fadeIn 0.25s ease both' }}>
-      <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>📥 Importar Dados da SED</h1>
-      <p style={{ color: theme.textSecondary, fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
+      <h1 style={{ fontSize: 26, fontWeight: 800, marginBottom: 4 }}>📥 Importar Dados da SED</h1>
+      <p style={{ color: theme.textSecondary, fontSize: 15, lineHeight: 1.6, marginBottom: 20 }}>
         Selecione todos os arquivos exportados da Secretaria Escolar Digital:
         PDFs (Alunos por Classe) + Excels (Diário de Classe, Turmas-Professores) + <strong>TXT do Bolsa Família</strong>.
         O sistema cruza automaticamente por nome, RA e data de nascimento.
@@ -792,11 +742,11 @@ export default function Importar() {
         onClick={() => fileRef.current?.click()}>
         <input ref={fileRef} type="file" multiple accept=".xlsx,.xls,.pdf,.txt"
           style={{ display: 'none' }} onChange={e => handleFiles(e.target.files)} />
-        <div style={{ fontSize: 36, marginBottom: 8 }}>📂</div>
-        <p style={{ fontWeight: 700, color: theme.primary, marginBottom: 4, fontSize: 15 }}>
+        <div style={{ fontSize: 42, marginBottom: 8 }}>📂</div>
+        <p style={{ fontWeight: 700, color: theme.primary, marginBottom: 4, fontSize: 17 }}>
           {files.length > 0 ? `${files.length} arquivo(s) selecionado(s)` : 'Clique ou arraste arquivos aqui'}
         </p>
-        <p style={{ fontSize: 12, color: theme.textMuted }}>.xlsx .xls .pdf .txt — múltiplos arquivos</p>
+        <p style={{ fontSize: 13, color: theme.textMuted }}>.xlsx .xls .pdf .txt — múltiplos arquivos</p>
       </div>
 
       {/* Lista de arquivos */}
@@ -820,19 +770,18 @@ export default function Importar() {
       {/* Preview do cruzamento */}
       {preview && !sucesso && (
         <div className="scale-in" style={cardStyle({ marginTop: 16, padding: 20 })}>
-          <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 14, color: theme.text }}>📊 Resultado do Cruzamento</h2>
+          <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 14, color: theme.text }}>📊 Resultado do Cruzamento</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10 }}>
             {[
-              ['🏫 Turmas', preview.turmas, theme.primary],
-              ['👥 Alunos', preview.alunos, theme.primary],
-              ['↩️ Remanejados', preview.remanejados ?? 0, preview.remanejados > 0 ? theme.orange : theme.textMuted],
-              ['🟢 Bolsa Família', preview.bolsaFamilia, theme.success],
-              ['📄 Reg. Frequência', preview.faltas, theme.sky],
-              ['📂 Arquivos', preview.arquivos, theme.textSecondary],
-            ].map(([lbl, val, cor]) => (
-              <div key={lbl as string} style={{ textAlign: 'center', padding: 14, background: theme.primaryBg, borderRadius: theme.radius }}>
-                <div style={{ fontSize: 11, color: theme.textSecondary, marginBottom: 4, fontWeight: 600 }}>{lbl as string}</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: cor as string }}>{val as number}</div>
+              ['🏫 Turmas', preview.turmas],
+              ['👥 Alunos', preview.alunos],
+              ['🟢 Bolsa Família', preview.bolsaFamilia],
+              ['📄 Registros Faltas', preview.faltas],
+              ['📂 Arquivos', preview.arquivos],
+            ].map(([label, val]) => (
+                <div key={label as string} style={{ textAlign: 'center', padding: 16, background: theme.primaryBg, borderRadius: theme.radius }}>
+                <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 4, fontWeight: 600 }}>{label as string}</div>
+                <div style={{ fontSize: 28, fontWeight: 800, color: theme.primary }}>{val as number}</div>
               </div>
             ))}
           </div>

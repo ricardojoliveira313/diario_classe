@@ -1,11 +1,9 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
-import { theme, MESES_ABR, MESES, getDiasLetivos, input, row } from '../styles';
+import { theme, MESES_ABR, MESES, DIAS_LETIVOS, input, row } from '../styles';
 import { Loading, EmptyState, StatCard } from '../components';
-import { useAno } from '../AnoContext';
 
 export default function Dashboard() {
-  const { ano } = useAno();
   const [turmas, setTurmas] = useState<any[]>([]);
   const [alunos, setAlunos] = useState<any[]>([]);
   const [faltas, setFaltas] = useState<any[]>([]);
@@ -20,7 +18,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     setLoadingFaltas(true);
-    api.getFaltasMes(mes, ano).then(f => { setFaltas(f); setLoadingFaltas(false); });
+    api.getFaltasMes(mes, 2026).then(f => { setFaltas(f); setLoadingFaltas(false); });
   }, [mes]);
 
   if (loading) return <Loading />;
@@ -31,7 +29,7 @@ export default function Dashboard() {
   const rema = alunos.filter(a => a.situacao === 'REMA').length;
   const bolsa = alunos.filter(a => a.bolsa_familia).length;
   const comDefi = alunos.filter(a => a.deficiencia).length;
-  const dl = getDiasLetivos(mes, ano);
+  const dl = DIAS_LETIVOS[mes] ?? 22;
   const limiteAlerta = Math.ceil(dl * 0.25);
 
   const faltasMap = new Map<string, number>(faltas.map(f => [f.alunoId, f.faltas ?? 0]));
@@ -49,11 +47,11 @@ export default function Dashboard() {
 
   return (
     <div style={{ marginTop: 16, animation: 'fadeIn 0.25s ease both' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: theme.text }}>📊 Dashboard</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+        <h1 style={{ fontSize: 26, fontWeight: 800, color: theme.text }}>📊 Dashboard</h1>
         <select value={mes} onChange={e => setMes(Number(e.target.value))}
           style={{ ...input, width: 'auto', marginBottom: 0 }}>
-          {MESES_ABR.map((m, i) => <option key={i + 1} value={i + 1}>{m} {ano}</option>)}
+          {MESES_ABR.map((m, i) => <option key={i + 1} value={i + 1}>{m} 2026</option>)}
         </select>
       </div>
 
@@ -62,7 +60,7 @@ export default function Dashboard() {
           action={{ label: 'Importar planilha da SED', href: '/importar' }} />
       ) : (
         <div className="fade-in">
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))', gap: 10, marginBottom: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10, marginBottom: 20 }}>
             <StatCard label="Total Alunos" val={total} cor={theme.primary} />
             <StatCard label="Ativos" val={ativos} cor={theme.success} sub={`${((ativos / total) * 100).toFixed(0)}%`} />
             <StatCard label="Remanejados" val={rema} cor={theme.orange} />
@@ -75,7 +73,7 @@ export default function Dashboard() {
           {alertas.length > 0 && (
             <div style={{ background: theme.dangerLight, border: `1px solid ${theme.danger}`, borderRadius: theme.radiusMd, padding: 16, marginBottom: 20 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <h2 style={{ fontSize: 14, fontWeight: 700, color: theme.danger }}>
+                <h2 style={{ fontSize: 16, fontWeight: 700, color: theme.danger }}>
                   ⚠️ Frequência abaixo de 75% — {MESES[mes - 1]} ({alertas.length} alunos)
                 </h2>
                 <span style={{ fontSize: 12, color: theme.textSecondary }}>≥{limiteAlerta} faltas</span>
@@ -88,29 +86,29 @@ export default function Dashboard() {
                   return (
                     <div key={a.id} style={{
                       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      background: theme.card, padding: '10px 14px', borderRadius: theme.radius, fontSize: 13,
+                      background: theme.card, padding: '12px 16px', borderRadius: theme.radius, fontSize: 14,
                       boxShadow: theme.shadowSm,
                     }}>
                       <div>
                         <span style={{ fontWeight: 600 }}>{a.nome}</span>
-                        {a.bolsa_familia && <span style={{ marginLeft: 6, fontSize: 11, color: theme.success, fontWeight: 700 }}>BF</span>}
-                        <div style={{ fontSize: 11, color: theme.textMuted }}>{turma?.nome} · {turma?.professora}</div>
+                        {a.bolsa_familia && <span style={{ marginLeft: 6, fontSize: 12, color: theme.success, fontWeight: 700 }}>BF</span>}
+                        <div style={{ fontSize: 12, color: theme.textMuted }}>{turma?.nome} · {turma?.professora || '—'}</div>
                       </div>
-                      <div style={{ display: 'flex', gap: 14, alignItems: 'center', textAlign: 'right' }}>
+                      <div style={{ display: 'flex', gap: 18, alignItems: 'center', textAlign: 'right' }}>
                         <div>
-                          <div style={{ color: theme.danger, fontWeight: 700, fontSize: 15 }}>{f}</div>
-                          <div style={{ fontSize: 10, color: theme.textMuted }}>faltas</div>
+                          <div style={{ color: theme.danger, fontWeight: 700, fontSize: 17 }}>{f}</div>
+                          <div style={{ fontSize: 11, color: theme.textMuted }}>faltas</div>
                         </div>
                         <div>
-                          <div style={{ fontWeight: 700, fontSize: 15, color: Number(freq) < 75 ? theme.danger : theme.orange }}>{freq}%</div>
-                          <div style={{ fontSize: 10, color: theme.textMuted }}>freq.</div>
+                          <div style={{ fontWeight: 700, fontSize: 17, color: Number(freq) < 75 ? theme.danger : theme.orange }}>{freq}%</div>
+                          <div style={{ fontSize: 11, color: theme.textMuted }}>freq.</div>
                         </div>
                       </div>
                     </div>
                   );
                 })}
                 {alertas.length > 25 && (
-                  <p style={{ fontSize: 12, color: theme.textMuted, textAlign: 'center', marginTop: 4 }}>
+                  <p style={{ fontSize: 13, color: theme.textMuted, textAlign: 'center', marginTop: 4 }}>
                     + mais {alertas.length - 25} alunos — acesse <a href="/faltas" style={{ fontWeight: 600 }}>Faltas</a> por turma
                   </p>
                 )}
@@ -124,9 +122,9 @@ export default function Dashboard() {
           }}>
             <div style={{
               background: `linear-gradient(135deg, ${theme.primary}, ${theme.primaryHover})`,
-              color: 'white', padding: '12px 14px',
-              display: 'grid', gridTemplateColumns: '1fr 110px 44px 44px 44px 56px',
-              gap: 8, fontSize: 12, fontWeight: 700,
+              color: 'white', padding: '12px 16px',
+              display: 'grid', gridTemplateColumns: '1fr 120px 48px 48px 48px 60px',
+              gap: 8, fontSize: 13, fontWeight: 700,
             }}>
               <span>Turma</span><span>Professora</span>
               <span style={{ textAlign: 'center' }}>Total</span><span style={{ textAlign: 'center' }}>Ativos</span>
@@ -136,21 +134,21 @@ export default function Dashboard() {
               <Loading text="Carregando faltas..." />
             ) : (
               statsPorTurma.map((t, i) => (
-                <div key={t.id} style={row(i, { gridTemplateColumns: '1fr 110px 44px 44px 44px 56px', gap: 8 })}>
-                  <span style={{ fontSize: 13, fontWeight: 600 }}>{t.nome}</span>
-                  <span style={{ fontSize: 12, color: theme.textSecondary }}>{t.professora || '—'}</span>
-                  <span style={{ textAlign: 'center', fontSize: 13 }}>{t.total}</span>
-                  <span style={{ textAlign: 'center', fontSize: 13 }}>{t.ativos}</span>
-                  <span style={{ textAlign: 'center', fontSize: 13, color: t.faltas > 0 ? theme.danger : theme.textMuted, fontWeight: t.faltas > 0 ? 700 : 400 }}>{t.faltas}</span>
-                  <span style={{ textAlign: 'center', fontSize: 12, fontWeight: 700, color: t.freq >= 85 ? theme.success : t.freq >= 75 ? theme.orange : theme.danger }}>
+                <div key={t.id} style={row(i, { gridTemplateColumns: '1fr 120px 48px 48px 48px 60px', gap: 8 })}>
+                  <span style={{ fontSize: 14, fontWeight: 600 }}>{t.nome}</span>
+                  <span style={{ fontSize: 13, color: theme.textSecondary }}>{t.professora || '—'}</span>
+                  <span style={{ textAlign: 'center', fontSize: 14 }}>{t.total}</span>
+                  <span style={{ textAlign: 'center', fontSize: 14 }}>{t.ativos}</span>
+                  <span style={{ textAlign: 'center', fontSize: 14, color: t.faltas > 0 ? theme.danger : theme.textMuted, fontWeight: t.faltas > 0 ? 700 : 400 }}>{t.faltas}</span>
+                  <span style={{ textAlign: 'center', fontSize: 13, fontWeight: 700, color: t.freq >= 85 ? theme.success : t.freq >= 75 ? theme.orange : theme.danger }}>
                     {t.freq.toFixed(0)}%
                   </span>
                 </div>
               ))
             )}
-            <div style={{ padding: '10px 14px', background: 'var(--footer-row)', fontSize: 12, color: theme.textSecondary, display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${theme.borderLight}` }}>
+            <div style={{ padding: '10px 16px', background: '#f8fafc', fontSize: 13, color: theme.textSecondary, display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${theme.borderLight}` }}>
               <span>{statsPorTurma.length} turmas</span>
-              <span>{total} alunos · {faltas.reduce((s, f) => s + (f.faltas ?? 0), 0)} faltas em {MESES[mes - 1]} {ano}</span>
+              <span>{total} alunos · {faltas.reduce((s, f) => s + (f.faltas ?? 0), 0)} faltas em {MESES[mes - 1]}</span>
             </div>
           </div>
         </div>

@@ -1,20 +1,14 @@
 import { useEffect, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { api } from '../api';
-import { theme, btn, input, label, MESES, getDiasLetivos, SITUACAO_COR, SITUACAO_LABEL, row, card as cardStyle } from '../styles';
+import { theme, btn, input, label, MESES, DIAS_LETIVOS, SITUACAO_COR, SITUACAO_LABEL, row, card as cardStyle } from '../styles';
 import { Loading, EmptyState, StatCard, Spinner } from '../components';
-import { useAno } from '../AnoContext';
-
-const V = {
-  rowAlerta: 'var(--row-alerta)',
-  footerRow: 'var(--footer-row)',
-};
 
 export default function Faltas() {
-  const { ano } = useAno();
   const [turmas, setTurmas] = useState<any[]>([]);
   const [turmaId, setTurmaId] = useState('');
   const [mes, setMes] = useState(new Date().getMonth() + 1);
+  const [ano] = useState(2026);
   const [alunos, setAlunos] = useState<any[]>([]);
   const [faltas, setFaltas] = useState<Record<string, number>>({});
   const [freqTextos, setFreqTextos] = useState<Record<string, string>>({});
@@ -115,7 +109,7 @@ export default function Faltas() {
   };
 
   const totalFaltas = alunos.reduce((s, a) => s + (faltas[a.id] ?? 0), 0);
-  const dl = getDiasLetivos(mes, ano);
+  const dl = DIAS_LETIVOS[mes] ?? 22;
   const freqGeral = alunos.length > 0
     ? ((dl * alunos.length - totalFaltas) / (dl * alunos.length) * 100).toFixed(1)
     : '0.0';
@@ -128,23 +122,19 @@ export default function Faltas() {
     <div style={{ marginTop: 16, animation: 'fadeIn 0.25s ease both' }}>
       <div style={{
         background: theme.card, borderRadius: theme.radiusMd,
-        padding: 16, marginBottom: 16, boxShadow: theme.shadow,
+        padding: 18, marginBottom: 16, boxShadow: theme.shadow,
         border: `1px solid ${theme.borderLight}`,
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 800 }}>📋 Lançamento de Faltas</h1>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+          <h1 style={{ fontSize: 26, fontWeight: 800 }}>📋 Lançamento de Faltas</h1>
           {alunos.length > 0 && (
             <div style={{ display: 'flex', gap: 6 }}>
-              <button onClick={exportarExcel} style={btn('success', { small: true, outline: true })}>
-                📊 Excel
-              </button>
-              <button onClick={exportarPDF} style={btn('danger', { small: true, outline: true })}>
-                📄 PDF
-              </button>
+              <button onClick={exportarExcel} style={btn('success', { small: true, outline: true })}>📊 Excel</button>
+              <button onClick={exportarPDF} style={btn('danger', { small: true, outline: true })}>📄 PDF</button>
             </div>
           )}
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
           <div>
             <label style={label}>Turma</label>
             <select style={input} value={turmaId} onChange={e => setTurmaId(e.target.value)}>
@@ -159,7 +149,7 @@ export default function Faltas() {
           </div>
         </div>
         {turma?.professora && (
-          <div style={{ marginTop: 8, fontSize: 13, color: theme.textSecondary }}>
+          <div style={{ marginTop: 10, fontSize: 14, color: theme.textSecondary }}>
             👩‍🏫 Prof. {turma.professora}
           </div>
         )}
@@ -171,23 +161,23 @@ export default function Faltas() {
 
       {alunos.length > 0 && !loading && (
         <div className="fade-in">
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: 10, marginBottom: 14 }}>
             <StatCard label="Dias Letivos" val={dl} cor={theme.primary} />
             <StatCard label="Total Faltas" val={totalFaltas} cor={theme.danger} />
             <StatCard label="Freq. Geral" val={`${freqGeral}%`} cor={Number(freqGeral) >= 85 ? theme.success : theme.danger} />
             <StatCard label="⚠️ Alertas" val={alertas.length} cor={alertas.length > 0 ? theme.danger : theme.textMuted} />
           </div>
 
-          <div style={{ fontSize: 11, color: theme.textMuted, marginBottom: 10, textAlign: 'right' }}>
+          <div style={{ fontSize: 12, color: theme.textMuted, marginBottom: 10, textAlign: 'right' }}>
             ⚠️ Alerta: ≥ {limiteAlerta} faltas (&lt;75% frequência)
           </div>
 
           <div style={cardStyle({ marginBottom: 14 })}>
             <div style={{
               background: `linear-gradient(135deg, ${theme.primary}, ${theme.primaryHover})`,
-              color: 'white', padding: '10px 16px',
-              display: 'grid', gridTemplateColumns: '36px 1fr 28px 100px 55px',
-              gap: 8, fontSize: 12, fontWeight: 600,
+              color: 'white', padding: '12px 16px',
+              display: 'grid', gridTemplateColumns: '40px 1fr 30px 110px 60px',
+              gap: 8, fontSize: 13, fontWeight: 600,
             }}>
               <span>#</span><span>Aluno</span><span title="Bolsa Família">💚</span>
               <span style={{ textAlign: 'center' }}>Faltas</span><span style={{ textAlign: 'center' }}>%</span>
@@ -198,64 +188,48 @@ export default function Faltas() {
               const freq = (dl - faltasAluno) / dl * 100;
               return (
                 <div key={a.id} style={{
-                    ...row(i, { gridTemplateColumns: '36px 1fr 28px 100px 55px', gap: 8, padding: '9px 16px' }),
-                  background: emAlerta ? V.rowAlerta : undefined,
+                    ...row(i, { gridTemplateColumns: '40px 1fr 30px 110px 60px', gap: 8, padding: '10px 16px' }),
+                  background: emAlerta ? '#fff1f2' : i % 2 === 0 ? 'white' : '#f8fafc',
                 }}>
-                  <span style={{ fontSize: 12, color: theme.textMuted }}>{a.numero || i + 1}</span>
+                  <span style={{ fontSize: 13, color: theme.textMuted }}>{a.numero || i + 1}</span>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
                       {emAlerta && <span title="Frequência abaixo de 75%">⚠️</span>}
                       {a.nome}
                     </div>
                     {a.situacao && a.situacao !== 'ATIVO' && (
-                      <span style={{ fontSize: 10, color: SITUACAO_COR[a.situacao] ?? theme.textSecondary, fontWeight: 700 }}>
+                      <span style={{ fontSize: 11, color: SITUACAO_COR[a.situacao] ?? theme.textSecondary, fontWeight: 700 }}>
                         {SITUACAO_LABEL[a.situacao] ?? a.situacao}
-                        {/* Para REMA: mostra para onde foi (se vier de outra turma, mostra origem) */}
-                        {a.situacao === 'REMA' && a.data_movimentacao ? ` em ${a.data_movimentacao}` : ''}
                       </span>
                     )}
-                    {/* Aluno REMA: era desta turma, foi remanejado */}
-                    {a.situacao === 'REMA' && (
-                      <div style={{ fontSize: 10, color: theme.orange, marginTop: 1 }}>
-                        ↗ Saiu desta turma{a.data_movimentacao ? ` em ${a.data_movimentacao}` : ''}
-                      </div>
-                    )}
-                    {/* Aluno ATIVO que veio de outra turma: mostra a origem */}
-                    {a.situacao === 'ATIVO' && a.turma_origem && (
-                      <div style={{ fontSize: 10, color: theme.orange, fontWeight: 600, marginTop: 1 }}>
-                        ↩ Remanejado(a) de: {a.turma_origem}
-                        {a.professora_origem ? ` — Prof. ${a.professora_origem}` : ''}
-                        {a.data_inicio_matricula ? ` em ${a.data_inicio_matricula}` : ''}
-                      </div>
-                    )}
                   </div>
-                  <span style={{ textAlign: 'center', fontSize: 13 }}>{a.bolsa_familia ? '✅' : ''}</span>
+                  <span style={{ textAlign: 'center', fontSize: 14 }}>{a.bolsa_familia ? '✅' : ''}</span>
                   {freqTextos[a.id] ? (
                     <span style={{
-                      fontSize: 10, color: theme.purple, fontWeight: 700, textAlign: 'center',
-                      padding: '2px 6px', background: theme.purpleLight, borderRadius: 4, display: 'inline-block',
+                      fontSize: 11, color: theme.purple, fontWeight: 700, textAlign: 'center',
+                      padding: '3px 8px', background: theme.purpleLight, borderRadius: 4, display: 'inline-block',
                     }}>
                       {freqTextos[a.id]}
                     </span>
                   ) : (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
                       <button
                         onClick={() => setFalta(a.id, faltasAluno - 1)}
                         style={{
-                          width: 30, height: 30, borderRadius: 8,
+                          width: 34, height: 34, borderRadius: 8,
                           border: `1.5px solid ${theme.border}`,
-                          background: 'var(--input-bg)',
-                          cursor: 'pointer', fontWeight: 700, fontSize: 18,
+                          background: '#f8fafc',
+                          cursor: 'pointer', fontWeight: 700, fontSize: 20,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           transition: 'all 0.15s ease', color: theme.danger,
                           lineHeight: 1,
                         }}
                         onMouseEnter={e => { e.currentTarget.style.background = theme.dangerLight; e.currentTarget.style.borderColor = theme.danger; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = 'var(--input-bg)'; e.currentTarget.style.borderColor = theme.border; }}>
+                        onMouseLeave={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = theme.border; }}>
                         −
                       </button>
                       <span style={{
-                        width: 32, textAlign: 'center', fontWeight: 800, fontSize: 17,
+                        width: 36, textAlign: 'center', fontWeight: 800, fontSize: 19,
                         color: faltasAluno > 0 ? theme.danger : theme.text,
                       }}>
                         {faltasAluno}
@@ -263,44 +237,44 @@ export default function Faltas() {
                       <button
                         onClick={() => setFalta(a.id, faltasAluno + 1)}
                         style={{
-                          width: 30, height: 30, borderRadius: 8,
+                          width: 34, height: 34, borderRadius: 8,
                           border: `1.5px solid ${theme.border}`,
-                          background: 'var(--input-bg)',
-                          cursor: 'pointer', fontWeight: 700, fontSize: 18,
+                          background: '#f8fafc',
+                          cursor: 'pointer', fontWeight: 700, fontSize: 20,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           transition: 'all 0.15s ease', color: theme.success,
                           lineHeight: 1,
                         }}
                         onMouseEnter={e => { e.currentTarget.style.background = theme.successLight; e.currentTarget.style.borderColor = theme.success; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = 'var(--input-bg)'; e.currentTarget.style.borderColor = theme.border; }}>
+                        onMouseLeave={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = theme.border; }}>
                         +
                       </button>
                     </div>
                   )}
-                  <span style={{ textAlign: 'center', fontWeight: 700, fontSize: 13, color: freq >= 85 ? theme.success : freq >= 75 ? theme.orange : theme.danger }}>
+                  <span style={{ textAlign: 'center', fontWeight: 700, fontSize: 14, color: freq >= 85 ? theme.success : freq >= 75 ? theme.orange : theme.danger }}>
                     {freq.toFixed(0)}%
                   </span>
                 </div>
               );
             })}
-            <div style={{ padding: '10px 16px', display: 'grid', gridTemplateColumns: '40px 1fr 110px 55px', gap: 8, background: V.footerRow, fontWeight: 700, borderTop: `1px solid ${theme.borderLight}` }}>
-              <span></span><span style={{ fontSize: 13 }}>Total</span>
-              <span style={{ textAlign: 'center', color: theme.danger, fontSize: 13 }}>{totalFaltas} faltas</span>
-              <span style={{ textAlign: 'center', fontSize: 13 }}>{freqGeral}%</span>
+            <div style={{ padding: '12px 16px', display: 'grid', gridTemplateColumns: '45px 1fr 115px 60px', gap: 8, background: '#f8fafc', fontWeight: 700, borderTop: `1px solid ${theme.borderLight}` }}>
+              <span></span><span style={{ fontSize: 14 }}>Total</span>
+              <span style={{ textAlign: 'center', color: theme.danger, fontSize: 14 }}>{totalFaltas} faltas</span>
+              <span style={{ textAlign: 'center', fontSize: 14 }}>{freqGeral}%</span>
             </div>
           </div>
 
           <button
             style={{
               ...btn('primary', { full: true }),
-              padding: '13px', fontSize: 16,
+              padding: '14px', fontSize: 17,
               background: saved ? theme.success : theme.primary,
               transition: 'all 0.2s ease',
               borderRadius: theme.radiusMd,
             }}
             onClick={salvar} disabled={saving}
           >
-            {saving ? <><Spinner size={18} /> Salvando...</> : saved ? '✅ Salvo!' : '💾 Salvar Faltas'}
+            {saving ? <><Spinner size={20} /> Salvando...</> : saved ? '✅ Salvo!' : '💾 Salvar Faltas'}
           </button>
         </div>
       )}
