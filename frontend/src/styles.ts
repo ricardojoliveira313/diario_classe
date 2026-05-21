@@ -74,6 +74,7 @@ export const input: React.CSSProperties = {
   width: '100%',
   fontSize: 15,
   background: 'var(--input-bg)',
+  color: 'var(--text)',
   outline: 'none',
   transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
 };

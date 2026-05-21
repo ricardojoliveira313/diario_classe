@@ -130,21 +130,35 @@ export default function Importar() {
       const allText = texto.replace(/\n/g, ' ').replace(/\s{2,}/g, ' ');
 
       // Mapa de posição → série (suporta PDFs com múltiplas turmas)
+      // Para no primeiro rótulo de campo (Professora:, Período:, Turno:…) ou no próximo Turma:
       const turmaPosicoes: Array<{ pos: number; serie: string }> = [];
-      const turmaRe = /Turma:\s*([^T\n]{3,80}?)(?=\s{2,}|Turma:|$)/gi;
+      const turmaRe = /Turma:\s*(.+?)(?=\s+(?:Professora?|Per[ií]odo|Turno|Modalidade|Escola|Coordenador|Turma)\s*:|Turma:|$)/gi;
       let tmm: RegExpExecArray | null;
       while ((tmm = turmaRe.exec(allText)) !== null) {
         turmaPosicoes.push({ pos: tmm.index, serie: tmm[1].trim() });
       }
-      // Fallback: turma única
+      // Fallback: turma única — captura até o primeiro rótulo de campo ou fim
       if (!turmaPosicoes.length) {
-        const t = allText.match(/Turma:\s*(.+?)(?:\s{2,}|$)/i);
+        const t = allText.match(/Turma:\s*(.+?)(?=\s+[A-Za-záàãâéêíóôõúüçÁÀÃÂÉÊÍÓÔÕÚÜÇ]{4,}\s*:|$)/i);
         if (t) turmaPosicoes.push({ pos: 0, serie: t[1].trim() });
       }
       const getSerie = (raPos: number) => {
         let s = '';
         for (const t of turmaPosicoes) { if (t.pos <= raPos) s = t.serie; else break; }
         return s;
+      };
+
+      // Mapa de posição → professora (extrai do próprio PDF)
+      const professoresPosicoes: Array<{ pos: number; prof: string }> = [];
+      const profRe = /Professora?:\s*([A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ][A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ\s'-]{3,}?)(?=\s+(?:Professora?|Per[ií]odo|Turno|Modalidade|Escola|Turma)\s*:|Turma:|$)/gi;
+      let pmm: RegExpExecArray | null;
+      while ((pmm = profRe.exec(allText)) !== null) {
+        professoresPosicoes.push({ pos: pmm.index, prof: pmm[1].trim() });
+      }
+      const getProfessora = (raPos: number) => {
+        let p = '';
+        for (const pt of professoresPosicoes) { if (pt.pos <= raPos) p = pt.prof; else break; }
+        return p;
       };
 
       // Âncora nos RAs de 12 dígitos (padrão SED: 000XXXXXXXXX)
@@ -162,16 +176,20 @@ export default function Importar() {
         const nome = nomeMatch[1].replace(/^\d{1,2}\s+\d{1,3}\s+/, '').trim();
         if (!nome || nome.length < 4) continue;
 
-        // ── Campos após o RA: [dig_ra] [UF] [nasc] [situação] [data_movim] [deficiência] ──
-        const after = allText.substring(raPos + 12, raPos + 320);
+        // ── Campos após o RA: [dig_ra] [UF] [nasc] [situação] [data_movim?] [deficiência] ──
+        // A data de movimentação é OPCIONAL — alunos ATIVO podem não ter data de movimentação
+        const after = allText.substring(raPos + 12, raPos + 400);
         const afterMatch = after.match(
-          /^\s*\S+\s+\S{2}\s+(\d{2}\/\d{2}\/\d{4})\s+(ATIVO|TRAN|REMA|ABAN|N\s?COM|BXTR|NAO\s?COMPARECEU)\s+(\d{2}\/\d{2}\/\d{4})\s*(.*?)(?=\s*\d{1,2}\s+\d{1,3}\s+[A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ]|\s*0{3}\d{9}|$)/i
+          /^\s*\S+\s+\S{2}\s+(\d{2}\/\d{2}\/\d{4})\s+(ATIVO|TRAN|REMA|ABAN|N\s?COM|BXTR|NAO\s?COMPARECEU)(?:\s+(\d{2}\/\d{2}\/\d{4}))?\s*(.*?)(?=\s*\d{1,2}\s+\d{1,3}\s+[A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ]|\s*0{3}\d{9}|$)/i
         );
         if (!afterMatch) continue;
 
         const [, nascimento, situacaoRaw, dataMovim, defRaw] = afterMatch;
         const situacao = normalizeSituacao(situacaoRaw.trim());
-        const deficiencia = defRaw.trim().replace(/\s+/g, ' ');
+        // Limpa deficiência: remove textos genéricos que não são deficiências reais
+        const defRawClean = (defRaw ?? '').trim().replace(/\s+/g, ' ');
+        const deficiencia = /^(ATIVO|REMA|TRAN|BXTR|ABAN|N\s?COM|\d{2}\/\d{2}\/\d{4}|$)/i.test(defRawClean)
+          ? '' : defRawClean;
         const isAtivo = situacao === 'ATIVO';
 
         alunos.push({
@@ -179,11 +197,12 @@ export default function Importar() {
           ra: parseInt(raStr) || null,
           nascimento,
           serie: getSerie(raPos),
-          professora: '', situacao, deficiencia,
+          professora: getProfessora(raPos),
+          situacao, deficiencia,
           bolsaFamilia: false,
           dataInicioMatricula: '',
-          dataFimMatricula: isAtivo ? dataMovim : '',
-          dataMovimentacao: isAtivo ? '' : dataMovim,
+          dataFimMatricula: isAtivo ? (dataMovim ?? '') : '',
+          dataMovimentacao: isAtivo ? '' : (dataMovim ?? ''),
           nis: '', responsavel: '', faltas: {},
         });
       }
@@ -618,11 +637,13 @@ export default function Importar() {
         }
       }
 
-      // Turmas únicas
+      // Turmas únicas — prefere professora não-vazia
       const turmasUnicas = new Map<string, { nome: string; professora: string }>();
       for (const a of alunosArr) {
         if (!turmasUnicas.has(a.serie)) {
           turmasUnicas.set(a.serie, { nome: a.serie, professora: a.professora });
+        } else if (a.professora && !turmasUnicas.get(a.serie)!.professora) {
+          turmasUnicas.get(a.serie)!.professora = a.professora;
         }
       }
 
@@ -700,7 +721,7 @@ export default function Importar() {
         for (const [mes, f] of Object.entries(a.faltas)) {
           faltasParaInserir.push({
             alunoId, turmaId,
-            mes: Number(mes), ano: 2026,
+            mes: Number(mes), ano: new Date().getFullYear(),
             faltas: f.faltas, frequencia: f.frequencia,
           });
         }
@@ -733,12 +754,12 @@ export default function Importar() {
         borderRadius: theme.radiusMd,
         padding: files.length > 0 ? 16 : 48,
         textAlign: 'center', marginBottom: 16,
-        background: '#f8fafc', cursor: 'pointer',
+        background: 'var(--row-odd)', cursor: 'pointer',
         transition: 'border-color 0.2s ease, background 0.2s ease',
       }}
         onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = theme.primary; e.currentTarget.style.background = theme.primaryBg; }}
-        onDragLeave={e => { e.currentTarget.style.borderColor = theme.border; e.currentTarget.style.background = '#f8fafc'; }}
-        onDrop={e => { e.preventDefault(); e.currentTarget.style.borderColor = theme.border; e.currentTarget.style.background = '#f8fafc'; handleFiles(e.dataTransfer.files); }}
+        onDragLeave={e => { e.currentTarget.style.borderColor = theme.border; e.currentTarget.style.background = 'var(--row-odd)'; }}
+        onDrop={e => { e.preventDefault(); e.currentTarget.style.borderColor = theme.border; e.currentTarget.style.background = 'var(--row-odd)'; handleFiles(e.dataTransfer.files); }}
         onClick={() => fileRef.current?.click()}>
         <input ref={fileRef} type="file" multiple accept=".xlsx,.xls,.pdf,.txt"
           style={{ display: 'none' }} onChange={e => handleFiles(e.target.files)} />
