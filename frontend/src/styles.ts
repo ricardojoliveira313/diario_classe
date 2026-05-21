@@ -116,7 +116,16 @@ export const SITUACOES = ['ATIVO', 'REMA', 'BXTR', 'TRAN', 'N COM', 'ABAN'];
 export const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 export const MESES_ABR = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 
-export const DIAS_LETIVOS: Record<number, number> = {
-  1: 4, 2: 13, 3: 22, 4: 18, 5: 20, 6: 21,
-  7: 9, 8: 21, 9: 22, 10: 18, 11: 20, 12: 17,
+// Calendário letivo por ano e mês — atualize anualmente
+export const DIAS_LETIVOS_ANO: Record<number, Record<number, number>> = {
+  2025: { 1: 0, 2: 19, 3: 21, 4: 19, 5: 21, 6: 20, 7: 10, 8: 21, 9: 22, 10: 19, 11: 20, 12: 15 },
+  2026: { 1: 4, 2: 13, 3: 22, 4: 18, 5: 20, 6: 21, 7: 9, 8: 21, 9: 22, 10: 18, 11: 20, 12: 17 },
+  2027: { 1: 0, 2: 20, 3: 23, 4: 18, 5: 21, 6: 20, 7: 10, 8: 22, 9: 22, 10: 20, 11: 20, 12: 14 },
 };
+
+export function getDiasLetivos(mes: number, ano: number): number {
+  return (DIAS_LETIVOS_ANO[ano] ?? DIAS_LETIVOS_ANO[2026])[mes] ?? 22;
+}
+
+// Compatibilidade retroativa
+export const DIAS_LETIVOS: Record<number, number> = DIAS_LETIVOS_ANO[2026];

@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { api } from '../api';
-import { theme, btn, input, label, MESES, DIAS_LETIVOS, SITUACAO_COR, SITUACAO_LABEL, row, card as cardStyle } from '../styles';
+import { theme, btn, input, label, MESES, getDiasLetivos, SITUACAO_COR, SITUACAO_LABEL, row, card as cardStyle } from '../styles';
 import { Loading, EmptyState, StatCard, Spinner } from '../components';
+import { useAno } from '../AnoContext';
 
 export default function Faltas() {
+  const { ano } = useAno();
   const [turmas, setTurmas] = useState<any[]>([]);
   const [turmaId, setTurmaId] = useState('');
   const [mes, setMes] = useState(new Date().getMonth() + 1);
-  const [ano] = useState(2026);
   const [alunos, setAlunos] = useState<any[]>([]);
   const [faltas, setFaltas] = useState<Record<string, number>>({});
   const [freqTextos, setFreqTextos] = useState<Record<string, string>>({});
@@ -109,7 +110,7 @@ export default function Faltas() {
   };
 
   const totalFaltas = alunos.reduce((s, a) => s + (faltas[a.id] ?? 0), 0);
-  const dl = DIAS_LETIVOS[mes] ?? 22;
+  const dl = getDiasLetivos(mes, ano);
   const freqGeral = alunos.length > 0
     ? ((dl * alunos.length - totalFaltas) / (dl * alunos.length) * 100).toFixed(1)
     : '0.0';
