@@ -30,6 +30,9 @@ CREATE TABLE IF NOT EXISTS "Aluno" (
   professora            TEXT DEFAULT '',
   nis                   TEXT DEFAULT NULL,
   responsavel           TEXT DEFAULT NULL,
+  -- Remanejamento: turma/professor de origem quando aluno foi remanejado
+  turma_origem          TEXT DEFAULT '',
+  professora_origem     TEXT DEFAULT '',
   created_at            TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -72,6 +75,9 @@ ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS professora            TEXT DEFAULT 
 ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS numero                INTEGER DEFAULT 0;
 ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS nis                   TEXT DEFAULT NULL;
 ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS responsavel           TEXT DEFAULT NULL;
+-- Remanejamento (novas colunas)
+ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS turma_origem          TEXT DEFAULT '';
+ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS professora_origem     TEXT DEFAULT '';
 
 ALTER TABLE "Turma" ADD COLUMN IF NOT EXISTS professora TEXT DEFAULT '';
 ALTER TABLE "Turma" ADD COLUMN IF NOT EXISTS periodo    TEXT DEFAULT '';
