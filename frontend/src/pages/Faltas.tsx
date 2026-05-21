@@ -5,6 +5,11 @@ import { theme, btn, input, label, MESES, getDiasLetivos, SITUACAO_COR, SITUACAO
 import { Loading, EmptyState, StatCard, Spinner } from '../components';
 import { useAno } from '../AnoContext';
 
+const V = {
+  rowAlerta: 'var(--row-alerta)',
+  footerRow: 'var(--footer-row)',
+};
+
 export default function Faltas() {
   const { ano } = useAno();
   const [turmas, setTurmas] = useState<any[]>([]);
@@ -194,7 +199,7 @@ export default function Faltas() {
               return (
                 <div key={a.id} style={{
                     ...row(i, { gridTemplateColumns: '36px 1fr 28px 100px 55px', gap: 8, padding: '9px 16px' }),
-                  background: emAlerta ? '#fff1f2' : i % 2 === 0 ? 'white' : '#f8fafc',
+                  background: emAlerta ? V.rowAlerta : undefined,
                 }}>
                   <span style={{ fontSize: 12, color: theme.textMuted }}>{a.numero || i + 1}</span>
                   <div>
@@ -239,14 +244,14 @@ export default function Faltas() {
                         style={{
                           width: 30, height: 30, borderRadius: 8,
                           border: `1.5px solid ${theme.border}`,
-                          background: '#f8fafc',
+                          background: 'var(--input-bg)',
                           cursor: 'pointer', fontWeight: 700, fontSize: 18,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           transition: 'all 0.15s ease', color: theme.danger,
                           lineHeight: 1,
                         }}
                         onMouseEnter={e => { e.currentTarget.style.background = theme.dangerLight; e.currentTarget.style.borderColor = theme.danger; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = theme.border; }}>
+                        onMouseLeave={e => { e.currentTarget.style.background = 'var(--input-bg)'; e.currentTarget.style.borderColor = theme.border; }}>
                         −
                       </button>
                       <span style={{
@@ -260,14 +265,14 @@ export default function Faltas() {
                         style={{
                           width: 30, height: 30, borderRadius: 8,
                           border: `1.5px solid ${theme.border}`,
-                          background: '#f8fafc',
+                          background: 'var(--input-bg)',
                           cursor: 'pointer', fontWeight: 700, fontSize: 18,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           transition: 'all 0.15s ease', color: theme.success,
                           lineHeight: 1,
                         }}
                         onMouseEnter={e => { e.currentTarget.style.background = theme.successLight; e.currentTarget.style.borderColor = theme.success; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = theme.border; }}>
+                        onMouseLeave={e => { e.currentTarget.style.background = 'var(--input-bg)'; e.currentTarget.style.borderColor = theme.border; }}>
                         +
                       </button>
                     </div>
@@ -278,7 +283,7 @@ export default function Faltas() {
                 </div>
               );
             })}
-            <div style={{ padding: '10px 16px', display: 'grid', gridTemplateColumns: '40px 1fr 110px 55px', gap: 8, background: '#f8fafc', fontWeight: 700, borderTop: `1px solid ${theme.borderLight}` }}>
+            <div style={{ padding: '10px 16px', display: 'grid', gridTemplateColumns: '40px 1fr 110px 55px', gap: 8, background: V.footerRow, fontWeight: 700, borderTop: `1px solid ${theme.borderLight}` }}>
               <span></span><span style={{ fontSize: 13 }}>Total</span>
               <span style={{ textAlign: 'center', color: theme.danger, fontSize: 13 }}>{totalFaltas} faltas</span>
               <span style={{ textAlign: 'center', fontSize: 13 }}>{freqGeral}%</span>

@@ -4,6 +4,16 @@ import { api } from '../api';
 import { theme, btn, input, label, SITUACAO_COR, SITUACAO_LABEL, SITUACOES, card as cardStyle, row } from '../styles';
 import { Loading, EmptyState, StatCard, Spinner, BadgeSituacao } from '../components';
 
+// CSS vars — funcionam em light e dark mode
+const V = {
+  rowHover: 'var(--row-hover)',
+  rowEven: 'var(--row-even)',
+  rowOdd: 'var(--row-odd)',
+  editBg: 'var(--edit-bg)',
+  editBorder: 'var(--edit-border)',
+  footerRow: 'var(--footer-row)',
+};
+
 export default function Alunos() {
   const [turmas, setTurmas] = useState<any[]>([]);
   const [turmaId, setTurmaId] = useState('__all__');
@@ -325,8 +335,8 @@ export default function Alunos() {
                     cursor: modoSelecao ? 'pointer' : 'default',
                   })}
                   onClick={() => modoSelecao && toggleSelecao(a.id)}
-                  onMouseEnter={e => { if (editandoId !== a.id && !isSelected) e.currentTarget.style.background = '#f1f5f9'; }}
-                  onMouseLeave={e => { if (editandoId !== a.id && !isSelected) e.currentTarget.style.background = i % 2 === 0 ? '#fff' : '#f8fafc'; }}
+                  onMouseEnter={e => { if (editandoId !== a.id && !isSelected) e.currentTarget.style.background = V.rowHover; }}
+                  onMouseLeave={e => { if (editandoId !== a.id && !isSelected) e.currentTarget.style.background = i % 2 === 0 ? V.rowEven : V.rowOdd; }}
                 >
                   {modoSelecao && (
                     <input type="checkbox" checked={isSelected} onChange={() => toggleSelecao(a.id)}
@@ -374,8 +384,8 @@ export default function Alunos() {
 
                 {editandoId === a.id && !modoSelecao && (
                   <div className="slide-down" style={{
-                    padding: '12px 14px', background: '#fffbeb',
-                    borderBottom: `1px solid #fde68a`,
+                    padding: '12px 14px', background: V.editBg,
+                    borderBottom: `1px solid ${V.editBorder}`,
                     display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap',
                     borderLeft: `3px solid ${theme.warning}`,
                   }}>
@@ -403,7 +413,7 @@ export default function Alunos() {
             );
           })}
 
-          <div style={{ padding: '8px 14px', background: '#f8fafc', fontSize: 12, color: theme.textSecondary, borderTop: `1px solid ${theme.borderLight}` }}>
+          <div style={{ padding: '8px 14px', background: V.footerRow, fontSize: 12, color: theme.textSecondary, borderTop: `1px solid ${theme.borderLight}` }}>
             <span style={{ fontWeight: 600 }}>{alunosFiltrados.length}</span> de <span style={{ fontWeight: 600 }}>{alunos.length}</span> aluno(s)
             {!modoSelecao && ' · Clique na situação para alterar'}
             {modoSelecao && selecionados.size > 0 && ` · ${selecionados.size} selecionado(s)`}

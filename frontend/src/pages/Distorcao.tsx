@@ -278,7 +278,7 @@ export default function Distorcao() {
                 {filtrados.map((a, i) => (
                   <div key={a.id} style={row(i, {
                     gridTemplateColumns: '32px 1fr 80px 70px 90px 100px', gap: 8,
-                    background: i % 2 === 0 ? '#fff5f5' : '#fff',
+                    background: i % 2 === 0 ? 'var(--row-alerta)' : 'var(--row-even)',
                   })}>
                     <span style={{ fontSize: 12, color: theme.textMuted }}>{i + 1}</span>
                     <div>
@@ -307,7 +307,7 @@ export default function Distorcao() {
                   </div>
                 ))}
 
-                <div style={{ padding: '8px 14px', background: '#f8fafc', borderTop: `1px solid ${theme.borderLight}`, fontSize: 12, color: theme.textSecondary }}>
+                <div style={{ padding: '8px 14px', background: 'var(--footer-row)', borderTop: `1px solid ${theme.borderLight}`, fontSize: 12, color: theme.textSecondary }}>
                   <strong>{filtrados.length}</strong> aluno(s) com distorção de {filtroMin}+ anos
                 </div>
               </div>
