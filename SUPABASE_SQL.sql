@@ -121,6 +121,7 @@ ALTER TABLE "Turma"    DISABLE ROW LEVEL SECURITY;
 ALTER TABLE "Aluno"    DISABLE ROW LEVEL SECURITY;
 ALTER TABLE "Falta"    DISABLE ROW LEVEL SECURITY;
 ALTER TABLE "Pendente" DISABLE ROW LEVEL SECURITY;
+ALTER TABLE "Usuario"  DISABLE ROW LEVEL SECURITY;
 
 -- ─── 4. Recarrega o cache do PostgREST ───────────────────────
 -- (resolve o erro "Could not find the table in the schema cache")

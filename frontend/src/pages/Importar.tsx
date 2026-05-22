@@ -742,15 +742,18 @@ export default function Importar() {
       const xlsxFiles = files.filter(f => f.name.toLowerCase().endsWith('.xlsx'));
       const txtFiles = files.filter(f => f.name.toLowerCase().endsWith('.txt'));
 
-      const [alunosPDF, alunosHTML, alunosExcel, turmasMap, bolsaMapPDF, bolsaMapTXT, cpfMap] = await Promise.all([
-        parsePDFs(pdfFiles),
-        parseHTMLSED(xlsFiles),
-        parseExcels(xlsxFiles),
-        parseTurmasProfessores(files),
-        parseBolsaFamiliaPDF(pdfFiles),
-        parseBolsaFamiliaTXT(txtFiles),
-        parseEducacensoCPF(xlsxFiles),
-      ]);
+      let alunosPDF: AlunoUnificado[] = [], alunosHTML: AlunoUnificado[] = [], alunosExcel: AlunoUnificado[] = [];
+      let turmasMap = new Map<string, { professor: string; periodo: string }>();
+      let bolsaMapPDF = new Map<string, { nis: string; responsavel: string }>();
+      let bolsaMapTXT = new Map<string, { nis: string; responsavel: string }>();
+      let cpfMap = new Map<string, { cpf: string; deficiencia: string; corRaca: string }>();
+      try { alunosPDF = await parsePDFs(pdfFiles); } catch (e: any) { setErro('Erro nos PDFs: ' + (e.message ?? e)); return; }
+      try { alunosHTML = await parseHTMLSED(xlsFiles); } catch (e: any) { setErro('Erro nos HTML (xls): ' + (e.message ?? e)); return; }
+      try { alunosExcel = await parseExcels(xlsxFiles); } catch (e: any) { setErro('Erro nos Excel: ' + (e.message ?? e)); return; }
+      try { turmasMap = await parseTurmasProfessores(files); } catch (e: any) { setErro('Erro na planilha Turmas: ' + (e.message ?? e)); return; }
+      try { bolsaMapPDF = await parseBolsaFamiliaPDF(pdfFiles); } catch (e: any) { setErro('Erro no PDF Bolsa Família: ' + (e.message ?? e)); return; }
+      try { bolsaMapTXT = await parseBolsaFamiliaTXT(txtFiles); } catch (e: any) { setErro('Erro no TXT Bolsa Família: ' + (e.message ?? e)); return; }
+      try { cpfMap = await parseEducacensoCPF(xlsxFiles); } catch (e: any) { setErro('Erro no EDUCACENSO: ' + (e.message ?? e)); return; }
       // Merge: TXT tem prioridade (mais confiável), PDF completa o que faltar
       const bolsaMap = new Map([...bolsaMapPDF, ...bolsaMapTXT]);
 
