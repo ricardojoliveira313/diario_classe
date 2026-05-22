@@ -54,10 +54,18 @@ export default function Alunos() {
 
   const salvarSituacao = async (alunoId: string) => {
     setSalvando(true);
+    const aluno = alunos.find(a => a.id === alunoId);
     const updates: any = { situacao: novaSituacao };
     if (dataMovimentacao) {
       updates.data_movimentacao = dataMovimentacao;
       if (['BXTR', 'TRAN', 'N COM', 'REMA'].includes(novaSituacao)) updates.data_fim_matricula = dataMovimentacao;
+    }
+    if (novaSituacao === 'REMA' && aluno) {
+      const t = turmaMap.get(aluno.turmaId);
+      if (t) {
+        updates.turma_origem = t.nome;
+        updates.professora_origem = t.professora;
+      }
     }
     await api.updateAluno(alunoId, updates);
     setAlunos(prev => prev.map(a => a.id === alunoId ? { ...a, ...updates } : a));
