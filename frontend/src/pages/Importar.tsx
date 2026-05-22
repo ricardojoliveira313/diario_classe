@@ -188,8 +188,10 @@ export default function Importar() {
         // ── Campos após o RA: [dig_ra] [UF] [nasc] [situação] [data_movim?] [deficiência] ──
         // A data de movimentação é OPCIONAL — alunos ATIVO podem não ter data de movimentação
         const after = allText.substring(raPos + 12, raPos + 400);
+        // PDF dates have spaces after slashes due to pdfjs text extraction: "DD/ MM/ YYYY"
+        const pdfDate = '(\\d{2}\\s*\\/\\s*\\d{2}\\s*\\/\\s*\\d{4})';
         const afterMatch = after.match(
-          /^\s*\S+\s+\S{2}\s+(\d{2}\/\d{2}\/\d{4})\s+(ATIVO|TRAN|REMA|ABAN|N\s?COM|BXTR|NAO\s?COMPARECEU)(?:\s+(\d{2}\/\d{2}\/\d{4}))?\s*(.*?)(?=\s*\d{1,2}\s+\d{1,3}\s+[A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ]|\s*0{3}\d{9}|$)/i
+          new RegExp(`^\\s*\\S+\\s+\\S{2}\\s+${pdfDate}\\s+(ATIVO|TRAN|REMA|ABAN|N\\s?COM|BXTR|NAO\\s?COMPARECEU)(?:\\s+${pdfDate})?\\s*(.*?)(?=\\s*\\d{1,2}\\s+\\d{1,3}\\s+[A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ]|\\s*0{3}\\d{9}|$)`, 'i')
         );
         const { serie: serieAluno, professora: profAluno } = getSerie(raPos);
 
@@ -212,11 +214,14 @@ export default function Importar() {
           continue;
         }
 
-        const [, nascimento, situacaoRaw, dataMovim, defRaw] = afterMatch;
+        const [, nascRaw, situacaoRaw, dataMovimRaw, defRaw] = afterMatch;
+        // Remove espaços extras nas datas vindas do PDF: "26/ 09/ 2018" -> "26/09/2018"
+        const nascimento = nascRaw.replace(/\s*\/\s*/g, '/');
+        const dataMovim = dataMovimRaw ? dataMovimRaw.replace(/\s*\/\s*/g, '/') : undefined;
         const situacao = normalizeSituacao(situacaoRaw.trim());
         // Limpa deficiência: remove textos genéricos que não são deficiências reais
         const defRawClean = (defRaw ?? '').trim().replace(/\s+/g, ' ');
-        const deficiencia = /^(ATIVO|REMA|TRAN|BXTR|ABAN|N\s?COM|\d{2}\/\d{2}\/\d{4}|$)/i.test(defRawClean)
+        const deficiencia = /^(ATIVO|REMA|TRAN|BXTR|ABAN|N\s?COM|\d{2}\s*\/\s*\d{2}\s*\/\s*\d{4}|$)/i.test(defRawClean)
           ? '' : defRawClean;
         const isAtivo = situacao === 'ATIVO';
 
