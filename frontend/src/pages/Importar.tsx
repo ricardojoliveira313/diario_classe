@@ -624,9 +624,9 @@ export default function Importar() {
     return mapa;
   }
 
-  // ─── PARSE: EDUCACENSO xlsx (CPF) ───
-  async function parseEducacensoCPF(files: File[]): Promise<Map<string, string>> {
-    const cpfMap = new Map<string, string>();
+  // ─── PARSE: EDUCACENSO xlsx (CPF + Deficiência) ───
+  async function parseEducacensoCPF(files: File[]): Promise<Map<string, { cpf: string; deficiencia: string }>> {
+    const mapa = new Map<string, { cpf: string; deficiencia: string }>();
 
     for (const file of files) {
       if (!file.name.toLowerCase().endsWith('.xlsx')) continue;
@@ -639,14 +639,15 @@ export default function Importar() {
       const rows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1 });
 
       // Procura linha de cabeçalho com "Nome" e "CPF"
-      let headerIdx = -1, idxNome = -1, idxNasc = -1, idxCPF = -1;
+      let headerIdx = -1, idxNome = -1, idxNasc = -1, idxCPF = -1, idxDef = -1;
       for (let r = 0; r < rows.length; r++) {
         const vals = (rows[r] ?? []).map((v: any) => normalizeStr(String(v ?? '')));
         if (vals.some(v => v.includes('NOME')) && vals.some(v => v === 'CPF')) {
           headerIdx = r;
           idxNome = vals.findIndex(v => v.includes('NOME'));
           idxNasc = vals.findIndex(v => v.includes('NASCIMENTO'));
-          idxCPF = vals.findIndex(v => v === 'CPF');
+          idxCPF  = vals.findIndex(v => v === 'CPF');
+          idxDef  = vals.findIndex(v => v.startsWith('TIPO(S) DE DEFICIENCIA'));
           break;
         }
       }
@@ -656,7 +657,7 @@ export default function Importar() {
         const row = rows[r] ?? [];
         const nomeRaw = String(row[idxNome] ?? '').trim();
         const cpfRaw = String(row[idxCPF] ?? '').replace(/\D/g, '');
-        if (!nomeRaw || nomeRaw === '--' || cpfRaw.length !== 11) continue;
+        if (!nomeRaw || nomeRaw === '--') continue;
 
         const nomeNorm = normalizeStr(nomeRaw);
         let nasc = '';
@@ -669,16 +670,21 @@ export default function Importar() {
             if (d) nasc = `${d[1].padStart(2,'0')}/${d[2].padStart(2,'0')}/${d[3]}`;
           }
         }
+        const defRaw = idxDef >= 0 ? String(row[idxDef] ?? '').trim() : '';
+        const deficiencia = (!defRaw || defRaw === '--') ? '' : defRaw;
+        const cpf = cpfRaw.length === 11 ? cpfRaw : '';
+        const entry = { cpf, deficiencia };
+
         // Chave exata: nome|data
-        cpfMap.set(`${nomeNorm}|${nasc}`, cpfRaw);
+        mapa.set(`${nomeNorm}|${nasc}`, entry);
         // Chave fuzzy: nome significativo|data (tolera artigos)
         if (nasc) {
           const simp = nomeSignificativo(nomeNorm);
-          if (simp.length >= 3) cpfMap.set(`~${simp}|${nasc}`, cpfRaw);
+          if (simp.length >= 3) mapa.set(`~${simp}|${nasc}`, entry);
         }
       }
     }
-    return cpfMap;
+    return mapa;
   }
 
   const handleFiles = (fileList: FileList | null) => {
@@ -778,10 +784,14 @@ export default function Importar() {
           a.responsavel = a.responsavel || bf.responsavel;
           a.bolsaFamilia = true;
         }
-        // Cruzamento CPF (EDUCACENSO): nome+data exato, depois fuzzy
-        const cpfExato = cpfMap.get(`${a.nomeNorm}|${a.nascimento}`);
-        const cpfFuzzy = a.nascimento ? cpfMap.get(`~${nomeSimp}|${a.nascimento}`) : undefined;
-        a.cpf = a.cpf || cpfExato || cpfFuzzy || '';
+        // Cruzamento CPF + Deficiência (EDUCACENSO): nome+data exato, depois fuzzy
+        const ecExato = cpfMap.get(`${a.nomeNorm}|${a.nascimento}`);
+        const ecFuzzy = a.nascimento ? cpfMap.get(`~${nomeSimp}|${a.nascimento}`) : undefined;
+        const ec = ecExato ?? ecFuzzy;
+        if (ec) {
+          a.cpf = a.cpf || ec.cpf || '';
+          a.deficiencia = a.deficiencia || ec.deficiencia || '';
+        }
       }
 
       // Turmas únicas — prefere professora não-vazia
