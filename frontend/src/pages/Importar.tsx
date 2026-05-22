@@ -257,6 +257,7 @@ export default function Importar() {
       for (const file of files) {
         const name = file.name.toLowerCase();
         if (!name.endsWith('.xlsx') && !name.endsWith('.xls')) continue;
+        if (normalizeFileName(name).includes('EDUCACENSO')) continue; // parser específico
         pendentes++;
         const reader = new FileReader();
         reader.onload = (e) => {
