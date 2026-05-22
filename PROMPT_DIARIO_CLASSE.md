@@ -895,6 +895,204 @@ git push -u origin claude/bold-hamilton-a1Oj6
 
 ---
 
-*Documento gerado em 22/05/2026 — Versão 2.0*  
+## 14. DECISÃO ARQUITETURAL CRÍTICA — COMO O SISTEMA DEVE REGISTRAR FALTAS: NÚMERO OU "X" POR DIA?
+
+> **Esta seção descreve uma pergunta arquitetural que precisa de resposta e implementação.**
+> O usuário Ricardo identificou uma inconsistência no sistema e precisa de uma decisão definitiva.
+
+---
+
+### A Pergunta de Ricardo
+
+O sistema atualmente mostra no PDF exportado (📄 PDF) colunas com **NÚMEROS**:
+- `F = 0` → zero faltas
+- `J = 0` → zero justificadas  
+- `A = 0` → zero atestados
+- `FREQ = 100%`
+
+Ricardo pergunta: **por que o sistema trata faltas por NÚMERO (total mensal) e não por marcação de "X" em cada dia?**
+
+---
+
+### O Contexto do Problema
+
+No Brasil, o **Diário de Classe físico tradicional** funciona assim:
+
+```
+MAIO 2026
+               D1  D2  D3  D4  D5  D6  ... D20  | Total F | Total J
+01-ALANNA       P   P   P   F   P   P  ...  P  |    1    |    0
+02-ANA CLARA    P   P   P   P   P   F  ...  P  |    1    |    0
+```
+
+O professor marca **dia a dia**: P = presente, F = faltou, J = faltou com justificativa.
+
+No final do mês, **conta os Xs/Fs** → obtém o total.
+
+---
+
+### Como o Sistema Atual Funciona (há DUAS lógicas paralelas — isso é o problema)
+
+#### Lógica A — Tela "Faltas" (`/faltas`) → **DIA A DIA** ✅
+- Grade com colunas D1 a D22 (dias letivos)
+- Professor clica em cada célula: P → F → J → A → P (ciclo)
+- Sistema armazena a string `"DIAS:PPFPPPJP..."` no campo `frequencia` da tabela Falta
+- Este é o método CORRETO para registro digital fiel ao diário físico
+
+#### Lógica B — Tela "Professor" (`/professor`) modo manual → **TOTAL MENSAL** ⚠️
+- Professor usa botões +/- para digitar o TOTAL de faltas do mês
+- Ex: "5 faltas" sem saber quais dias
+- Sistema salva `faltas: 5` e `frequencia: ""` (sem detalhe por dia)
+- Este método é INCOMPLETO — perde a informação de quais dias o aluno faltou
+
+#### Lógica C — Folha OCR (📋 Folha) → **TOTAL MENSAL** ⚠️
+- Gera uma folha com caixas F e J para o professor ESCREVER o número total
+- Ex: Professor escreve "3" na caixa F
+- OCR lê esse número
+- Salva `faltas: 3` sem informação dos dias
+
+#### Resultado: INCONSISTÊNCIA
+- Se professor lança pelo tela "Faltas" → sistema tem dia-a-dia → exporta corretamente
+- Se professor lança pelo modo "Professor" ou OCR → sistema tem só o total → sem detalhe
+- O PDF mostra `F=0, J=0` porque os dados foram lançados por uma das Lógicas B ou C
+
+---
+
+### A Decisão que Precisa ser Tomada
+
+Ricardo precisa decidir **qual workflow ele quer para os professores de campo**:
+
+---
+
+#### OPÇÃO 1 — Manter total mensal (simples, para professoras no celular)
+
+**Workflow:**
+1. Professora vai ao campo (excursão, aula externa, etc.)
+2. Anota mentalmente ou em papel quais alunos faltaram
+3. No final do mês, abre o celular e lança: "Alanna: 3 faltas, Ana Clara: 1 falta"
+4. Sistema guarda o TOTAL por mês
+
+**Vantagem:** Simples, rápido, funciona offline
+**Desvantagem:** Não sabe quais DIAS o aluno faltou
+**Impacto na impressão:** PDF mostra números corretos (F=3, J=0, FREQ=85%)
+**Quando usar:** Quando o detalhe diário não é necessário para relatórios
+
+---
+
+#### OPÇÃO 2 — Marcar X por dia (fiel ao diário físico)
+
+**Workflow:**
+1. Professora abre `/faltas` no celular
+2. Para cada dia do mês, clica na célula do aluno: P → F → J → A
+3. Sistema salva dia a dia (string `"DIAS:PPFPJP..."`)
+
+**Vantagem:** Fiel ao diário físico, sabe exatamente quais dias
+**Desvantagem:** Mais trabalhoso, requer clicar célula por célula
+**Impacto na impressão:** PDF pode mostrar quais dias além do total
+**Quando usar:** Quando precisar de relatório detalhado por dia
+
+---
+
+#### OPÇÃO 3 — HÍBRIDO RECOMENDADO (implementar esta)
+
+**Workflow:**
+1. Professora abre `/professor` → modo manual
+2. Usa +/- para marcar QUANTAS faltas cada aluno teve no mês
+3. Sistema salva o total mensalmente
+4. Secretaria confere com o SED (que também usa totais mensais)
+5. Exportação no PDF mostra os totais
+
+**Por que este é o correto para esta escola:**
+- A SED (Secretaria Escolar Digital) também trabalha com TOTAIS MENSAIS (colunas F por mês no Excel)
+- A importação do SED traz totais, não dias individuais
+- O Bolsa Família precisa de % de frequência (cálculo por total, não por dia)
+- A professora no campo precisa de algo rápido no celular
+
+---
+
+### IMPLEMENTAÇÃO NECESSÁRIA (se escolher Opção 3 - Híbrido)
+
+#### Problema atual na Lógica B (modo +/- do Professor):
+
+A tela `Professor.tsx` salva usando `api.upsertFaltasBatch()` com:
+```typescript
+{
+  alunoId: ...,
+  turmaId: ...,
+  mes: ...,
+  ano: ...,
+  faltas: numeroDigitado,    // ← só o total
+  frequencia: ''             // ← string vazia — sem dias
+}
+```
+
+O PDF lê o campo `faltas` → funciona corretamente.
+
+A tela `Faltas.tsx` lê o campo `frequencia` com formato `"DIAS:PPFJ..."` → se `frequencia` está vazio, assume tudo P (100%).
+
+**CONFLITO:** Se a professora lançou pelo modo +/- (faltas=3, frequencia=''), e depois alguém abre a tela Faltas, ela mostrará 100% (tudo presente) — ignorando os 3 registrados.
+
+#### Correção para o `Faltas.tsx` — interpretar também o campo `faltas` numérico:
+
+Na função que calcula `diasAluno` no `useEffect` do `Faltas.tsx`, adicionar fallback:
+
+```typescript
+// Após decodificar o campo frequencia:
+// Se frequencia começa com 'DIAS:' → usa o array de dias (lógica atual)
+// Se frequencia NÃO começa com 'DIAS:' E faltas > 0 → distribui as faltas nos últimos N dias
+// Se faltas === 0 e frequencia vazio → tudo P (atual)
+
+// Localizar em Faltas.tsx o useEffect que popula diasAluno:
+// Trocar a linha que chama decodeDias() por:
+
+const decoded = (() => {
+  const freq = f.frequencia ?? '';
+  if (freq.startsWith('DIAS:')) return decodeDias(freq, numDias);
+  // Fallback: frequencia é número total — distribui nos últimos dias
+  const nFaltas = f.faltas ?? 0;
+  if (nFaltas > 0) {
+    // Marca as últimas N células como F (placeholder visual)
+    const arr: Status[] = Array(numDias).fill('P') as Status[];
+    for (let i = numDias - 1; i >= numDias - nFaltas && i >= 0; i--) {
+      arr[i] = 'F';
+    }
+    return arr;
+  }
+  return initDias(numDias);
+})();
+```
+
+**Nota:** Este fallback distribui as faltas nos últimos dias apenas como visualização — não é a data real. Mas permite que o sistema mostre consistentemente os dados lançados pelo modo +/-.
+
+---
+
+#### Correção para a Folha OCR (📋 Folha) e o Diário (🖨️ Diário):
+
+A folha OCR atual tem caixas F e J onde a professora escreve o TOTAL. Isso é correto para o workflow atual.
+
+Adicionar à folha OCR, abaixo do nome de cada aluno, uma linha de dias do mês para marcação com X (opcional — a professora preenche ou o número, ou marca os dias):
+
+```
+Nº  NOME                    F  J  |  Dias: 1 2 3 4 5 ... 20
+01  ALANNA FERREIRA          _  _  |       _ _ _ _ _ ... _
+```
+
+Isso permite que o professor escolha: escreve o total OU marca os dias. O OCR leria os números; a marcação manual de dias seria opcional e registrada no campo `frequencia` como `DIAS:...`.
+
+---
+
+### RESUMO DA DECISÃO PARA A EQUIPE
+
+**Ricardo precisa confirmar qual opção quer.** Enquanto não confirma:
+
+1. **O sistema está correto no PDF** — mostra números (total mensal) quando os dados vêm do SED ou do modo +/- do Professor
+2. **O sistema está correto na grade Faltas** — mostra dia-a-dia quando o lançamento foi feito pela tela Faltas
+3. **A inconsistência** ocorre quando se mistura os dois modos de lançamento
+
+**Recomendação técnica:** Implementar o fallback no `Faltas.tsx` para que o campo `faltas` numérico seja convertido em visualização dia-a-dia. Isso unifica as duas lógicas sem quebrar nada.
+
+---
+
+*Documento gerado em 22/05/2026 — Versão 2.1*  
 *Sistema: Diário de Classe Digital — EMEIEF LUIZ GONZAGA*  
 *Elaborado pelo agente CÉREBRO para execução pela equipe técnica*
