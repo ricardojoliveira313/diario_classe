@@ -573,6 +573,201 @@ setFaltasExistentes(cntFaltas ?? 0);
 
 ---
 
+### 🔴 BUG #3 — Botão "📄 PDF" exporta texto monospace sem formatação (parece terminal)
+
+**Sintoma:**  
+O botão `📄 PDF` na tela Faltas abre uma janela com texto puro em fonte monospace, caracteres ASCII `══` e `──` como bordas, sem tabela real, sem cores, sem qualidade para impressão oficial.
+
+**Localização exata:**  
+`frontend/src/pages/Faltas.tsx`, função `exportarPDF()`, linhas 122–162.
+
+**Código atual (PROBLEMÁTICO):**
+```typescript
+const exportarPDF = () => {
+  const linhas = alunos.map((a, i) => {
+    // ...cálculos...
+    return `${String(a.numero || i + 1).padStart(2)} ${(a.nome + defi + bf).padEnd(44)}  F:${nF} J:${nJ} A:${nA}   ${freq}%${alerta}`;
+  });
+  const conteudo = [
+    '══════════════════════════════════════════════════════════════',
+    `  DIÁRIO DE CLASSE — ${ano}`,
+    // ... mais texto monospace ...
+  ].join('\n');
+
+  win.document.write(`<html>...<style>body{font-family:monospace;...}
+  <body><pre>${conteudo}</pre>...`);  // ← <pre> com texto plano
+};
+```
+
+**Resultado ATUAL:** janela com texto como um terminal de computador, sem bordas reais, sem cores, não tem aparência de documento oficial.
+
+---
+
+**CORREÇÃO: Substituir TODA a função `exportarPDF()` pelo código abaixo.**
+
+> **ATENÇÃO:** Substituir o bloco completo desde `const exportarPDF = () => {` até o `};` correspondente (linhas 122–162).
+
+```typescript
+const exportarPDF = () => {
+  const turmaObj = turmas.find(t => t.id === turmaId);
+  const nomeMes = MESES[mes - 1];
+
+  const linhas = alunos.map((a, i) => {
+    const dias = diasAluno[a.id] ?? initDias(numDias);
+    const nF = ct(dias, 'F'), nJ = ct(dias, 'J'), nA = ct(dias, 'A');
+    const ausencias = nF + nJ + nA;
+    const freqNum = numDias > 0 ? ((numDias - ausencias) / numDias * 100) : 100;
+    const freq = freqNum.toFixed(0);
+    const alerta = freqNum < 75;
+    const defi = a.deficiencia ? ' ♿' : '';
+    const bf = a.bolsa_familia ? ' 💚' : '';
+    const rowBg = alerta ? '#fff1f2' : i % 2 === 0 ? '#ffffff' : '#f8fafc';
+    const freqColor = alerta ? '#dc2626' : freqNum >= 90 ? '#16a34a' : '#d97706';
+    return `<tr style="background:${rowBg};">
+      <td style="border:1px solid #cbd5e1;padding:5px 6px;text-align:center;font-size:12px;font-weight:700;width:28px;">${String(a.numero || i + 1).padStart(2, '0')}</td>
+      <td style="border:1px solid #cbd5e1;padding:5px 8px;font-size:12px;${alerta ? 'font-weight:700;' : ''}">${a.nome}${defi}${bf}${alerta ? ' <span style="color:#dc2626;font-size:10px;">⚠️</span>' : ''}</td>
+      <td style="border:1px solid #cbd5e1;padding:5px 4px;text-align:center;font-size:12px;color:#dc2626;font-weight:${nF > 0 ? '700' : '400'};">${nF}</td>
+      <td style="border:1px solid #cbd5e1;padding:5px 4px;text-align:center;font-size:12px;color:#d97706;font-weight:${nJ > 0 ? '700' : '400'};">${nJ}</td>
+      <td style="border:1px solid #cbd5e1;padding:5px 4px;text-align:center;font-size:12px;color:#7c3aed;font-weight:${nA > 0 ? '700' : '400'};">${nA}</td>
+      <td style="border:1px solid #cbd5e1;padding:5px 6px;text-align:center;font-size:12px;font-weight:700;color:${freqColor};">${freq}%</td>
+    </tr>`;
+  }).join('');
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<title>Frequência — ${turmaObj?.nome ?? ''} — ${nomeMes} ${ano}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; margin: 8mm; font-size: 12px; color: #0f172a; background: #fff; }
+  table { border-collapse: collapse; width: 100%; }
+  @media print {
+    @page { size: A4 portrait; margin: 10mm 8mm; }
+    body { margin: 0; }
+    .no-print { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- CABEÇALHO DA ESCOLA -->
+<div style="text-align:center; border-bottom:3px solid #1e40af; padding-bottom:8px; margin-bottom:10px;">
+  <div style="font-size:11px; color:#64748b; font-weight:600; letter-spacing:1px;">PREFEITURA MUNICIPAL DE SANTO ANDRÉ</div>
+  <div style="font-size:18px; font-weight:900; color:#1e40af; letter-spacing:1px; margin:2px 0;">EMEIEF LUIZ GONZAGA</div>
+  <div style="font-size:11px; color:#475569;">Diário de Frequência — Ano Letivo ${ano}</div>
+</div>
+
+<!-- INFORMAÇÕES DA TURMA -->
+<table style="margin-bottom:10px; border:none;">
+  <tr>
+    <td style="border:none; padding:3px 6px; font-size:12px;">
+      <span style="font-weight:700; color:#475569;">TURMA:</span>
+      <span style="font-size:14px; font-weight:900; color:#1e40af; margin-left:6px;">${turmaObj?.nome ?? '—'}</span>
+    </td>
+    <td style="border:none; padding:3px 6px; font-size:12px;">
+      <span style="font-weight:700; color:#475569;">PROFESSORA:</span>
+      <span style="font-weight:600; margin-left:6px;">${turmaObj?.professora ?? '—'}</span>
+    </td>
+    <td style="border:none; padding:3px 6px; font-size:13px; text-align:right; white-space:nowrap;">
+      <span style="font-weight:900; color:#dc2626; font-size:15px;">${nomeMes.toUpperCase()} / ${ano}</span>
+    </td>
+  </tr>
+  <tr>
+    <td style="border:none; padding:2px 6px; font-size:11px; color:#64748b;">
+      <span style="font-weight:600;">Total de alunos:</span> ${alunos.length}
+    </td>
+    <td style="border:none; padding:2px 6px; font-size:11px; color:#64748b;">
+      <span style="font-weight:600;">Dias letivos do mês:</span> ${numDias}
+    </td>
+    <td style="border:none; padding:2px 6px; font-size:11px; color:#64748b; text-align:right;">
+      <span style="font-weight:600;">Frequência geral:</span>
+      <span style="font-weight:900; color:${parseFloat(freqGeral) >= 75 ? '#16a34a' : '#dc2626'}; font-size:13px; margin-left:4px;">${freqGeral}%</span>
+    </td>
+  </tr>
+</table>
+
+<!-- TABELA DE ALUNOS -->
+<table>
+  <thead>
+    <tr style="background:#1e40af; color:#ffffff;">
+      <th style="border:1px solid #1e3a8a; padding:7px 4px; width:28px; font-size:11px; text-align:center;">Nº</th>
+      <th style="border:1px solid #1e3a8a; padding:7px 8px; font-size:11px; text-align:left;">NOME DO ALUNO</th>
+      <th style="border:1px solid #1e3a8a; padding:7px 4px; width:40px; font-size:11px; text-align:center; background:#dc2626;">F<br><span style="font-size:8px;font-weight:400;">Faltas</span></th>
+      <th style="border:1px solid #1e3a8a; padding:7px 4px; width:40px; font-size:11px; text-align:center; background:#d97706;">J<br><span style="font-size:8px;font-weight:400;">Justif.</span></th>
+      <th style="border:1px solid #1e3a8a; padding:7px 4px; width:40px; font-size:11px; text-align:center; background:#7c3aed;">A<br><span style="font-size:8px;font-weight:400;">Atestado</span></th>
+      <th style="border:1px solid #1e3a8a; padding:7px 6px; width:52px; font-size:11px; text-align:center;">FREQ.<br><span style="font-size:8px;font-weight:400;">%</span></th>
+    </tr>
+  </thead>
+  <tbody>
+    ${linhas}
+  </tbody>
+  <tfoot>
+    <tr style="background:#f1f5f9; font-weight:700;">
+      <td style="border:1px solid #cbd5e1; padding:6px 4px; text-align:center; font-size:11px;" colspan="2">TOTAIS DO MÊS</td>
+      <td style="border:1px solid #cbd5e1; padding:6px 4px; text-align:center; font-size:13px; color:#dc2626;">${totalF}</td>
+      <td style="border:1px solid #cbd5e1; padding:6px 4px; text-align:center; font-size:13px; color:#d97706;">${totalJ}</td>
+      <td style="border:1px solid #cbd5e1; padding:6px 4px; text-align:center; font-size:13px; color:#7c3aed;">${totalA}</td>
+      <td style="border:1px solid #cbd5e1; padding:6px 4px; text-align:center; font-size:13px; color:${parseFloat(freqGeral) >= 75 ? '#16a34a' : '#dc2626'};">${freqGeral}%</td>
+    </tr>
+  </tfoot>
+</table>
+
+<!-- ESTATÍSTICAS -->
+<div style="margin-top:8px; display:flex; gap:12px; flex-wrap:wrap;">
+  ${alertas.length > 0 ? `<div style="padding:5px 10px; background:#fff1f2; border:1px solid #fca5a5; border-radius:4px; font-size:11px; color:#dc2626; font-weight:700;">⚠️ Alertas frequência &lt;75%: ${alertas.length} aluno(s)</div>` : `<div style="padding:5px 10px; background:#f0fdf4; border:1px solid #86efac; border-radius:4px; font-size:11px; color:#16a34a; font-weight:700;">✅ Nenhum aluno com frequência crítica</div>`}
+  ${alunos.filter((a: any) => a.deficiencia).length > 0 ? `<div style="padding:5px 10px; background:#f0f9ff; border:1px solid #7dd3fc; border-radius:4px; font-size:11px; color:#0369a1;">♿ Alunos com deficiência: ${alunos.filter((a: any) => a.deficiencia).length}</div>` : ''}
+  ${alunos.filter((a: any) => a.bolsa_familia).length > 0 ? `<div style="padding:5px 10px; background:#f0fdf4; border:1px solid #86efac; border-radius:4px; font-size:11px; color:#15803d;">💚 Bolsa Família: ${alunos.filter((a: any) => a.bolsa_familia).length} aluno(s)</div>` : ''}
+</div>
+
+<!-- LEGENDA -->
+<div style="margin-top:6px; font-size:10px; color:#64748b; padding:4px 0; border-top:1px solid #e2e8f0;">
+  <span style="font-weight:700;">Legenda:</span>
+  <span style="margin-left:8px; color:#dc2626; font-weight:700;">F = Falta</span>
+  <span style="margin-left:10px; color:#d97706; font-weight:700;">J = Justificado</span>
+  <span style="margin-left:10px; color:#7c3aed; font-weight:700;">A = Atestado médico</span>
+  <span style="margin-left:10px;">⚠️ = Frequência abaixo de 75%</span>
+  <span style="margin-left:10px;">♿ = Deficiência</span>
+  <span style="margin-left:10px;">💚 = Bolsa Família</span>
+</div>
+
+<!-- ASSINATURAS -->
+<div style="margin-top:14mm; display:flex; gap:20mm; flex-wrap:wrap; font-size:11px;">
+  <div>
+    <div style="border-top:1px solid #000; padding-top:3px; min-width:200px;">Assinatura do(a) Professor(a)</div>
+  </div>
+  <div>
+    <div style="border-top:1px solid #000; padding-top:3px; min-width:140px;">Data: _____ / _____ / _______</div>
+  </div>
+  <div>
+    <div style="border-top:1px solid #000; padding-top:3px; min-width:200px;">Assinatura da Coordenação</div>
+  </div>
+</div>
+
+<script>setTimeout(()=>window.print(),400);</script>
+</body>
+</html>`;
+
+  const win = window.open('', '_blank');
+  if (!win) { alert('Permita pop-ups no navegador para imprimir.'); return; }
+  win.document.write(html);
+  win.document.close();
+};
+```
+
+**Resultado esperado após Bug #3 corrigido:**
+- Cabeçalho com nome da escola em destaque azul
+- Tabela com borda real, header azul, colunas F/J/A com cores (vermelho/laranja/roxo)
+- Linhas alternadas branco/cinza claro
+- Linhas de alunos em alerta (freq < 75%) com fundo vermelho claro
+- Frequência colorida: verde ≥90%, laranja 75–89%, vermelho <75%
+- Rodapé com totais em destaque
+- Estatísticas em cards coloridos
+- Linhas de assinatura professor + data + coordenação
+- Formato A4 retrato, margem 10mm, auto-abre diálogo de impressão
+
+---
+
 ## 8. FUNCIONALIDADES PENDENTES DE IMPLEMENTAÇÃO
 
 ### 📋 FEATURE A — Numeração de chamada (nº da turma)
@@ -689,12 +884,14 @@ git push -u origin claude/bold-hamilton-a1Oj6
 - [ ] **6.** Corrigir Bug #2 Parte B3: substituir `bulkInsertFaltas` por `upsertFaltasBatch`
 - [ ] **7.** Corrigir Bug #2 Parte B4: atualizar texto do botão de confirmação
 - [ ] **8.** Corrigir Bug #2 Parte C: adicionar contagem de faltas existentes no preview
-- [ ] **9.** Rodar `cd frontend && npm run build` — confirmar zero erros TypeScript
-- [ ] **10.** Testar dark mode em todas as telas alteradas
-- [ ] **11.** `git add -A && git commit -m "fix: preservar faltas históricas no reimport + parser datas matrícula SED"`
-- [ ] **12.** `git push -u origin claude/bold-hamilton-a1Oj6`
-- [ ] **13.** Criar PR draft no GitHub se não existir
-- [ ] **14.** Reportar ao Ricardo: "Concluído — reimporte o Excel SED para verificar as datas e confirmar preservação do histórico"
+- [ ] **9.** Corrigir Bug #3: substituir TODA a função `exportarPDF()` em `Faltas.tsx` (linhas 122–162) pelo código fornecido na seção Bug #3
+- [ ] **10.** Rodar `cd frontend && npm run build` — confirmar zero erros TypeScript
+- [ ] **11.** Testar dark mode em todas as telas alteradas
+- [ ] **12.** Testar o botão 📄 PDF na tela Faltas — verificar que abre documento formatado (não texto monospace)
+- [ ] **13.** `git add -A && git commit -m "fix: PDF formatado A4 + preservar faltas históricas + parser datas matrícula SED"`
+- [ ] **14.** `git push -u origin claude/bold-hamilton-a1Oj6`
+- [ ] **15.** Criar PR draft no GitHub se não existir
+- [ ] **16.** Reportar ao Ricardo: "Concluído — teste o botão 📄 PDF e reimporte o Excel SED para verificar as datas"
 
 ---
 
