@@ -1103,6 +1103,28 @@ export default function Importar() {
         }
       }
 
+      // ─── PASSO 1.5: Limpa turmas SED duplicadas (religa alunos na turma limpa) ───
+      const SED_SUFIXOS = /\b(MANHA|TARDE|NOTURNO|MATUTINO|VESPERTINO|NOITE|ANUAL|INTEGRAL|PRE\s*ESCOLA)\b/i;
+      for (const t of turmasExistentes) {
+        if (!SED_SUFIXOS.test(t.nome)) continue;
+        const simplificado = normT(t.nome)
+          .replace(/\bPRE\s*ESCOLA\b/g, '').replace(/\bPRÉ\s*ESCOLA\b/g, '')
+          .replace(/\b(MANHA|TARDE|NOTURNO|MATUTINO|VESPERTINO|NOITE|ANUAL|INTEGRAL)\b/g, '')
+          .replace(/\s+/g, ' ').trim();
+        // Procura turma limpa correspondente
+        for (const [origName, tid] of nomeToTurmaId) {
+          if (t.id === tid) continue;
+          const nn = normT(origName);
+          if (nn === simplificado || nn.startsWith(simplificado) || simplificado.startsWith(nn)) {
+            // Reatribui alunos da SED → limpa
+            await supabase.from('Aluno').update({ turmaId: tid }).eq('turmaId', t.id).then(() => {}, () => {});
+            // Deleta a turma SED
+            await supabase.from('Turma').delete().eq('id', t.id).then(() => {}, () => {});
+            break;
+          }
+        }
+      }
+
       // Reconstrói resolveId com turmas atualizadas do DB (inclui novas)
       const { data: todasTurmas } = await supabase.from('Turma').select('id, nome, professora');
       const resolveIdAtualizado = buildResolveId(todasTurmas ?? []);
