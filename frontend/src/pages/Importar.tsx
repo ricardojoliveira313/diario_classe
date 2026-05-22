@@ -270,6 +270,21 @@ export default function Importar() {
           const wb = XLSX.read(e.target!.result, { type: 'array', cellDates: true });
           for (const sheetName of wb.SheetNames) {
             const ws = wb.Sheets[sheetName];
+
+            // ─── Detecta Educacenso por conteúdo ──────────────────────────────
+            // O arquivo Educacenso (INEP) tem ~20 linhas de metadados antes do
+            // cabeçalho real. A coluna "CPF" aparece como VALOR numa dessas linhas
+            // intermediárias (não como chave/cabeçalho na linha 0 do sheet_to_json).
+            // Essa detecção funciona independente do nome do arquivo.
+            const rawScan = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1 }) as any[][];
+            const isEducacenso = (rawScan as any[]).slice(1, 30).some((r: any) =>
+              Array.isArray(r) && (r as any[]).some(
+                (v: any) => normalizeStr(String(v ?? '')) === 'CPF'
+              )
+            );
+            if (isEducacenso) continue; // processado por parseEducacensoCPF
+            // ──────────────────────────────────────────────────────────────────
+
             const rows = XLSX.utils.sheet_to_json(ws, { raw: false, dateNF: 'dd/mm/yyyy' }) as any[];
             for (const row of rows) {
               const nr: Record<string, any> = {};
@@ -639,8 +654,7 @@ export default function Importar() {
 
     for (const file of files) {
       if (!file.name.toLowerCase().endsWith('.xlsx')) continue;
-      const name = normalizeFileName(file.name);
-      if (!name.includes('EDUCACENSO') && !name.includes('CPF')) continue;
+      // Nota: não filtramos por nome — qualquer xlsx é testado pelo conteúdo abaixo
 
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: 'array', cellDates: true });
@@ -660,7 +674,9 @@ export default function Importar() {
           break;
         }
       }
-      if (headerIdx < 0 || idxCPF < 0) continue;
+      // headerIdx < 5 → cabeçalho na linha 0–4 = arquivo SED normal (não Educacenso)
+      // Educacenso tem ~20 linhas de metadados → headerIdx ~20
+      if (headerIdx < 5 || idxCPF < 0) continue;
 
       for (let r = headerIdx + 1; r < rows.length; r++) {
         const row = rows[r] ?? [];
