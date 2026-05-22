@@ -662,33 +662,46 @@ export default function Importar() {
 
     for (const file of files) {
       if (!file.name.toLowerCase().endsWith('.xlsx')) continue;
-      // Nota: não filtramos por nome — qualquer xlsx é testado pelo conteúdo abaixo
 
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: 'array', cellDates: true });
       if (!wb.SheetNames || wb.SheetNames.length === 0) continue;
       const ws = wb.Sheets[wb.SheetNames[0]];
       if (!ws) continue;
-      const rows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1 }) ?? [];
+      const rows: any[][] = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1 }) ?? [];
 
-      // Procura linha de cabeçalho com "Nome" e "CPF"
+      // Busca cabeçalho — colunas conhecidas do Educacenso:
+      //   [3]=Nome  [6]=Data de nascimento  [8]=CPF  [11]=Cor/Raça  [14]=Deficiência
       let headerIdx = -1, idxNome = -1, idxNasc = -1, idxCPF = -1, idxDef = -1, idxCor = -1;
       for (let r = 0; r < rows.length; r++) {
         const row = rows[r];
         if (!Array.isArray(row)) continue;
-        const vals = row.map((v: any) => safeNorm(v));
-        if (vals.some(v => v.includes('NOME')) && vals.some(v => v === 'CPF')) {
+        // Verifica se a linha contém "Nome" e "CPF" nas posições esperadas
+        const temNome = row[3] && safeNorm(row[3]) === 'NOME';
+        const temCPF = row[8] && safeNorm(row[8]) === 'CPF';
+        if (temNome && temCPF) {
           headerIdx = r;
-          idxNome = vals.findIndex(v => v.includes('NOME'));
-          idxNasc = vals.findIndex(v => v.includes('NASCIMENTO'));
-          idxCPF  = vals.findIndex(v => v === 'CPF');
-          idxDef  = vals.findIndex(v => typeof v === 'string' && v.startsWith('TIPO(S) DE DEFICIENCIA'));
-          idxCor  = vals.findIndex(v => v === 'COR/RACA' || v === 'COR' || v === 'RACA');
+          idxNome = 3;
+          idxNasc = 6;
+          idxCPF = 8;
+          idxDef = 14;
+          idxCor = 11;
+          break;
+        }
+        // Fallback: busca por conteúdo (qualquer posição)
+        const vals = row.map((v: any) => safeNorm(v));
+        const achouNome = vals.some(v => v === 'NOME');
+        const achouCPF = vals.some(v => v === 'CPF');
+        if (achouNome && achouCPF) {
+          headerIdx = r;
+          idxNome = vals.indexOf('NOME');
+          idxNasc = vals.indexOf('DATA DE NASCIMENTO');
+          idxCPF = vals.indexOf('CPF');
+          idxDef = vals.findIndex(v => v.startsWith('TIPO(S) DE DEFICIENCIA'));
+          idxCor = vals.indexOf('COR/RACA');
           break;
         }
       }
-      // Educacenso pode ter cabeçalho na linha 0 (exportação direta)
-      // ou na linha ~20 (com metadados do MEC). Ambos são válidos — só verifica se achou CPF.
       if (idxCPF < 0) continue;
 
       for (let r = headerIdx + 1; r < rows.length; r++) {
