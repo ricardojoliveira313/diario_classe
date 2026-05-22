@@ -16,6 +16,8 @@ export default function Alunos() {
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [novaSituacao, setNovaSituacao] = useState('');
   const [dataMovimentacao, setDataMovimentacao] = useState('');
+  const [dataInicioEdit, setDataInicioEdit] = useState('');
+  const [dataFimEdit, setDataFimEdit] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [loading, setLoading] = useState(true);
   const [detalhesAbertos, setDetalhesAbertos] = useState<Set<string>>(new Set());
@@ -50,6 +52,8 @@ export default function Alunos() {
     setEditandoId(a.id);
     setNovaSituacao(a.situacao ?? 'ATIVO');
     setDataMovimentacao('');
+    setDataInicioEdit(a.data_inicio_matricula ?? '');
+    setDataFimEdit(a.data_fim_matricula ?? '');
   };
 
   const salvarSituacao = async (alunoId: string) => {
@@ -59,6 +63,8 @@ export default function Alunos() {
       updates.data_movimentacao = dataMovimentacao;
       if (['BXTR', 'TRAN', 'N COM', 'REMA'].includes(novaSituacao)) updates.data_fim_matricula = dataMovimentacao;
     }
+    if (dataInicioEdit.trim()) updates.data_inicio_matricula = dataInicioEdit.trim();
+    if (dataFimEdit.trim() && !updates.data_fim_matricula) updates.data_fim_matricula = dataFimEdit.trim();
     await api.updateAluno(alunoId, updates);
     setAlunos(prev => prev.map(a => a.id === alunoId ? { ...a, ...updates } : a));
     setSalvando(false);
@@ -295,8 +301,18 @@ export default function Alunos() {
                     gap: 8,
                     fontSize: 13,
                   }}>
-                    {a.data_inicio_matricula && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Início Matrícula:</span> {a.data_inicio_matricula}</div>}
-                    {a.data_fim_matricula && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Fim Matrícula:</span> {a.data_fim_matricula}</div>}
+                    <div>
+                      <span style={{ fontWeight: 600, color: theme.textSecondary }}>Início Matrícula: </span>
+                      {a.data_inicio_matricula
+                        ? <span style={{ color: theme.text }}>{a.data_inicio_matricula}</span>
+                        : <span style={{ color: theme.orange, fontSize: 12, fontWeight: 600 }}>⚠️ não informado — clique em ✏️ Situação para preencher</span>}
+                    </div>
+                    <div>
+                      <span style={{ fontWeight: 600, color: theme.textSecondary }}>Fim Matrícula: </span>
+                      {a.data_fim_matricula
+                        ? <span style={{ color: theme.text }}>{a.data_fim_matricula}</span>
+                        : <span style={{ color: theme.orange, fontSize: 12, fontWeight: 600 }}>⚠️ não informado</span>}
+                    </div>
                     {a.data_movimentacao && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Movimentação:</span> {a.data_movimentacao}</div>}
                     {t?.professora && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Professora:</span> {t.professora}</div>}
                     {t?.nome && turmaId !== '__all__' && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Turma:</span> {t.nome}</div>}
@@ -319,6 +335,28 @@ export default function Alunos() {
                         style={{ padding: '8px 12px', borderRadius: theme.radius, border: `1.5px solid ${theme.border}`, width: '100%', fontSize: 14 }}>
                         {SITUACOES.map(s => <option key={s} value={s}>{SITUACAO_LABEL[s]}</option>)}
                       </select>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 140 }}>
+                      <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 4, fontWeight: 600 }}>
+                        Início Matrícula <span style={{ color: theme.orange, fontWeight: 400 }}>(DD/MM/AAAA)</span>
+                      </div>
+                      <input
+                        type="text" placeholder="04/02/2026"
+                        value={dataInicioEdit}
+                        onChange={e => setDataInicioEdit(e.target.value)}
+                        style={{ padding: '8px 12px', borderRadius: theme.radius, border: `1.5px solid ${dataInicioEdit ? theme.border : theme.orange}`, width: '100%', fontSize: 14 }}
+                      />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 140 }}>
+                      <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 4, fontWeight: 600 }}>
+                        Fim Matrícula <span style={{ color: theme.textMuted, fontWeight: 400 }}>(DD/MM/AAAA)</span>
+                      </div>
+                      <input
+                        type="text" placeholder="18/12/2026"
+                        value={dataFimEdit}
+                        onChange={e => setDataFimEdit(e.target.value)}
+                        style={{ padding: '8px 12px', borderRadius: theme.radius, border: `1.5px solid ${theme.border}`, width: '100%', fontSize: 14 }}
+                      />
                     </div>
                     <div style={{ flex: 1, minWidth: 140 }}>
                       <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 4, fontWeight: 600 }}>Data da movimentação</div>
