@@ -1,34 +1,8 @@
 # PROMPT — FOLHA OCR DIÁRIA (Tesseract.js)
-## Grade de dias com marcação X + leitura automática de faltas
+## Grade com X por dia + leitura automática de faltas
 
 > **VOCÊ É O EXECUTOR. Leia tudo antes de tocar em qualquer arquivo.**
-> Este documento é a versão CORRIGIDA do prompt original.
-> Três problemas críticos foram identificados e já estão resolvidos aqui.
-
----
-
-## ESTADO REAL DO CÓDIGO (confirmado pelo responsável Ricardo)
-
-> **Botões existentes na tela Faltas:** `🖨️ Diário` · `📊 Excel` · `📄 PDF`
-> **NÃO EXISTE** o botão `📋 Folha OCR` nem a função `exportarFolhaOCR()`
-> As ações abaixo são todas de **CRIAÇÃO**, não de substituição.
-
-### Correções em relação ao prompt original que foi apresentado:
-
-### ✅ Correção #1: Usar X (faltou) em vez de P/F/J/A por célula
-O Tesseract.js foi treinado para texto impresso. Letras soltas escritas à mão em caixinhas de 22px são irreconhecíveis:
-- "F" → lido como "E", "P", "7" ou "T"
-- "J" → lido como "I", "1", "l"
-- "P" → lido como "D", "R", "B"
-- "A" → lido como "4", "H", "^"
-
-**Solução:** A professora escreve apenas **X** nos dias que o aluno **FALTOU**. Célula vazia = PRESENTE. O OCR detecta presença ou ausência de marca (muito mais confiável). J e A podem ser diferenciados manualmente na tela de revisão.
-
-### ✅ Correção #2: `OCR.tsx` não existe — usar `Professor.tsx`
-O arquivo `frontend/src/pages/OCR.tsx` não existe. A funcionalidade de OCR está em `frontend/src/pages/Professor.tsx`. A nova funcionalidade deve ser adicionada ao `Professor.tsx` como um terceiro modo: `'folha'`.
-
-### ✅ Correção #3: `exportarFolhaOCR()` não existe — CRIAR do zero
-A função e o botão NÃO existem na versão atual do código deployado. A ação correta é **CRIAR** a função e **ADICIONAR** o botão ao lado dos botões existentes (`🖨️ Diário`, `📊 Excel`, `📄 PDF`).
+> Nenhuma linha de código deve ser alterada fora do especificado aqui.
 
 ---
 
@@ -36,138 +10,126 @@ A função e o botão NÃO existem na versão atual do código deployado. A aç�
 
 **Sistema:** Diário de Classe Digital — EMEIEF LUIZ GONZAGA  
 **URL:** https://diario.jroapp.com.br  
-**Ferramenta OCR:** Tesseract.js (gratuito, 100% local, sem internet)  
-**Objetivo:** Folha imprimível com grade de dias vazios → professora escreve **X** nos dias de falta → tira foto → sistema lê automaticamente e salva como `DIAS:PPFP...`.
+**Ferramenta OCR:** Tesseract.js (grátis, 100% local, sem internet)  
+**Proibido:** Google Vision API — não usar em hipótese alguma
 
-### Fluxo completo:
-```
-1. Abrir /faltas → turma + mês
-2. Clicar 📋 Folha OCR → imprimir folha com grade VAZIA
-3. Professora preenche: escreve X nos dias de falta (nada = presente)
-4. Tira foto da folha
-5. Abrir /professor → modo 📋 Folha OCR
-6. Fazer upload da foto → Tesseract detecta Xs
-7. Revisar na tela (corrigir se necessário, marcar J ou A nos casos de justificativa)
-8. Salvar → sistema grava DIAS:PPFPPPFP... para cada aluno
-9. Abrir /faltas → grade já mostra os dias preenchidos
-```
+### Objetivo
+Criar folha imprimível com grade de dias do mês (células vazias) onde a professora **marca X no dia que o aluno faltou** (deixa em branco se presente). Depois tira foto, o OCR lê os X e converte para o formato `DIAS:PPFJ...` que o sistema já usa.
+
+**Regra de ouro:**
+- Célula **vazia** → professora não marca nada → **P** (presente)
+- Célula com **X** → professora marcou → **F** (falta)
+- Detecção binária: X presente ou ausente — muito mais confiável que ler letras manuscritas
 
 ---
 
-## 2. ESTADO ATUAL (antes das alterações)
+## 2. DECISÃO ARQUITETURAL — X ao invés de letras P/F/J/A
+
+Tesseract.js foi treinado para texto impresso, não letras soltas manuscritas em caixinhas de 22px:
+- "F" manuscrito → Tesseract lê "E", "P", "7" ou "T"
+- "J" manuscrito → Tesseract lê "I", "1" ou "l"
+
+**Solução:** Professora marca **X** só nos dias de falta. Vazio = presente.  
+Para justificativa (J) e atestado (A): editados manualmente na tela de revisão do OCR ou pela grade de cliques em `/faltas`.
+
+---
+
+## 3. ESTADO ATUAL (antes das alterações)
 
 ### `frontend/src/pages/Faltas.tsx`
-- Botões existentes: `🖨️ Diário`, `📊 Excel`, `📄 PDF`
-- `exportarFolhaOCR()` **NÃO EXISTE** — precisa ser criada
-- Botão `📋 Folha OCR` **NÃO EXISTE** — precisa ser adicionado ao grupo de botões
-- **Ação: CRIAR** a função e ADICIONAR o botão
 
-### `frontend/src/pages/Professor.tsx`
-- Estado `modo` com valores `'manual'` e `'foto'`
-- Modo `'foto'` faz OCR via Google Vision API → resultado vai para tabela `Pendente`
-- **Ação: ADICIONAR** terceiro modo `'folha'` para leitura da grade de dias com Tesseract.js
+Botões existentes (linhas ~411–414):
+```
+📋 Folha   (chama exportarFolhaOCR — linha 165)
+🖨️ Diário  (chama exportarDiario)
+📊 Excel   (chama exportarExcel)
+📄 PDF     (chama exportarPDF)
+```
+
+O botão `📋 Folha` **JÁ EXISTE** e a função `exportarFolhaOCR()` **JÁ EXISTE** (linhas 165–250).  
+Mas a função atual gera uma folha simples com colunas F/J para escrever **totais numéricos** — não a grade de dias com células X.
+
+**Ação: SUBSTITUIR** o conteúdo completo da função `exportarFolhaOCR()` pela nova versão com grade de dias.  
+**O botão `📋 Folha` NÃO precisa ser alterado** — já existe e continua chamando `exportarFolhaOCR`.
+
+### `frontend/src/pages/OCR.tsx` — JÁ EXISTE (294 linhas)
+
+- `interface AlunoExtrato` → `{ numero, nome, faltas }` (total numérico)
+- `parseOCRText()` → lê total numérico de faltas
+- `salvar()` → grava `faltas: numero, frequencia: ''`
+- Usa Tesseract.js (grátis, local)
+- **Não tem suporte a grade de dias** → será ADICIONADO (preservando tudo existente)
 
 ---
 
-## 3. PASSO 1 — CRIAR `exportarFolhaOCR()` em `Faltas.tsx` e ADICIONAR botão
+## 4. PASSO 1 — SUBSTITUIR `exportarFolhaOCR()` em `Faltas.tsx`
 
 **Arquivo:** `frontend/src/pages/Faltas.tsx`  
-**Ação 1:** Localizar a função `exportarDiario()` (para referência de posição) e **INSERIR a nova função `exportarFolhaOCR()` ANTES dela**.  
-**Ação 2:** Localizar o grupo de botões `🖨️ Diário` / `📊 Excel` / `📄 PDF` e **ADICIONAR o botão `📋 Folha OCR` ao lado deles**.
-
-### Botão a adicionar (inserir ao lado dos botões existentes):
-```tsx
-<button
-  onClick={exportarFolhaOCR}
-  style={btn('primary', { small: true, outline: true })}
-  title="Folha com grade de dias — professora escreve X nos dias de falta — fotografa para OCR">
-  📋 Folha OCR
-</button>
-```
+**Ação:** Localizar a função `exportarFolhaOCR()` (começa na linha 165, termina na linha 250) e **SUBSTITUIR TODO O CONTEÚDO** pelo código abaixo.  
+**O botão na linha 411 NÃO muda.**
 
 ```typescript
-// ── Folha OCR — Grade de Dias (A4 paisagem, células VAZIAS) ──────────────────
-const exportarFolhaOCR = () => {
-  const turmaObj = turmas.find(t => t.id === turmaId);
-  const nomeMes = MESES[mes - 1];
-  const diasNoMes = new Date(ano, mes, 0).getDate();
+  // ── Folha OCR — Grade de Dias com X (A4 paisagem, células VAZIAS) ─────────────
+  const exportarFolhaOCR = () => {
+    const turmaObj = turmas.find(t => t.id === turmaId);
+    const nomeMes = MESES[mes - 1];
+    const diasNoMes = new Date(ano, mes, 0).getDate();
 
-  // Colunas: apenas dias úteis (segunda a sexta)
-  // Para simplificar OCR: incluir TODOS os dias 1 a diasNoMes, marcar fins de semana em cinza
-  const diasCols = Array.from({ length: diasNoMes }, (_, i) => {
-    const date = new Date(ano, mes - 1, i + 1);
-    const dw = date.getDay();
-    return { dia: i + 1, isWeekend: dw === 0 || dw === 6 };
-  });
+    const diasCols = Array.from({ length: diasNoMes }, (_, i) => {
+      const date = new Date(ano, mes - 1, i + 1);
+      const dw = date.getDay();
+      return { dia: i + 1, isWeekend: dw === 0 || dw === 6 };
+    });
 
-  const headerDias = diasCols.map(d =>
-    `<th style="
-      border:1px solid #94a3b8;
-      padding:0; width:22px; min-width:22px; max-width:22px;
-      font-size:8px; font-weight:700; text-align:center; height:30px;
-      vertical-align:middle;
-      background:${d.isWeekend ? '#475569' : '#1e40af'};
-      color:${d.isWeekend ? '#94a3b8' : '#ffffff'};
-    ">${d.dia}</th>`
-  ).join('');
-
-  const linhas = alunos.map((a, i) => {
-    const defi = a.deficiencia ? ' ♿' : '';
-    const bf = a.bolsa_familia ? ' 💚' : '';
-    const rowBg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
-    const celulas = diasCols.map(d =>
-      `<td style="
-        border:1px solid ${d.isWeekend ? '#94a3b8' : '#cbd5e1'};
-        width:22px; min-width:22px; max-width:22px;
-        height:22px; text-align:center; vertical-align:middle;
-        font-size:14px; font-weight:900;
-        background:${d.isWeekend ? '#f1f5f9' : rowBg};
-        color:#dc2626;
-      "></td>`
+    const headerDias = diasCols.map(d =>
+      `<th style="border:1px solid #64748b;padding:0;width:22px;min-width:22px;max-width:22px;height:28px;text-align:center;vertical-align:middle;font-size:8px;font-weight:700;background:${d.isWeekend ? '#334155' : '#1e40af'};color:${d.isWeekend ? '#94a3b8' : '#ffffff'};">${d.dia}</th>`
     ).join('');
-    return `<tr>
-      <td style="border:1px solid #cbd5e1;padding:3px 5px;font-size:11px;text-align:center;width:26px;font-weight:700;">${String(a.numero || i + 1).padStart(2, '0')}</td>
-      <td style="border:1px solid #cbd5e1;padding:3px 7px;font-size:11px;white-space:nowrap;font-weight:${bf ? '700' : '400'};">${a.nome}${defi}${bf}</td>
-      ${celulas}
-    </tr>`;
-  }).join('');
 
-  const html = `<!DOCTYPE html>
+    const linhas = alunos.map((a, i) => {
+      const rowBg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
+      const celulas = diasCols.map(d =>
+        `<td style="border:1px solid ${d.isWeekend ? '#94a3b8' : '#cbd5e1'};width:22px;min-width:22px;max-width:22px;height:22px;background:${d.isWeekend ? '#f1f5f9' : rowBg};"></td>`
+      ).join('');
+      const defi = a.deficiencia ? ' ♿' : '';
+      const bf = a.bolsa_familia ? ' 💚' : '';
+      return `<tr>
+        <td style="border:1px solid #cbd5e1;padding:2px 4px;text-align:center;width:26px;font-size:11px;font-weight:700;">${String(a.numero || i + 1).padStart(2, '0')}</td>
+        <td style="border:1px solid #cbd5e1;padding:2px 6px;font-size:10px;white-space:nowrap;">${a.nome}${defi}${bf}</td>
+        ${celulas}
+      </tr>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8"/>
 <title>Folha OCR — ${turmaObj?.nome ?? ''} — ${nomeMes} ${ano}</title>
 <style>
   * { box-sizing: border-box; }
-  body { font-family: Arial, Helvetica, sans-serif; margin: 6mm; font-size: 11px; color: #000; background: #fff; }
+  body { font-family: Arial, Helvetica, sans-serif; margin: 6mm; color: #000; background: #fff; }
   table { border-collapse: collapse; }
-  @media print {
-    @page { size: A4 landscape; margin: 7mm 6mm; }
-    body { margin: 0; }
-  }
+  @media print { @page { size: A4 landscape; margin: 7mm 6mm; } body { margin: 0; } }
 </style>
 </head>
 <body>
 
-<!-- CABEÇALHO -->
-<div style="text-align:center; border-bottom:2px solid #1e40af; padding-bottom:6px; margin-bottom:8px;">
-  <div style="font-size:9px; color:#64748b; font-weight:600; letter-spacing:0.5px;">PREFEITURA MUNICIPAL DE SANTO ANDRÉ</div>
-  <div style="font-size:16px; font-weight:900; color:#1e40af; margin:1px 0;">EMEIEF LUIZ GONZAGA</div>
-  <div style="font-size:9px; color:#475569; font-weight:600;">Folha de Frequência Diária — ${nomeMes.toUpperCase()} / ${ano}</div>
+<div style="text-align:center;border-bottom:2px solid #1e40af;padding-bottom:5px;margin-bottom:7px;">
+  <div style="font-size:9px;color:#64748b;font-weight:600;letter-spacing:0.5px;">PREFEITURA MUNICIPAL DE SANTO ANDRÉ</div>
+  <div style="font-size:15px;font-weight:900;color:#1e40af;margin:1px 0;">EMEIEF LUIZ GONZAGA</div>
+  <div style="font-size:9px;color:#475569;font-weight:600;">Folha de Frequência Diária — ${nomeMes.toUpperCase()} / ${ano}</div>
 </div>
 
-<!-- INFO TURMA -->
-<table style="width:100%; border:none; margin-bottom:7px;">
+<table style="width:100%;border:none;margin-bottom:6px;">
   <tr>
-    <td style="border:none; padding:2px 0; font-size:10px;">
+    <td style="border:none;font-size:10px;padding:1px 0;">
       <b style="color:#475569;">TURMA:</b>
-      <span style="font-size:13px; font-weight:900; color:#1e40af; margin-left:5px;">${turmaObj?.nome ?? '—'}</span>
+      <span style="font-size:12px;font-weight:900;color:#1e40af;margin-left:5px;">${turmaObj?.nome ?? '—'}</span>
     </td>
-    <td style="border:none; padding:2px 0; font-size:10px; text-align:center;">
+    <td style="border:none;font-size:10px;padding:1px 0;text-align:center;">
       <b style="color:#475569;">PROFESSORA:</b>
-      <span style="font-weight:700; margin-left:5px;">${turmaObj?.professora ?? '—'}</span>
+      <span style="font-weight:700;margin-left:5px;">${turmaObj?.professora ?? '—'}</span>
     </td>
-    <td style="border:none; padding:2px 0; font-size:10px; text-align:right;">
+    <td style="border:none;font-size:10px;padding:1px 0;text-align:right;">
       <b style="color:#475569;">Alunos:</b> ${alunos.length}
       &nbsp;&nbsp;
       <b style="color:#475569;">Dias letivos:</b> ${numDias}
@@ -175,19 +137,15 @@ const exportarFolhaOCR = () => {
   </tr>
 </table>
 
-<!-- INSTRUÇÃO -->
-<div style="font-size:9px; padding:4px 8px; background:#fef3c7; border:1px solid #fbbf24; border-radius:4px; margin-bottom:6px; color:#92400e; font-weight:700;">
-  ✏️ INSTRUÇÕES: Escreva <strong>X</strong> somente nos dias em que o aluno <strong>FALTOU</strong>.
-  Células vazias = presente. Para falta justificada escreva <strong>J</strong>, para atestado escreva <strong>A</strong>.
-  Fins de semana estão em cinza — não preencher.
+<div style="font-size:9px;padding:3px 8px;background:#fef3c7;border:1px solid #fbbf24;border-radius:3px;margin-bottom:5px;color:#92400e;font-weight:700;">
+  ✏️ Escreva <strong>X</strong> no dia em que o aluno <strong>FALTOU</strong>. Deixe em <strong>BRANCO</strong> se veio à aula. Fins de semana (cinza escuro) não preencher.
 </div>
 
-<!-- GRADE DE DIAS -->
 <table style="width:100%;">
   <thead>
-    <tr style="height:30px;">
-      <th style="border:1px solid #94a3b8;padding:2px;font-size:9px;text-align:center;width:26px;background:#0f172a;color:#ffffff;">Nº</th>
-      <th style="border:1px solid #94a3b8;padding:2px 6px;font-size:9px;text-align:left;min-width:140px;background:#0f172a;color:#ffffff;">NOME DO ALUNO</th>
+    <tr>
+      <th style="border:1px solid #64748b;padding:2px;width:26px;font-size:9px;text-align:center;background:#0f172a;color:#ffffff;">Nº</th>
+      <th style="border:1px solid #64748b;padding:2px 6px;font-size:9px;text-align:left;background:#0f172a;color:#ffffff;min-width:130px;">NOME DO ALUNO</th>
       ${headerDias}
     </tr>
   </thead>
@@ -196,16 +154,16 @@ const exportarFolhaOCR = () => {
   </tbody>
 </table>
 
-<!-- LEGENDA + ASSINATURA -->
-<div style="margin-top:6mm; display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:8mm;">
-  <div style="font-size:9px; color:#475569;">
+<div style="margin-top:5mm;display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:4mm;">
+  <div style="font-size:9px;color:#475569;">
     <b>Legenda:</b>
-    <span style="margin-left:6px; background:#fee2e2; padding:1px 5px; border-radius:3px; font-weight:900; color:#dc2626;">X</span> = Falta
-    <span style="margin-left:6px; background:#ffedd5; padding:1px 5px; border-radius:3px; font-weight:900; color:#d97706;">J</span> = Justificada
-    <span style="margin-left:6px; background:#ede9fe; padding:1px 5px; border-radius:3px; font-weight:900; color:#7c3aed;">A</span> = Atestado
-    <span style="margin-left:6px; background:#f1f5f9; padding:1px 5px; border-radius:3px; color:#475569;">■■</span> = Fim de semana (não preencher)
+    <span style="margin-left:6px;background:#fee2e2;padding:1px 6px;border-radius:2px;font-weight:900;color:#dc2626;font-size:11px;">X</span> = Falta
+    &nbsp;&nbsp;
+    <span style="background:#f1f5f9;padding:1px 10px;border-radius:2px;border:1px solid #cbd5e1;font-size:10px;">  </span> = Presente (vazio)
+    &nbsp;&nbsp;
+    <span style="background:#334155;padding:1px 8px;border-radius:2px;font-size:10px;color:#94a3b8;">■</span> = Fim de semana (não preencher)
   </div>
-  <div style="font-size:10px; display:flex; gap:14mm;">
+  <div style="font-size:10px;display:flex;gap:12mm;">
     <span>Assinatura do(a) Professor(a): _________________________</span>
     <span>Data: ___/___/______</span>
   </div>
@@ -215,549 +173,432 @@ const exportarFolhaOCR = () => {
 </body>
 </html>`;
 
-  const win = window.open('', '_blank');
-  if (!win) { alert('Permita pop-ups para abrir a folha.'); return; }
-  win.document.write(html);
-  win.document.close();
-};
+    const win = window.open('', '_blank');
+    if (!win) { alert('Permita pop-ups para abrir a folha.'); return; }
+    win.document.write(html);
+    win.document.close();
+  };
 ```
 
-### Resultado visual esperado:
-- Grade A4 paisagem com 31 colunas de dias (22px cada)
-- Cabeçalho azul escuro com Nº e NOME
-- Dias da semana: azul (#1e40af), fins de semana: cinza escuro (#475569)
-- Células completamente VAZIAS para a professora preencher à mão
-- Instrução clara em amarelo: escreva X nos dias de falta
-- Legenda e assinatura no rodapé
+**Resultado esperado:**
+- A4 paisagem, margens 7mm
+- Cabeçalho azul com escola e turma
+- Grade: Nº (26px) | NOME (min 130px) | D1..D31 (22px cada)
+- Dias de semana: cabeçalho azul (#1e40af), células brancas/cinza alternado
+- Fins de semana: cabeçalho cinza escuro (#334155), células cinza claro
+- Células completamente vazias — professora preenche X à mão
+- Instrução em amarelo: "escreva X no dia que faltou, branco se veio"
+- Legenda e linha de assinatura no rodapé
+- Abre diálogo de impressão automaticamente
 
 ---
 
-## 4. PASSO 2 — Adicionar modo `'folha'` em `Professor.tsx`
+## 5. PASSO 2 — Adicionar suporte a grade de X em `OCR.tsx`
 
-**Arquivo:** `frontend/src/pages/Professor.tsx`  
-**Ação:** Adicionar terceiro modo ao toggle existente e implementar lógica de OCR da grade.
+**Arquivo:** `frontend/src/pages/OCR.tsx` (294 linhas — preservar tudo existente)
 
-### 4a — Adicionar `'folha'` ao tipo do estado `modo`
+### 2a — Adicionar interface `AlunoFolhaDia` (após a interface `AlunoExtrato` existente, linha ~11)
 
-Localizar:
 ```typescript
-const [modo, setModo] = useState<'manual' | 'foto'>('manual');
-```
-
-Substituir por:
-```typescript
-const [modo, setModo] = useState<'manual' | 'foto' | 'folha'>('manual');
-```
-
----
-
-### 4b — Adicionar terceiro botão no toggle de modo
-
-Localizar o bloco do toggle (os dois botões `✏️ Digitar` e `📷 Via Foto`).
-
-**Adicionar terceiro botão DEPOIS do `📷 Via Foto`:**
-```tsx
-<button
-  onClick={() => setModo('folha')}
-  style={{
-    flex: 1, padding: '10px', border: 'none', cursor: 'pointer',
-    borderRadius: 8, fontWeight: 700, fontSize: 13,
-    background: modo === 'folha' ? '#ffffff' : 'transparent',
-    color: modo === 'folha' ? '#1e40af' : theme.textSecondary,
-    boxShadow: modo === 'folha' ? '0 1px 3px rgba(0,0,0,0.15)' : 'none',
-    transition: 'all 0.15s ease',
-  }}>
-  📋 Folha OCR
-</button>
-```
-
----
-
-### 4c — Adicionar estados para o modo `'folha'`
-
-Junto dos outros estados no componente `Professor`, adicionar:
-```typescript
-// Estados modo folha OCR
-const [folhaImagem, setFolhaImagem] = useState<string | null>(null);
-const [folhaResultados, setFolhaResultados] = useState<Array<{
-  numero: number;
-  nome: string;
-  dias: Array<'P' | 'F' | 'J' | 'A'>;
-}>>([]);
-const [folhaOcrStatus, setFolhaOcrStatus] = useState('');
-const [folhaOcrProgresso, setFolhaOcrProgresso] = useState(0);
-const [folhaSalvo, setFolhaSalvo] = useState(false);
-const folhaFileRef = useRef<HTMLInputElement>(null);
-```
-
----
-
-### 4d — Adicionar interface para resultado da folha
-
-No topo do arquivo, junto das outras interfaces/tipos:
-```typescript
+// NOVO: grade de dias — true = X (falta), false = vazio (presente)
 interface AlunoFolhaDia {
   numero: number;
   nome: string;
-  dias: Array<'P' | 'F' | 'J' | 'A'>;
+  dias: boolean[];
+}
+```
+
+### 2b — Adicionar função `parseOCRFolha()` (após `parseOCRText()`, linha ~55)
+
+```typescript
+// Parser para grade de dias com X
+// Tesseract devolve texto linha a linha:
+//   "01  ALANNA EMANUELLY FERREIRA      X         X"
+//   "02  ANA CLARA SOUZA"
+//   "03  PEDRO HENRIQUE       X  X         X"
+// Captura: Nº + NOME + sequência de X/espaços
+// X, x, *, +, ✗ → true (falta); qualquer outro token → false (presente)
+function parseOCRFolha(text: string): AlunoFolhaDia[] {
+  const results: AlunoFolhaDia[] = [];
+  const seen = new Set<number>();
+
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (!line || line.length < 10) continue;
+    if (/^(nº|nome|aluno|prof|turma|série|serie|mês|mes|escola|data|total|freq|emei|legenda|presença|falta|justif|atestado|marque|deixe|instruç|fim de)/i.test(line)) continue;
+
+    // Regex: Nº(1-2 dígitos) + NOME (maiúsculas, 8-60 chars) + conteúdo das células
+    const m = line.match(/^(\d{1,2})\.?\s{1,4}([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇÀ][A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇÀ\s'-]{6,58}?)\s{2,}(.{3,})$/);
+    if (!m) continue;
+
+    const num = parseInt(m[1]);
+    if (seen.has(num)) continue;
+    seen.add(num);
+
+    const nome = m[2].trim();
+    const rawDias = m[3];
+    // Tokens separados por espaço — cada um representa uma célula
+    const tokens = rawDias.split(/\s+/).filter(t => t.length > 0);
+    // Linha sem nenhuma marca = todos presentes (tokens podem ser poucos)
+    const dias = tokens.map(t => /^[Xx*+✗×]$/.test(t));
+
+    if (dias.length >= 3) {
+      results.push({ numero: num, nome, dias });
+    }
+  }
+
+  return results.sort((a, b) => a.numero - b.numero);
+}
+```
+
+### 2c — Adicionar função `parseOCRFolhaFallback()` (após `parseOCRFolha()`)
+
+```typescript
+// Fallback: separa linha por 2+ espaços em vez de regex
+function parseOCRFolhaFallback(line: string): AlunoFolhaDia | null {
+  const parts = line.trim().split(/\s{2,}/);
+  if (parts.length < 2) return null;
+
+  const [header, ...rest] = parts;
+  const diasRaw = rest.join(' ').trim();
+  const tokens = diasRaw.split(/\s+/).filter(t => t.length > 0);
+  const dias = tokens.map(t => /^[Xx*+✗×]$/.test(t));
+  if (dias.length < 3) return null;
+
+  const hMatch = header.match(/^(\d{1,2})\.?\s{1,4}([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇÀ][A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇÀ\s'-].+)$/);
+  if (!hMatch) return null;
+
+  return {
+    numero: parseInt(hMatch[1]),
+    nome: hMatch[2].trim(),
+    dias,
+  };
 }
 ```
 
 ---
 
-### 4e — Adicionar função `parsearGradeOCR()`
+## 6. PASSO 3 — Adaptar `OCR.tsx`: estados, toggle, `analisar()`, `salvarDiario()`, revisão
 
-Inserir junto das outras funções, antes do `return` do componente:
+### 3a — Adicionar estados novos (junto dos outros `useState`, após linha ~68)
 
 ```typescript
-// Parser para grade dia a dia
-// Estratégia: Tesseract retorna texto linha a linha
-// A professora escreveu X nos dias de falta (vazio = presente, J = justificada, A = atestado)
-// Tesseract verá: "01 ALANNA FERREIRA     X        X    X"
-// Capturamos o nº, o nome (maiúsculas), e a sequência de caracteres
-// Mapeamos cada caractere:
-//   X, x, *, ×, + → 'F' (faltou)
-//   J, j           → 'J' (justificada)
-//   A, a, @        → 'A' (atestado)
-//   tudo mais      → 'P' (presente)
-
-const parsearGradeOCR = (texto: string, numDiasEsperado: number): AlunoFolhaDia[] => {
-  const resultados: AlunoFolhaDia[] = [];
-  const numerosVistos = new Set<number>();
-
-  for (const linhaRaw of texto.split('\n')) {
-    const linha = linhaRaw.trim();
-    if (!linha || linha.length < 8) continue;
-
-    // Ignorar linhas de cabeçalho, rodapé, instrução
-    if (/^(nº|nome|aluno|prof|turma|série|serie|mês|mes|escola|data|total|freq|emei|legenda|presença|falta|justif|atestado|instrução|instrucao|prefeitura|assinatura|x\s*=|j\s*=|a\s*=)/i.test(linha)) continue;
-
-    // Tenta capturar: Nº (1-2 dígitos) + espaços + NOME (maiúsculas) + espaços + conteúdo de células
-    // Formato esperado: "01 ALANNA EMANUELLY FERREIRA DE SOUZA   X     X   J"
-    // Regex: início da linha, Nº, espaços, nome em maiúsculas, resto
-    const m = linha.match(/^(\d{1,2})\.?\s{1,4}([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇÀ][A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇÀ\s'-]{5,55}?)\s{2,}(.{3,})$/);
-    if (!m) continue;
-
-    const num = parseInt(m[1]);
-    if (numerosVistos.has(num)) continue;
-    numerosVistos.add(num);
-
-    const nome = m[2].trim();
-    const celulasRaw = m[3];
-
-    // Extrair marcações: X/J/A/espaço — cada token separado por espaço ou por posição fixa de ~22px
-    // Tesseract separa células por espaços; mapeamos cada token não-espaço
-    const tokens = celulasRaw.split(/\s+/).filter(t => t.length > 0);
-
-    const dias: Array<'P' | 'F' | 'J' | 'A'> = [];
-    for (const tok of tokens) {
-      const c = tok[0].toUpperCase();
-      if (c === 'X' || c === '*' || c === '+' || tok === '×') {
-        dias.push('F');
-      } else if (c === 'J') {
-        dias.push('J');
-      } else if (c === 'A' || c === '@') {
-        dias.push('A');
-      } else if (c === ' ' || c === '-' || c === '_' || c === '.' || c === '0') {
-        dias.push('P'); // vazio ou ponto = presente
-      }
-      // Ignora dígitos e caracteres não reconhecidos (são artefatos OCR de células vazias)
-    }
-
-    // Preenche com P até numDiasEsperado se leu menos dias
-    while (dias.length < numDiasEsperado) dias.push('P');
-
-    // Trunca se leu mais que o esperado
-    const diasFinal = dias.slice(0, numDiasEsperado) as Array<'P' | 'F' | 'J' | 'A'>;
-
-    if (nome.length >= 5 && diasFinal.length >= 3) {
-      resultados.push({ numero: num, nome, dias: diasFinal });
-    }
-  }
-
-  return resultados.sort((a, b) => a.numero - b.numero);
-};
+const [modoLeitura, setModoLeitura] = useState<'total' | 'diario'>('total');
+const [extratosDias, setExtratosDias] = useState<AlunoFolhaDia[]>([]);
 ```
 
----
+### 3b — Adicionar toggle de modo na UI (ANTES do bloco de upload, dentro do `return`)
 
-### 4f — Adicionar função `analisarFolha()` com Tesseract.js
+Localizar a div com o `<select>` de Turma e Mês (~linha 162). Inserir o toggle **ANTES** dessa div:
+
+```tsx
+{/* Toggle modo leitura */}
+<div style={{ marginBottom: 12, display: 'flex', gap: 4, background: '#f1f5f9', borderRadius: 8, padding: 4 }}>
+  <button
+    onClick={() => setModoLeitura('total')}
+    style={{
+      flex: 1, padding: '8px', borderRadius: 6, border: 'none', cursor: 'pointer',
+      fontWeight: 700, fontSize: 13,
+      background: modoLeitura === 'total' ? '#ffffff' : 'transparent',
+      color: modoLeitura === 'total' ? '#1e40af' : '#64748b',
+      boxShadow: modoLeitura === 'total' ? '0 1px 3px rgba(0,0,0,0.15)' : 'none',
+      transition: 'all 0.15s',
+    }}>
+    📊 Total por mês
+  </button>
+  <button
+    onClick={() => setModoLeitura('diario')}
+    style={{
+      flex: 1, padding: '8px', borderRadius: 6, border: 'none', cursor: 'pointer',
+      fontWeight: 700, fontSize: 13,
+      background: modoLeitura === 'diario' ? '#ffffff' : 'transparent',
+      color: modoLeitura === 'diario' ? '#1e40af' : '#64748b',
+      boxShadow: modoLeitura === 'diario' ? '0 1px 3px rgba(0,0,0,0.15)' : 'none',
+      transition: 'all 0.15s',
+    }}>
+    📅 Dia a dia (X na grade)
+  </button>
+</div>
+```
+
+### 3c — Modificar `analisar()` para usar parser conforme modo
+
+Localizar a função `analisar()` (~linha 87). **SUBSTITUIR o bloco interno** pelo seguinte:
 
 ```typescript
-const analisarFolha = async () => {
-  if (!folhaImagem) { alert('Selecione a foto da folha.'); return; }
-  if (!turmaId || !mes) { alert('Selecione a turma e o mês.'); return; }
-
-  setFolhaOcrStatus('Iniciando reconhecimento de texto...');
-  setFolhaOcrProgresso(0);
-  setFolhaResultados([]);
-
+const analisar = async () => {
+  if (!imagePreview) { setErro('Selecione uma imagem.'); return; }
+  setErro('');
+  setProgresso(0);
+  setStatus(modoLeitura === 'total'
+    ? 'Carregando motor OCR (primeira vez é mais lento)...'
+    : 'Extraindo grade de dias...');
   try {
-    // Importação dinâmica do Tesseract
-    const Tesseract = await import('tesseract.js');
-    const { data } = await Tesseract.recognize(
-      folhaImagem,
-      'por',   // Português
-      {
-        logger: (m: any) => {
-          if (m.status === 'recognizing text') {
-            setFolhaOcrProgresso(Math.round(m.progress * 100));
-            setFolhaOcrStatus(`Reconhecendo texto... ${Math.round(m.progress * 100)}%`);
+    const text = await runTesseractOCR(imagePreview, (p) => {
+      setProgresso(p);
+      setStatus(`Reconhecendo texto... ${p}%`);
+    });
+    setRawText(text);
+
+    if (modoLeitura === 'total') {
+      // Fluxo existente — sem alteração
+      const parsed = parseOCRText(text);
+      setExtratos(parsed);
+      setExtratosDias([]);
+      setStep('review');
+      setStatus('');
+      if (parsed.length === 0) setErro('Não foi possível extrair alunos automaticamente. Revise o texto bruto abaixo e edite manualmente.');
+    } else {
+      // Novo fluxo — grade de X
+      let parsed = parseOCRFolha(text);
+      if (parsed.length === 0) {
+        // Tenta fallback
+        const seenN = new Set<number>();
+        const fallback: AlunoFolhaDia[] = [];
+        for (const ln of text.split('\n')) {
+          const r = parseOCRFolhaFallback(ln);
+          if (r && !seenN.has(r.numero)) {
+            seenN.add(r.numero);
+            fallback.push(r);
           }
-        },
+        }
+        parsed = fallback;
       }
-    );
-
-    const diasNoMes = new Date(ano, mes, 0).getDate();
-    const resultados = parsearGradeOCR(data.text, diasNoMes);
-
-    if (resultados.length === 0) {
-      setFolhaOcrStatus('');
-      alert('Não foi possível identificar alunos na imagem. Verifique se a foto está nítida e com boa iluminação.');
-      return;
+      setExtratosDias(parsed);
+      setExtratos([]);
+      setStep('review');
+      setStatus('');
+      if (parsed.length === 0) setErro('Não foi possível identificar alunos na grade. Verifique se a foto está nítida e com boa iluminação.');
     }
-
-    setFolhaResultados(resultados);
-    setFolhaOcrStatus('');
-    setFolhaOcrProgresso(100);
-  } catch (err: any) {
-    setFolhaOcrStatus('');
-    alert(`Erro no OCR: ${err.message ?? String(err)}`);
+  } catch (ex: any) {
+    setErro(ex.message);
+    setStatus('');
   }
 };
 ```
 
----
-
-### 4g — Adicionar função `salvarFolha()`
+### 3d — Adicionar função `salvarDiario()` (após a função `salvar()` existente, ~linha 141)
 
 ```typescript
-const salvarFolha = async () => {
-  if (!turmaId || !mes) { alert('Selecione turma e mês.'); return; }
-  const validos = folhaResultados.filter(e => e.nome.trim().length >= 4 && e.dias.length >= 3);
-  if (validos.length === 0) { alert('Sem dados para salvar.'); return; }
-
-  setFolhaOcrStatus('Cruzando com alunos da turma...');
+const salvarDiario = async () => {
+  if (!turmaId) { setErro('Selecione a turma.'); return; }
+  const validos = extratosDias.filter(e => e.nome.trim().length > 2 && e.dias.length >= 5);
+  if (validos.length === 0) { setErro('Nenhum aluno com dados válidos.'); return; }
+  setStatus('Salvando frequência dia a dia...');
+  setErro('');
   try {
     const alunosTurma = await api.getAlunos(turmaId);
     const registros: any[] = [];
+    const numDias = Math.max(...validos.map(e => e.dias.length));
 
     for (const e of validos) {
-      // Tenta match por número de chamada
-      let aluno = alunosTurma.find((a: any) => (a.numero || 0) === e.numero);
-
-      // Fallback: match por nome (primeiro + último palavra)
+      // Match por número de chamada, depois por nome exato, depois por primeira+última palavra
+      let aluno = alunosTurma.find((a: any) => a.numero === e.numero);
+      if (!aluno) aluno = alunosTurma.find((a: any) => a.nome?.toUpperCase().trim() === e.nome);
       if (!aluno) {
-        const partes = e.nome.toUpperCase().trim().split(/\s+/).filter(Boolean);
+        const partes = e.nome.split(' ').filter(Boolean);
         aluno = alunosTurma.find((a: any) => {
-          const an = (a.nome ?? '').toUpperCase();
-          return partes.length >= 2
-            && an.includes(partes[0])
-            && an.includes(partes[partes.length - 1]);
+          const an = a.nome?.toUpperCase() ?? '';
+          return partes.length >= 2 && an.includes(partes[0]) && an.includes(partes[partes.length - 1]);
         });
       }
+      if (!aluno) continue;
 
-      if (!aluno) continue; // não encontrou — pula (não quebra, só avisa)
-
-      const diasCompletos = e.dias.slice(0, new Date(ano, mes, 0).getDate());
-      const nFaltas = diasCompletos.filter(d => d === 'F').length;
-      const nJust = diasCompletos.filter(d => d === 'J').length;
-      const nAtest = diasCompletos.filter(d => d === 'A').length;
+      // Converte boolean[] para string: true → 'F', false → 'P'
+      const diasStr = Array(numDias).fill('P').map((_, i) => e.dias[i] ? 'F' : 'P');
 
       registros.push({
         alunoId: aluno.id,
         turmaId,
         mes,
-        ano,
-        faltas: nFaltas + nJust + nAtest,
-        frequencia: 'DIAS:' + diasCompletos.join(''),
+        ano: 2026,
+        faltas: diasStr.filter(d => d === 'F').length,
+        frequencia: 'DIAS:' + diasStr.join(''),
       });
     }
 
-    if (registros.length === 0) {
-      throw new Error('Não foi possível cruzar nenhum aluno. Verifique os nomes na tela de revisão.');
-    }
-
-    setFolhaOcrStatus('Salvando...');
+    if (registros.length === 0) throw new Error('Não foi possível cruzar os nomes. Verifique se a turma selecionada está correta.');
     await api.upsertFaltasBatch(registros);
-
-    // Informa alunos não cruzados
-    const naoEncontrados = validos.length - registros.length;
-    setFolhaOcrStatus('');
-    setFolhaSalvo(true);
-    if (naoEncontrados > 0) {
-      alert(`✅ ${registros.length} alunos salvos com sucesso.\n⚠️ ${naoEncontrados} aluno(s) não foram encontrados na turma (verifique nomes na revisão).`);
-    }
-  } catch (err: any) {
-    setFolhaOcrStatus('');
-    alert(`Erro ao salvar: ${err.message ?? String(err)}`);
+    setStep('done');
+    setStatus('');
+  } catch (ex: any) {
+    setErro(ex.message);
+    setStatus('');
   }
 };
 ```
 
----
+### 3e — Adicionar tela de revisão para modo diário
 
-### 4h — Adicionar UI do modo `'folha'` no JSX de `Professor.tsx`
-
-No `return` do componente, **após** o bloco do modo `'foto'` e **antes** do fechamento do `</div>` principal:
+No bloco `step === 'review'` (~linha 195), o código atual mostra a revisão do modo "total".  
+**Adicionar logo ANTES do `<div style={{ display: 'flex', gap: 8 }}>` dos botões de ação** (~linha 234):
 
 ```tsx
-{/* ──── MODO FOLHA OCR ──── */}
-{modo === 'folha' && (
-  <div style={{ animation: 'fadeIn 0.2s ease both' }}>
-
-    {/* Seleção de turma + mês (reaproveitar o mesmo seletor do modo manual) */}
-    {/* NOTA: A seleção de turma e mês do modo manual já deve estar visível acima do toggle.
-         Se não estiver, incluir aqui os mesmos <select> de turmaId e mes. */}
-
-    {!folhaSalvo && (
-      <>
-        {/* Upload da foto */}
-        <div style={{
-          border: `2px dashed ${theme.border}`, borderRadius: theme.radiusMd,
-          padding: folhaImagem ? 12 : 32,
-          textAlign: 'center', marginBottom: 14, cursor: 'pointer',
-          background: 'var(--row-odd)',
-        }}
-          onClick={() => folhaFileRef.current?.click()}>
-          <input
-            ref={folhaFileRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            style={{ display: 'none' }}
-            onChange={e => {
-              const f = e.target.files?.[0];
-              if (!f) return;
-              const reader = new FileReader();
-              reader.onload = ev => setFolhaImagem(ev.target?.result as string);
-              reader.readAsDataURL(f);
-            }}
-          />
-          {folhaImagem ? (
-            <img src={folhaImagem} alt="Folha" style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 8 }} />
-          ) : (
-            <>
-              <div style={{ fontSize: 36, marginBottom: 8 }}>📷</div>
-              <div style={{ fontWeight: 700, color: theme.primaryText, fontSize: 15 }}>
-                Tirar foto ou escolher imagem da Folha OCR
-              </div>
-              <div style={{ fontSize: 12, color: theme.textMuted, marginTop: 4 }}>
-                Use a folha impressa com grade de dias
-              </div>
-            </>
-          )}
-        </div>
-
-        {folhaImagem && folhaResultados.length === 0 && !folhaOcrStatus && (
-          <button
-            onClick={analisarFolha}
-            style={{ ...btn('primary', { full: true }), padding: '13px', fontSize: 16, fontWeight: 700, borderRadius: theme.radiusMd }}>
-            🔍 Ler Frequência (Tesseract.js — grátis)
-          </button>
-        )}
-
-        {/* Progresso OCR */}
-        {folhaOcrStatus && (
-          <div style={{ textAlign: 'center', padding: '16px 0', color: theme.textSecondary }}>
-            <p style={{ marginBottom: 8 }}>{folhaOcrStatus}</p>
-            {folhaOcrProgresso > 0 && folhaOcrProgresso < 100 && (
-              <div style={{ height: 6, background: theme.border, borderRadius: 3, overflow: 'hidden', maxWidth: 300, margin: '0 auto' }}>
-                <div style={{
-                  height: '100%',
-                  background: `linear-gradient(90deg, ${theme.primary}, ${theme.sky})`,
-                  width: `${folhaOcrProgresso}%`,
-                  transition: 'width 0.3s ease',
-                  borderRadius: 3,
-                }} />
-              </div>
-            )}
+{/* Revisão modo diário — grade de X */}
+{modoLeitura === 'diario' && extratosDias.length > 0 && (
+  <div style={{ background: 'white', borderRadius: 8, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: 14 }}>
+    <div style={{ background: '#1e40af', color: 'white', padding: '10px 14px' }}>
+      <span style={{ fontSize: 13, fontWeight: 700 }}>
+        📅 Grade lida — {extratosDias.length} aluno(s) · Clique nas células para corrigir
+      </span>
+    </div>
+    <div style={{ padding: 10 }}>
+      <p style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>
+        <span style={{ background: '#fee2e2', padding: '1px 6px', borderRadius: 2, color: '#dc2626', fontWeight: 700 }}>X</span> = falta detectada
+        &nbsp;&nbsp;
+        <span style={{ background: '#dcfce7', padding: '1px 8px', borderRadius: 2, color: '#16a34a', fontWeight: 700 }}> </span> = presente
+        &nbsp;&nbsp;
+        Clique para alternar.
+      </p>
+      {extratosDias.map((e, i) => (
+        <div key={i} style={{ marginBottom: 8, padding: 8, background: '#f8fafc', borderRadius: 6, border: '1px solid #e2e8f0' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 5 }}>
+            <span style={{ fontWeight: 800, fontSize: 13, color: '#1e40af', minWidth: 26, textAlign: 'center' }}>
+              {String(e.numero).padStart(2, '0')}
+            </span>
+            <input
+              value={e.nome}
+              onChange={v => setExtratosDias(prev => prev.map((x, j) => j === i ? { ...x, nome: v.target.value } : x))}
+              style={{ flex: 1, padding: '4px 8px', borderRadius: 4, border: '1px solid #e2e8f0', fontSize: 12, fontWeight: 600 }}
+            />
           </div>
-        )}
-
-        {/* Tela de revisão */}
-        {folhaResultados.length > 0 && (
-          <div style={{ marginTop: 8 }}>
-            <div style={{
-              background: theme.primaryBg, borderRadius: theme.radius,
-              padding: '10px 14px', marginBottom: 12,
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            }}>
-              <span style={{ fontWeight: 700, color: theme.primaryText, fontSize: 14 }}>
-                📋 {folhaResultados.length} aluno(s) reconhecidos — revise e corrija se necessário
-              </span>
-              <button
-                onClick={() => { setFolhaResultados([]); setFolhaImagem(null); setFolhaOcrProgresso(0); }}
-                style={{ ...btn('ghost', {}), fontSize: 12, padding: '4px 10px' }}>
-                🔄 Nova foto
-              </button>
-            </div>
-
-            {folhaResultados.map((e, i) => (
-              <div key={i} style={{
-                marginBottom: 10, padding: '10px 12px',
-                background: 'var(--row-odd)',
-                borderRadius: theme.radius,
-                border: `1px solid ${theme.border}`,
-              }}>
-                {/* Linha: Nº + Nome editável */}
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-                  <span style={{
-                    fontWeight: 800, fontSize: 13, color: theme.primaryText,
-                    minWidth: 28, textAlign: 'center',
-                  }}>
-                    {String(e.numero).padStart(2, '0')}
-                  </span>
-                  <input
-                    value={e.nome}
-                    onChange={v => {
-                      const novo = [...folhaResultados];
-                      novo[i] = { ...novo[i], nome: v.target.value };
-                      setFolhaResultados(novo);
-                    }}
-                    style={{
-                      flex: 1, padding: '5px 8px', borderRadius: theme.radius,
-                      border: `1px solid ${theme.border}`,
-                      background: 'var(--edit-bg)', fontSize: 12, fontWeight: 600,
-                    }}
-                  />
-                </div>
-                {/* Grade de dias */}
-                <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-                  {e.dias.map((d, di) => (
-                    <div key={di} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-                      <span style={{ fontSize: 8, color: theme.textMuted, lineHeight: 1 }}>{di + 1}</span>
-                      <select
-                        value={d}
-                        onChange={v => {
-                          const novo = [...folhaResultados];
-                          const dias = [...novo[i].dias] as Array<'P' | 'F' | 'J' | 'A'>;
-                          dias[di] = v.target.value as 'P' | 'F' | 'J' | 'A';
-                          novo[i] = { ...novo[i], dias };
-                          setFolhaResultados(novo);
-                        }}
-                        style={{
-                          width: 28, height: 26, fontSize: 11, textAlign: 'center',
-                          border: '1px solid #cbd5e1', borderRadius: 3, cursor: 'pointer',
-                          background: d === 'F' ? '#fee2e2' : d === 'J' ? '#ffedd5' : d === 'A' ? '#ede9fe' : '#dcfce7',
-                          color: d === 'F' ? '#dc2626' : d === 'J' ? '#d97706' : d === 'A' ? '#7c3aed' : '#16a34a',
-                          fontWeight: 700,
-                        }}>
-                        <option value="P">P</option>
-                        <option value="F">F</option>
-                        <option value="J">J</option>
-                        <option value="A">A</option>
-                      </select>
-                    </div>
-                  ))}
-                </div>
-                {/* Resumo */}
-                <div style={{ marginTop: 6, fontSize: 11, color: theme.textSecondary }}>
-                  {(() => {
-                    const nF = e.dias.filter(d => d === 'F').length;
-                    const nJ = e.dias.filter(d => d === 'J').length;
-                    const nA = e.dias.filter(d => d === 'A').length;
-                    const nP = e.dias.filter(d => d === 'P').length;
-                    const total = e.dias.length;
-                    const freq = total > 0 ? ((nP / total) * 100).toFixed(0) : '100';
-                    return `F:${nF} J:${nJ} A:${nA} → Freq: ${freq}%${parseInt(freq) < 75 ? ' ⚠️' : ''}`;
-                  })()}
-                </div>
+          <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+            {e.dias.map((marcado, di) => (
+              <div
+                key={di}
+                onClick={() => setExtratosDias(prev => prev.map((x, j) => {
+                  if (j !== i) return x;
+                  const dias = [...x.dias];
+                  dias[di] = !dias[di];
+                  return { ...x, dias };
+                }))}
+                title={`Dia ${di + 1}`}
+                style={{
+                  width: 24, height: 22, border: '1px solid #cbd5e1', borderRadius: 2,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 11, fontWeight: 900, cursor: 'pointer',
+                  background: marcado ? '#fee2e2' : '#dcfce7',
+                  color: marcado ? '#dc2626' : '#16a34a',
+                  userSelect: 'none',
+                }}>
+                {marcado ? 'X' : ''}
               </div>
             ))}
-
-            <button
-              onClick={salvarFolha}
-              disabled={!!folhaOcrStatus}
-              style={{ ...btn('primary', { full: true }), padding: '13px', fontSize: 16, fontWeight: 700, borderRadius: theme.radiusMd, marginTop: 8 }}>
-              {folhaOcrStatus ? folhaOcrStatus : `💾 Salvar Frequência (${folhaResultados.length} alunos)`}
-            </button>
           </div>
-        )}
-      </>
-    )}
-
-    {folhaSalvo && (
-      <div style={{
-        background: theme.successLight, borderRadius: theme.radiusMd,
-        padding: 24, textAlign: 'center',
-        border: `2px solid ${theme.success}`,
-        animation: 'scaleIn 0.3s ease both',
-      }}>
-        <div style={{ fontSize: 48 }}>✅</div>
-        <p style={{ fontSize: 17, fontWeight: 700, color: theme.successHover, marginTop: 8 }}>
-          Frequência salva com sucesso!
-        </p>
-        <p style={{ fontSize: 13, color: theme.textSecondary, marginTop: 4 }}>
-          Os dados estão disponíveis na grade de Faltas.
-        </p>
-        <div style={{ display: 'flex', gap: 10, marginTop: 16, justifyContent: 'center' }}>
-          <button onClick={() => { setFolhaSalvo(false); setFolhaImagem(null); setFolhaResultados([]); setFolhaOcrProgresso(0); }}
-            style={btn('ghost', {})}>
-            📷 Nova folha
-          </button>
-          <a href="/faltas" style={{ ...btn('primary'), textDecoration: 'none' }}>
-            📋 Ver grade de faltas
-          </a>
+          <div style={{ marginTop: 4, fontSize: 10, color: '#64748b' }}>
+            {(() => {
+              const nF = e.dias.filter(Boolean).length;
+              const total = e.dias.length;
+              const freq = total > 0 ? (((total - nF) / total) * 100).toFixed(0) : '100';
+              return `Faltas: ${nF} de ${total} dias → Frequência: ${freq}%${parseInt(freq) < 75 ? ' ⚠️' : ''}`;
+            })()}
+          </div>
         </div>
-      </div>
-    )}
+      ))}
+    </div>
   </div>
 )}
 ```
 
+### 3f — Adaptar botão de salvar no `step === 'review'`
+
+Localizar o botão `💾 Salvar Faltas` (~linha 239). **SUBSTITUIR** por:
+
+```tsx
+<button
+  onClick={modoLeitura === 'total' ? salvar : salvarDiario}
+  disabled={!!status}
+  style={{ flex: 2, padding: '11px', borderRadius: 8, background: '#16a34a', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 15 }}>
+  {status || (modoLeitura === 'total' ? '💾 Salvar Faltas' : '💾 Salvar Frequência (X → falta)')}
+</button>
+```
+
+### 3g — Adaptar `reiniciar()` para limpar os novos estados
+
+Localizar a função `reiniciar()` (~linha 143). **ADICIONAR** dentro dela:
+
+```typescript
+setExtratosDias([]);
+setModoLeitura('total'); // opcional: reseta para modo total ao reiniciar
+```
+
 ---
 
-## 5. IMPACTO EM ARQUIVOS
+## 7. IMPACTO EM ARQUIVOS
 
 | Arquivo | Ação | Detalhe |
 |---|---|---|
-| `Faltas.tsx` | **CRIAR** função `exportarFolhaOCR()` | Inserir antes de `exportarDiario()` |
-| `Faltas.tsx` | **ADICIONAR** botão `📋 Folha OCR` | Ao lado de `🖨️ Diário`, `📊 Excel`, `📄 PDF` |
-| `Professor.tsx` | **ADICIONAR** tipo `'folha'` no estado `modo` | 1 linha |
-| `Professor.tsx` | **ADICIONAR** terceiro botão no toggle | Após o botão `📷 Via Foto` |
-| `Professor.tsx` | **ADICIONAR** estados, interface, 3 funções, UI | `folhaImagem`, `folhaResultados`, etc. |
+| `Faltas.tsx` | **SUBSTITUIR** `exportarFolhaOCR()` (linhas 165–250) | Nova versão com grade de dias X |
+| `Faltas.tsx` | **NÃO alterar** botão `📋 Folha` (linha 411) | Já existe, continua chamando `exportarFolhaOCR` |
+| `OCR.tsx` | **ADICIONAR** interface `AlunoFolhaDia` | Após `AlunoExtrato` (~linha 11) |
+| `OCR.tsx` | **ADICIONAR** `parseOCRFolha()` | Após `parseOCRText()` (~linha 55) |
+| `OCR.tsx` | **ADICIONAR** `parseOCRFolhaFallback()` | Logo após `parseOCRFolha()` |
+| `OCR.tsx` | **ADICIONAR** estados `modoLeitura`, `extratosDias` | Junto dos outros `useState` (~linha 68) |
+| `OCR.tsx` | **ADICIONAR** toggle de modo na UI | Antes do `<select>` de Turma (~linha 162) |
+| `OCR.tsx` | **SUBSTITUIR** `analisar()` | Nova versão com bifurcação por modo |
+| `OCR.tsx` | **ADICIONAR** `salvarDiario()` | Após `salvar()` (~linha 141) |
+| `OCR.tsx` | **ADICIONAR** revisão modo diário no JSX | Antes dos botões no `step === 'review'` |
+| `OCR.tsx` | **SUBSTITUIR** botão `💾 Salvar Faltas` | Versão que chama função certa por modo |
+| `OCR.tsx` | **MODIFICAR** `reiniciar()` | Adicionar limpeza dos novos estados |
 | `api.ts` | **NENHUMA** alteração | Usa `upsertFaltasBatch()` já existente |
 | `styles.ts` | **NENHUMA** alteração | |
 
 ---
 
-## 6. REGRAS CRÍTICAS
+## 8. REGRAS CRÍTICAS
 
-1. **Células na folha impressa: COMPLETAMENTE VAZIAS** — nenhuma letra, nenhum zero, nenhum P. A professora preenche.
-2. **X = falta, vazio = presente** — é o padrão da folha. J e A são opcionais para precisão.
-3. **Salvar como `DIAS:` + letras** — formato: `DIAS:PPFPJPPP...`. O campo `faltas` = total de F+J+A.
-4. **Modo 'total' e modo 'foto' do Professor.tsx são preservados** — não remover nada.
-5. **Mínimo de 3 dias lidos para aceitar um aluno** — evita falsos positivos de linhas de cabeçalho.
-6. **Cores da revisão:** P = verde (#dcfce7), F = vermelho (#fee2e2), J = laranja (#ffedd5), A = roxo (#ede9fe).
-7. **Fallback de match** — se não achar por número de chamada, tenta por nome (primeira + última palavra).
-8. **NÃO usar Google Vision API** — Tesseract.js apenas no modo `'folha'`.
-
----
-
-## 7. CHECKLIST DE EXECUÇÃO
-
-- [ ] **1.** CRIAR função `exportarFolhaOCR()` em `Faltas.tsx` (inserir antes da função `exportarDiario()`)
-- [ ] **2.** ADICIONAR botão `📋 Folha OCR` ao lado dos botões `🖨️ Diário`, `📊 Excel`, `📄 PDF`
-- [ ] **3.** Adicionar tipo `'folha'` ao estado `modo` em `Professor.tsx`
-- [ ] **4.** Adicionar terceiro botão `📋 Folha OCR` no toggle de modo
-- [ ] **5.** Adicionar interface `AlunoFolhaDia` no `Professor.tsx`
-- [ ] **6.** Adicionar estados: `folhaImagem`, `folhaResultados`, `folhaOcrStatus`, `folhaOcrProgresso`, `folhaSalvo`, `folhaFileRef`
-- [ ] **7.** Adicionar função `parsearGradeOCR()` no `Professor.tsx`
-- [ ] **8.** Adicionar função `analisarFolha()` no `Professor.tsx`
-- [ ] **9.** Adicionar função `salvarFolha()` no `Professor.tsx`
-- [ ] **10.** Adicionar bloco JSX do modo `'folha'` no `return` do `Professor.tsx`
-- [ ] **11.** Rodar `cd frontend && npm run build` — zero erros TypeScript
-- [ ] **12.** **Teste 1:** Abrir /faltas → turma + mês → clicar 📋 Folha → verificar que abre grade vazia em paisagem
-- [ ] **13.** **Teste 2:** Imprimir a folha → preencher X em algumas células → tirar foto
-- [ ] **14.** **Teste 3:** Abrir /professor → modo 📋 Folha OCR → upload da foto → clicar Ler Frequência
-- [ ] **15.** **Teste 4:** Verificar tela de revisão → corrigir um dia → clicar Salvar
-- [ ] **16.** **Teste 5:** Abrir /faltas com a mesma turma/mês → confirmar que grade mostra os dias preenchidos
-- [ ] **17.** Commit: `"feat: folha OCR dia a dia (grade X/vazio) + modo folha no Professor"`
-- [ ] **18.** Push para branch `claude/bold-hamilton-a1Oj6`
-- [ ] **19.** Criar PR draft se não existir
+1. **Células VAZIAS na folha impressa** — nenhum caractere. A professora marca X à mão.
+2. **X = falta, vazio = presente** — detecção binária. Não tenta ler P/F/J/A manuscritos.
+3. **Tolerância OCR** — X lido como "x", "*", "+", "✗" ou "×" → todos viram `true` (falta).
+4. **Mínimo 5 dias** para aceitar uma linha — evita falsos positivos.
+5. **Modo "Total por mês" preservado intacto** — zero mudanças no fluxo existente.
+6. **Revisão editável** — clicar na célula alterna X/vazio antes de salvar.
+7. **Salvar como `DIAS:PPFPP...`** — mesmo formato da grade de cliques em `Faltas.tsx`.
+8. **`api.upsertFaltasBatch()`** — usa o método existente com `onConflict: 'alunoId,mes,ano'`.
 
 ---
 
-*Documento: PROMPT_FOLHA_OCR.md — Versão 1.0 CORRIGIDA*  
+## 9. FLUXO COMPLETO (para testar após implementar)
+
+1. Abrir `/faltas` → selecionar turma + mês
+2. Clicar **📋 Folha** → janela abre com grade A4 paisagem e células VAZIAS
+3. Imprimir (Ctrl+P) — verificar que nenhuma célula tem caractere impresso
+4. Professora marca **X** nos dias de falta de cada aluno
+5. Tirar foto da folha preenchida (foco, boa iluminação)
+6. Abrir `/ocr` → selecionar modo **📅 Dia a dia (X na grade)**
+7. Selecionar turma e mês corretos
+8. Upload da foto → clicar **🔍 Extrair Texto (Grátis)**
+9. Tela de revisão: células vermelhas (X detectado) e verdes (vazio)
+10. Corrigir eventuais erros clicando nas células
+11. Clicar **💾 Salvar Frequência (X → falta)**
+12. Abrir `/faltas` com a mesma turma/mês → grade mostra os dias preenchidos
+
+---
+
+## 10. CHECKLIST DE EXECUÇÃO (ordem obrigatória)
+
+- [ ] **1.** Substituir `exportarFolhaOCR()` em `Faltas.tsx` (linhas 165–250) pelo código do Passo 1
+- [ ] **2.** Verificar que o botão `📋 Folha` (linha 411) NÃO foi alterado
+- [ ] **3.** Adicionar interface `AlunoFolhaDia` em `OCR.tsx` após `AlunoExtrato`
+- [ ] **4.** Adicionar `parseOCRFolha()` em `OCR.tsx` após `parseOCRText()`
+- [ ] **5.** Adicionar `parseOCRFolhaFallback()` em `OCR.tsx`
+- [ ] **6.** Adicionar estados `modoLeitura` e `extratosDias` em `OCR.tsx`
+- [ ] **7.** Adicionar toggle de modo na UI antes do seletor de turma
+- [ ] **8.** Substituir `analisar()` pelo código do Passo 3c
+- [ ] **9.** Adicionar `salvarDiario()` após `salvar()` em `OCR.tsx`
+- [ ] **10.** Adicionar tela de revisão do modo diário no `step === 'review'`
+- [ ] **11.** Substituir botão `💾 Salvar Faltas` pelo código do Passo 3f
+- [ ] **12.** Adicionar limpeza dos novos estados em `reiniciar()`
+- [ ] **13.** Rodar `cd frontend && npm run build` — confirmar zero erros TypeScript
+- [ ] **14.** **Teste 1:** clicar 📋 Folha → grade abre vazia em paisagem, sem nenhum caractere preenchido
+- [ ] **15.** **Teste 2:** imprimir e marcar X manualmente, tirar foto, abrir OCR modo diário → tela de revisão aparece
+- [ ] **16.** **Teste 3:** salvar → abrir `/faltas` e confirmar que grade mostra os dias corretos
+- [ ] **17.** **Teste 4:** OCR modo "Total por mês" ainda funciona normalmente
+- [ ] **18.** Commit: `"feat: folha OCR grade de X por dia + modo diário em OCR.tsx"`
+- [ ] **19.** Push para `claude/bold-hamilton-a1Oj6`
+- [ ] **20.** Criar PR draft se não existir
+
+---
+
+*PROMPT_FOLHA_OCR.md — Versão 2.0 FINAL*  
 *Sistema: Diário de Classe Digital — EMEIEF LUIZ GONZAGA*
