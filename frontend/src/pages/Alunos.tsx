@@ -287,7 +287,7 @@ export default function Alunos() {
                 {aberto && (
                   <div className="slide-down" style={{
                     padding: '12px 16px',
-                    background: '#f8fafc',
+                    background: 'var(--bg-card)',
                     borderBottom: `1px solid ${theme.borderLight}`,
                     borderLeft: `3px solid ${theme.sky}`,
                     display: 'grid',
