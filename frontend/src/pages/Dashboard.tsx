@@ -146,7 +146,7 @@ export default function Dashboard() {
                 </div>
               ))
             )}
-            <div style={{ padding: '10px 16px', background: '#f8fafc', fontSize: 13, color: theme.textSecondary, display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${theme.borderLight}` }}>
+            <div style={{ padding: '10px 16px', background: 'var(--ghost-bg)', fontSize: 13, color: theme.textSecondary, display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${theme.borderLight}` }}>
               <span>{statsPorTurma.length} turmas</span>
               <span>{total} alunos · {faltas.reduce((s, f) => s + (f.faltas ?? 0), 0)} faltas em {MESES[mes - 1]}</span>
             </div>

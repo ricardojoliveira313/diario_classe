@@ -91,6 +91,7 @@ export default function Alunos() {
         'Data Início Matrícula': a.data_inicio_matricula ?? '',
         'Data Fim Matrícula': a.data_fim_matricula ?? '',
         'Data Movimentação': a.data_movimentacao ?? '',
+        'CPF': a.cpf ? a.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : '',
       };
     });
     const ws = XLSX.utils.json_to_sheet(dados);
@@ -135,7 +136,8 @@ export default function Alunos() {
     win.document.close();
   };
 
-  const COLUNAS = '44px 1fr 110px 85px 100px 40px 110px 130px';
+  const formataCPF = (cpf: string) => cpf ? cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : '';
+  const COLUNAS = '44px 1fr 110px 85px 100px 40px 110px 130px 140px';
 
   return (
     <div style={{ marginTop: 16, animation: 'fadeIn 0.25s ease both' }}>
@@ -232,6 +234,7 @@ export default function Alunos() {
             <span style={{ textAlign: 'center' }}>Situação</span><span style={{ textAlign: 'center' }}>Deficiência</span>
             <span style={{ textAlign: 'center' }}>BF</span>
             <span>Professora</span><span>Turma</span>
+            <span style={{ textAlign: 'center' }}>CPF</span>
           </div>
 
           {alunosFiltrados.map((a, i) => {
@@ -246,11 +249,11 @@ export default function Alunos() {
                       gridTemplateColumns: COLUNAS,
                       gap: 8,
                       cursor: 'pointer',
-                      ...(editandoId === a.id ? { borderBottom: 'none', background: '#fffbeb' } : {}),
+                      ...(editandoId === a.id ? { borderBottom: 'none', background: 'var(--warning-light)' } : {}),
                     }),
                   }}
-                  onMouseEnter={e => { if (editandoId !== a.id) e.currentTarget.style.background = 'var(--ghost-bg)'; }}
-                  onMouseLeave={e => { if (editandoId !== a.id) e.currentTarget.style.background = ''; }}>
+                  onMouseEnter={e => { if (editandoId !== a.id) e.currentTarget.style.background = 'var(--ghost-hover)'; }}
+                  onMouseLeave={e => { if (editandoId !== a.id) e.currentTarget.style.background = i % 2 === 0 ? 'var(--row-even)' : 'var(--row-odd)'; }}>
                   <span style={{ fontSize: 13, color: theme.textMuted }}>{a.numero || i + 1}</span>
                   <div>
                     <div style={{ fontSize: 15, fontWeight: 600, color: theme.text }}>{a.nome}</div>
@@ -280,14 +283,17 @@ export default function Alunos() {
                   </span>
                   <span style={{ textAlign: 'center', fontSize: 15 }}>{a.bolsa_familia ? '✅' : '—'}</span>
                   <span style={{ fontSize: 12, color: theme.textSecondary }}>{a.professora || t?.professora || ''}</span>
-                  <span style={{ fontSize: 12, color: theme.textSecondary }}>{t?.nome || ''}</span>
+                    <span style={{ fontSize: 12, color: theme.textSecondary }}>{t?.nome || ''}</span>
+                    <span style={{ fontSize: 12, textAlign: 'center', color: a.cpf ? theme.text : theme.textMuted, fontFamily: 'monospace' }}>
+                      {formataCPF(a.cpf) || '—'}
+                    </span>
                 </div>
 
                 {/* Detalhes expandidos */}
                 {aberto && (
                   <div className="slide-down" style={{
                     padding: '12px 16px',
-                    background: '#f8fafc',
+                    background: 'var(--bg-card)',
                     borderBottom: `1px solid ${theme.borderLight}`,
                     borderLeft: `3px solid ${theme.sky}`,
                     display: 'grid',
@@ -295,21 +301,40 @@ export default function Alunos() {
                     gap: 8,
                     fontSize: 13,
                   }}>
-                    {a.data_inicio_matricula && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Início Matrícula:</span> {a.data_inicio_matricula}</div>}
-                    {a.data_fim_matricula && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Fim Matrícula:</span> {a.data_fim_matricula}</div>}
-                    {a.data_movimentacao && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Movimentação:</span> {a.data_movimentacao}</div>}
+                    <div>
+                      <span style={{ fontWeight: 600, color: theme.textSecondary }}>Início Matrícula:</span>
+                      {a.data_inicio_matricula
+                        ? <span style={{ color: theme.text }}>{a.data_inicio_matricula}</span>
+                        : <span style={{ color: theme.danger, fontWeight: 600 }}>⚠️ não informado</span>
+                      }
+                    </div>
+                    <div>
+                      <span style={{ fontWeight: 600, color: theme.textSecondary }}>Fim Matrícula:</span>
+                      {a.data_fim_matricula
+                        ? <span style={{ color: theme.text }}>{a.data_fim_matricula}</span>
+                        : <span style={{ color: theme.warning, fontWeight: 600 }}>⚠️ não informado</span>
+                      }
+                    </div>
+                    <div>
+                      <span style={{ fontWeight: 600, color: theme.textSecondary }}>Movimentação:</span>
+                      {a.data_movimentacao
+                        ? <span style={{ color: theme.text }}>{a.data_movimentacao}</span>
+                        : <span style={{ color: theme.textMuted, fontStyle: 'italic' }}>—</span>
+                      }
+                    </div>
                     {t?.professora && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Professora:</span> {t.professora}</div>}
                     {t?.nome && turmaId !== '__all__' && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Turma:</span> {t.nome}</div>}
                     {a.nis && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>NIS:</span> {a.nis}</div>}
                     {a.responsavel && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Responsável:</span> {a.responsavel}</div>}
+                    {a.cpf && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>CPF:</span> {a.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</div>}
                   </div>
                 )}
 
                 {/* Edição inline */}
                 {editandoId === a.id && (
                   <div className="slide-down" style={{
-                    padding: '14px 16px', background: '#fffbeb',
-                    borderBottom: `1px solid #fde68a`,
+                    padding: '14px 16px', background: 'var(--warning-light)',
+                    borderBottom: `1px solid ${theme.warning}`,
                     display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap',
                     borderLeft: `3px solid ${theme.warning}`,
                   }}>
@@ -337,7 +362,7 @@ export default function Alunos() {
             );
           })}
 
-          <div style={{ padding: '10px 16px', background: '#f8fafc', fontSize: 13, color: theme.textSecondary, borderTop: `1px solid ${theme.borderLight}`, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+          <div style={{ padding: '10px 16px', background: 'var(--ghost-bg)', fontSize: 13, color: theme.textSecondary, borderTop: `1px solid ${theme.borderLight}`, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
             <span><span style={{ fontWeight: 600 }}>{alunosFiltrados.length}</span> de <span style={{ fontWeight: 600 }}>{alunos.length}</span> aluno(s)</span>
             <span>Clique na linha para detalhes · Clique na situação para alterar</span>
           </div>

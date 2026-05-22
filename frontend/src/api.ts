@@ -22,6 +22,10 @@ export const api = {
     if (error) throw error;
     return result;
   },
+  updateTurma: async (id: string, updates: any) => {
+    const { error } = await supabase.from('Turma').update(updates).eq('id', id);
+    if (error) throw error;
+  },
   deleteTurma: async (id: string) => {
     const { error } = await supabase.from('Turma').delete().eq('id', id);
     if (error) throw error;
@@ -132,6 +136,11 @@ export const api = {
     await supabase.from('Falta').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('Aluno').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('Turma').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+  },
+  // Limpa apenas alunos e faltas — preserva turmas e professoras cadastradas
+  clearAlunos: async () => {
+    await supabase.from('Falta').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabase.from('Aluno').delete().neq('id', '00000000-0000-0000-0000-000000000000');
   },
   bulkInsertTurmas: async (turmas: { nome: string; professora: string }[]) => {
     const { data, error } = await supabase.from('Turma').insert(turmas).select();

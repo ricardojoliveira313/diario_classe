@@ -10,6 +10,13 @@ interface AlunoExtrato {
   faltas: number;
 }
 
+// NOVO: grade de dias — true = X (falta), false = vazio (presente)
+interface AlunoFolhaDia {
+  numero: number;
+  nome: string;
+  dias: boolean[];
+}
+
 async function runTesseractOCR(imageDataUrl: string, onProgress: (p: number) => void): Promise<string> {
   const worker = await createWorker('por', 1, {
     logger: (m) => {
@@ -54,6 +61,63 @@ function parseOCRText(text: string): AlunoExtrato[] {
   return results.sort((a, b) => a.numero - b.numero);
 }
 
+// Parser para grade de dias com X
+// Tesseract devolve texto linha a linha:
+//   "01  ALANNA EMANUELLY FERREIRA      X         X"
+//   "02  ANA CLARA SOUZA"
+//   "03  PEDRO HENRIQUE       X  X         X"
+// Captura: Nº + NOME + sequência de X/espaços
+// X, x, *, +, ✗ → true (falta); qualquer outro token → false (presente)
+function parseOCRFolha(text: string): AlunoFolhaDia[] {
+  const results: AlunoFolhaDia[] = [];
+  const seen = new Set<number>();
+
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (!line || line.length < 10) continue;
+    if (/^(nº|nome|aluno|prof|turma|série|serie|mês|mes|escola|data|total|freq|emei|legenda|presença|falta|justif|atestado|marque|deixe|instruç|fim de)/i.test(line)) continue;
+
+    const m = line.match(/^(\d{1,2})\.?\s{1,4}([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇÀ][A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇÀ\s'-]{6,58}?)\s{2,}(.{3,})$/);
+    if (!m) continue;
+
+    const num = parseInt(m[1]);
+    if (seen.has(num)) continue;
+    seen.add(num);
+
+    const nome = m[2].trim();
+    const rawDias = m[3];
+    const tokens = rawDias.split(/\s+/).filter(t => t.length > 0);
+    const dias = tokens.map(t => /^[Xx*+✗×]$/.test(t));
+
+    if (dias.length >= 3) {
+      results.push({ numero: num, nome, dias });
+    }
+  }
+
+  return results.sort((a, b) => a.numero - b.numero);
+}
+
+// Fallback: separa linha por 2+ espaços em vez de regex
+function parseOCRFolhaFallback(line: string): AlunoFolhaDia | null {
+  const parts = line.trim().split(/\s{2,}/);
+  if (parts.length < 2) return null;
+
+  const [header, ...rest] = parts;
+  const diasRaw = rest.join(' ').trim();
+  const tokens = diasRaw.split(/\s+/).filter(t => t.length > 0);
+  const dias = tokens.map(t => /^[Xx*+✗×]$/.test(t));
+  if (dias.length < 3) return null;
+
+  const hMatch = header.match(/^(\d{1,2})\.?\s{1,4}([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇÀ][A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇÀ\s'-].+)$/);
+  if (!hMatch) return null;
+
+  return {
+    numero: parseInt(hMatch[1]),
+    nome: hMatch[2].trim(),
+    dias,
+  };
+}
+
 export default function OCR() {
   const [turmas, setTurmas] = useState<any[]>([]);
   const [turmaId, setTurmaId] = useState('');
@@ -65,6 +129,8 @@ export default function OCR() {
   const [status, setStatus] = useState('');
   const [progresso, setProgresso] = useState(0);
   const [erro, setErro] = useState('');
+  const [modoLeitura, setModoLeitura] = useState<'total' | 'diario'>('total');
+  const [extratosDias, setExtratosDias] = useState<AlunoFolhaDia[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -88,18 +154,43 @@ export default function OCR() {
     if (!imagePreview) { setErro('Selecione uma imagem.'); return; }
     setErro('');
     setProgresso(0);
-    setStatus('Carregando motor OCR (primeira vez é mais lento)...');
+    setStatus(modoLeitura === 'total'
+      ? 'Carregando motor OCR (primeira vez é mais lento)...'
+      : 'Extraindo grade de dias...');
     try {
       const text = await runTesseractOCR(imagePreview, (p) => {
         setProgresso(p);
         setStatus(`Reconhecendo texto... ${p}%`);
       });
       setRawText(text);
-      const parsed = parseOCRText(text);
-      setExtratos(parsed);
-      setStep('review');
-      setStatus('');
-      if (parsed.length === 0) setErro('Não foi possível extrair alunos automaticamente. Revise o texto bruto abaixo e edite manualmente.');
+
+      if (modoLeitura === 'total') {
+        const parsed = parseOCRText(text);
+        setExtratos(parsed);
+        setExtratosDias([]);
+        setStep('review');
+        setStatus('');
+        if (parsed.length === 0) setErro('Não foi possível extrair alunos automaticamente. Revise o texto bruto abaixo e edite manualmente.');
+      } else {
+        let parsed = parseOCRFolha(text);
+        if (parsed.length === 0) {
+          const seenN = new Set<number>();
+          const fallback: AlunoFolhaDia[] = [];
+          for (const ln of text.split('\n')) {
+            const r = parseOCRFolhaFallback(ln);
+            if (r && !seenN.has(r.numero)) {
+              seenN.add(r.numero);
+              fallback.push(r);
+            }
+          }
+          parsed = fallback;
+        }
+        setExtratosDias(parsed);
+        setExtratos([]);
+        setStep('review');
+        setStatus('');
+        if (parsed.length === 0) setErro('Não foi possível identificar alunos na grade. Verifique se a foto está nítida e com boa iluminação.');
+      }
     } catch (ex: any) {
       setErro(ex.message);
       setStatus('');
@@ -140,9 +231,55 @@ export default function OCR() {
     }
   };
 
+  const salvarDiario = async () => {
+    if (!turmaId) { setErro('Selecione a turma.'); return; }
+    const validos = extratosDias.filter(e => e.nome.trim().length > 2 && e.dias.length >= 5);
+    if (validos.length === 0) { setErro('Nenhum aluno com dados válidos.'); return; }
+    setStatus('Salvando frequência dia a dia...');
+    setErro('');
+    try {
+      const alunosTurma = await api.getAlunos(turmaId);
+      const registros: any[] = [];
+      const numDias = Math.max(...validos.map(e => e.dias.length));
+
+      for (const e of validos) {
+        let aluno = alunosTurma.find((a: any) => a.numero === e.numero);
+        if (!aluno) aluno = alunosTurma.find((a: any) => a.nome?.toUpperCase().trim() === e.nome);
+        if (!aluno) {
+          const partes = e.nome.split(' ').filter(Boolean);
+          aluno = alunosTurma.find((a: any) => {
+            const an = a.nome?.toUpperCase() ?? '';
+            return partes.length >= 2 && an.includes(partes[0]) && an.includes(partes[partes.length - 1]);
+          });
+        }
+        if (!aluno) continue;
+
+        const diasStr = Array(numDias).fill('P').map((_, i) => e.dias[i] ? 'F' : 'P');
+
+        registros.push({
+          alunoId: aluno.id,
+          turmaId,
+          mes,
+          ano: 2026,
+          faltas: diasStr.filter(d => d === 'F').length,
+          frequencia: 'DIAS:' + diasStr.join(''),
+        });
+      }
+
+      if (registros.length === 0) throw new Error('Não foi possível cruzar os nomes. Verifique se a turma selecionada está correta.');
+      await api.upsertFaltasBatch(registros);
+      setStep('done');
+      setStatus('');
+    } catch (ex: any) {
+      setErro(ex.message);
+      setStatus('');
+    }
+  };
+
   const reiniciar = () => {
     setImagePreview(null);
     setExtratos([]);
+    setExtratosDias([]);
     setRawText('');
     setStep('upload');
     setErro('');
@@ -158,6 +295,34 @@ export default function OCR() {
       <p style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>
         Fotografe a página do diário impresso. O texto é extraído <strong style={{ color: '#16a34a' }}>direto no seu celular — 100% gratuito, sem internet extra.</strong>
       </p>
+
+      {/* Toggle modo leitura */}
+      <div style={{ marginBottom: 12, display: 'flex', gap: 4, background: '#f1f5f9', borderRadius: 8, padding: 4 }}>
+        <button
+          onClick={() => setModoLeitura('total')}
+          style={{
+            flex: 1, padding: '8px', borderRadius: 6, border: 'none', cursor: 'pointer',
+            fontWeight: 700, fontSize: 13,
+            background: modoLeitura === 'total' ? '#ffffff' : 'transparent',
+            color: modoLeitura === 'total' ? '#1e40af' : '#64748b',
+            boxShadow: modoLeitura === 'total' ? '0 1px 3px rgba(0,0,0,0.15)' : 'none',
+            transition: 'all 0.15s',
+          }}>
+          📊 Total por mês
+        </button>
+        <button
+          onClick={() => setModoLeitura('diario')}
+          style={{
+            flex: 1, padding: '8px', borderRadius: 6, border: 'none', cursor: 'pointer',
+            fontWeight: 700, fontSize: 13,
+            background: modoLeitura === 'diario' ? '#ffffff' : 'transparent',
+            color: modoLeitura === 'diario' ? '#1e40af' : '#64748b',
+            boxShadow: modoLeitura === 'diario' ? '0 1px 3px rgba(0,0,0,0.15)' : 'none',
+            transition: 'all 0.15s',
+          }}>
+          📅 Dia a dia (X na grade)
+        </button>
+      </div>
 
       {/* Turma e mês */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
@@ -194,6 +359,7 @@ export default function OCR() {
         </div>
       ) : step === 'review' ? (
         <div>
+          {modoLeitura === 'total' && (
           <div style={{ background: 'white', borderRadius: 8, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: 14 }}>
             <div style={{ background: '#0284c7', color: 'white', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 13, fontWeight: 700 }}>📝 Revisão — {extratos.length} linha(s) extraída(s)</span>
@@ -223,11 +389,77 @@ export default function OCR() {
               ))}
             </div>
           </div>
+          )}
 
-          {rawText && extratos.length === 0 && (
+          {rawText && extratos.length === 0 && extratosDias.length === 0 && (
             <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: 12, marginBottom: 14 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#92400e', marginBottom: 6 }}>Texto bruto extraído:</div>
               <pre style={{ fontSize: 11, color: '#78350f', whiteSpace: 'pre-wrap', maxHeight: 200, overflowY: 'auto', margin: 0 }}>{rawText}</pre>
+            </div>
+          )}
+
+          {/* Revisão modo diário — grade de X */}
+          {modoLeitura === 'diario' && extratosDias.length > 0 && (
+            <div style={{ background: 'white', borderRadius: 8, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: 14 }}>
+              <div style={{ background: '#1e40af', color: 'white', padding: '10px 14px' }}>
+                <span style={{ fontSize: 13, fontWeight: 700 }}>
+                  📅 Grade lida — {extratosDias.length} aluno(s) · Clique nas células para corrigir
+                </span>
+              </div>
+              <div style={{ padding: 10 }}>
+                <p style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>
+                  <span style={{ background: '#fee2e2', padding: '1px 6px', borderRadius: 2, color: '#dc2626', fontWeight: 700 }}>X</span> = falta detectada
+                  &nbsp;&nbsp;
+                  <span style={{ background: '#dcfce7', padding: '1px 8px', borderRadius: 2, color: '#16a34a', fontWeight: 700 }}> </span> = presente
+                  &nbsp;&nbsp;
+                  Clique para alternar.
+                </p>
+                {extratosDias.map((e, i) => (
+                  <div key={i} style={{ marginBottom: 8, padding: 8, background: '#f8fafc', borderRadius: 6, border: '1px solid #e2e8f0' }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 5 }}>
+                      <span style={{ fontWeight: 800, fontSize: 13, color: '#1e40af', minWidth: 26, textAlign: 'center' }}>
+                        {String(e.numero).padStart(2, '0')}
+                      </span>
+                      <input
+                        value={e.nome}
+                        onChange={v => setExtratosDias(prev => prev.map((x, j) => j === i ? { ...x, nome: v.target.value } : x))}
+                        style={{ flex: 1, padding: '4px 8px', borderRadius: 4, border: '1px solid #e2e8f0', fontSize: 12, fontWeight: 600 }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                      {e.dias.map((marcado, di) => (
+                        <div
+                          key={di}
+                          onClick={() => setExtratosDias(prev => prev.map((x, j) => {
+                            if (j !== i) return x;
+                            const dias = [...x.dias];
+                            dias[di] = !dias[di];
+                            return { ...x, dias };
+                          }))}
+                          title={`Dia ${di + 1}`}
+                          style={{
+                            width: 24, height: 22, border: '1px solid #cbd5e1', borderRadius: 2,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: 11, fontWeight: 900, cursor: 'pointer',
+                            background: marcado ? '#fee2e2' : '#dcfce7',
+                            color: marcado ? '#dc2626' : '#16a34a',
+                            userSelect: 'none',
+                          }}>
+                          {marcado ? 'X' : ''}
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ marginTop: 4, fontSize: 10, color: '#64748b' }}>
+                      {(() => {
+                        const nF = e.dias.filter(Boolean).length;
+                        const total = e.dias.length;
+                        const freq = total > 0 ? (((total - nF) / total) * 100).toFixed(0) : '100';
+                        return `Faltas: ${nF} de ${total} dias → Frequência: ${freq}%${parseInt(freq) < 75 ? ' ⚠️' : ''}`;
+                      })()}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -236,9 +468,9 @@ export default function OCR() {
               style={{ flex: 1, padding: '11px', borderRadius: 8, background: '#f1f5f9', border: '1px solid #cbd5e1', cursor: 'pointer', fontWeight: 600, fontSize: 14 }}>
               ← Nova foto
             </button>
-            <button onClick={salvar} disabled={!!status}
+            <button onClick={modoLeitura === 'total' ? salvar : salvarDiario} disabled={!!status}
               style={{ flex: 2, padding: '11px', borderRadius: 8, background: '#16a34a', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 15 }}>
-              {status || '💾 Salvar Faltas'}
+              {status || (modoLeitura === 'total' ? '💾 Salvar Faltas' : '💾 Salvar Frequência (X → falta)')}
             </button>
           </div>
         </div>
