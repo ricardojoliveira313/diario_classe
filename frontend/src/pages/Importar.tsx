@@ -78,6 +78,8 @@ interface AlunoUnificado {
   nis: string;
   responsavel: string;
   cpf: string;
+  turmaOrigem: string;
+  professoraOrigem: string;
   faltas: Record<number, { faltas: number; frequencia: string }>;
 }
 
@@ -212,7 +214,9 @@ export default function Importar() {
             situacao: 'ATIVO', deficiencia: '',
             bolsaFamilia: false,
             dataInicioMatricula: '', dataFimMatricula: '', dataMovimentacao: '',
-            nis: '', responsavel: '', cpf: '', faltas: {},
+            nis: '', responsavel: '', cpf: '',
+            turmaOrigem: '', professoraOrigem: '',
+            faltas: {},
           });
           continue;
         }
@@ -241,7 +245,9 @@ export default function Importar() {
           dataInicioMatricula: '',
           dataFimMatricula: isAtivo ? (dataMovim ?? '') : '',
           dataMovimentacao: isAtivo ? '' : (dataMovim ?? ''),
-          nis: '', responsavel: '', cpf: '', faltas: {},
+          nis: '', responsavel: '', cpf: '',
+          turmaOrigem: '', professoraOrigem: '',
+          faltas: {},
         });
       }
     }
@@ -264,6 +270,21 @@ export default function Importar() {
           const wb = XLSX.read(e.target!.result, { type: 'array', cellDates: true });
           for (const sheetName of wb.SheetNames) {
             const ws = wb.Sheets[sheetName];
+
+            // ─── Detecta Educacenso por conteúdo ──────────────────────────────
+            // O arquivo Educacenso (INEP) tem ~20 linhas de metadados antes do
+            // cabeçalho real. A coluna "CPF" aparece como VALOR numa dessas linhas
+            // intermediárias (não como chave/cabeçalho na linha 0 do sheet_to_json).
+            // Essa detecção funciona independente do nome do arquivo.
+            const rawScan = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1 }) as any[][];
+            const isEducacenso = (rawScan as any[]).slice(1, 30).some((r: any) =>
+              Array.isArray(r) && (r as any[]).some(
+                (v: any) => normalizeStr(String(v ?? '')) === 'CPF'
+              )
+            );
+            if (isEducacenso) continue; // processado por parseEducacensoCPF
+            // ──────────────────────────────────────────────────────────────────
+
             const rows = XLSX.utils.sheet_to_json(ws, { raw: false, dateNF: 'dd/mm/yyyy' }) as any[];
             for (const row of rows) {
               const nr: Record<string, any> = {};
@@ -365,6 +386,7 @@ export default function Importar() {
                 nis: '',
                 responsavel: '',
                 cpf: String(nr['CPF'] ?? '').replace(/\D/g, '') || '',
+                turmaOrigem: '', professoraOrigem: '',
                 faltas: mes > 0 && faltasQtd >= 0 ? { [mes]: { faltas: faltasQtd, frequencia: freqTexto } } : {},
               });
             }
@@ -490,7 +512,9 @@ export default function Importar() {
                 professora: '', situacao: situ, deficiencia: defi,
                 bolsaFamilia: false,
                 dataInicioMatricula: '', dataFimMatricula: '', dataMovimentacao: '',
-                nis: '', responsavel: '', cpf: '', faltas: {},
+                nis: '', responsavel: '', cpf: '',
+                turmaOrigem: '', professoraOrigem: '',
+                faltas: {},
               });
             }
           }
@@ -630,8 +654,7 @@ export default function Importar() {
 
     for (const file of files) {
       if (!file.name.toLowerCase().endsWith('.xlsx')) continue;
-      const name = normalizeFileName(file.name);
-      if (!name.includes('EDUCACENSO') && !name.includes('CPF')) continue;
+      // Nota: não filtramos por nome — qualquer xlsx é testado pelo conteúdo abaixo
 
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: 'array', cellDates: true });
@@ -651,7 +674,9 @@ export default function Importar() {
           break;
         }
       }
-      if (headerIdx < 0 || idxCPF < 0) continue;
+      // headerIdx < 5 → cabeçalho na linha 0–4 = arquivo SED normal (não Educacenso)
+      // Educacenso tem ~20 linhas de metadados → headerIdx ~20
+      if (headerIdx < 5 || idxCPF < 0) continue;
 
       for (let r = headerIdx + 1; r < rows.length; r++) {
         const row = rows[r] ?? [];
@@ -734,6 +759,39 @@ export default function Importar() {
         const key = mkKey(a);
         if (todosAlunos.has(key)) {
           const existente = todosAlunos.get(key)!;
+
+          // ─── Remanejamento duplo: mesmo RA, turmas diferentes ─────────────────
+          // O SED registra remanejamento interno em dois lançamentos:
+          //   • REMA  na turma de ORIGEM (aluno que saiu)
+          //   • ATIVO na turma de DESTINO (aluno que chegou)
+          // Ambos devem existir no sistema → mantemos as duas entradas separadas.
+          const seriesDiferentes = existente.serie && a.serie
+            && normalizeStr(existente.serie) !== normalizeStr(a.serie);
+          const ehRemaDuplo = seriesDiferentes && (
+            (existente.situacao === 'REMA' && a.situacao === 'ATIVO') ||
+            (existente.situacao === 'ATIVO' && a.situacao === 'REMA')
+          );
+
+          if (ehRemaDuplo) {
+            const rema  = existente.situacao === 'REMA' ? existente : a;
+            const ativo = existente.situacao === 'REMA' ? a : existente;
+            // Vincula o destino à origem do remanejamento
+            ativo.turmaOrigem      = rema.serie;
+            ativo.professoraOrigem = rema.professora;
+            // Propaga dados complementares para o destino
+            ativo.bolsaFamilia  = ativo.bolsaFamilia  || rema.bolsaFamilia;
+            ativo.nis           = ativo.nis           || rema.nis;
+            ativo.responsavel   = ativo.responsavel   || rema.responsavel;
+            ativo.cpf           = ativo.cpf           || rema.cpf;
+            ativo.deficiencia   = ativo.deficiencia   || rema.deficiencia;
+            if (!ativo.nascimento && rema.nascimento) ativo.nascimento = rema.nascimento;
+            Object.assign(ativo.faltas, rema.faltas);
+            todosAlunos.set(key, ativo);           // destino (ATIVO) — chave principal
+            todosAlunos.set(`${key}|REMA`, rema);  // origem  (REMA)  — chave separada
+            return;
+          }
+
+          // ─── Merge normal ─────────────────────────────────────────────────────
           existente.bolsaFamilia = existente.bolsaFamilia || a.bolsaFamilia;
           existente.nis = existente.nis || a.nis;
           existente.responsavel = existente.responsavel || a.responsavel;
@@ -869,7 +927,7 @@ export default function Importar() {
   // ─── IMPORTAR (UPSERT — preserva histórico de faltas) ───
   const importar = async () => {
     if (!dadosRef.current) return;
-    const { alunos } = dadosRef.current;
+    const { alunos, turmas } = dadosRef.current;
     setErro('');
     setSucesso(false);
     setTotal(alunos.length);
@@ -1003,6 +1061,8 @@ export default function Importar() {
           nis: a.nis || null,
           responsavel: a.responsavel || null,
           cpf: a.cpf || null,
+          turma_origem: a.turmaOrigem || '',
+          professora_origem: a.professoraOrigem || '',
         };
       });
 

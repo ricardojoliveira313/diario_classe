@@ -112,6 +112,15 @@
       input::placeholder, textarea::placeholder {
         color: var(--text-muted);
       }
+      /* Garante que inputs e selects herdam a cor do tema (fix dark mode) */
+      input, select, textarea {
+        color: var(--text);
+        background-color: var(--input-bg);
+        font-family: var(--font);
+      }
+      input::placeholder, textarea::placeholder {
+        color: var(--text-muted);
+      }
       a { color: var(--primary); text-decoration: none; }
       a:hover { text-decoration: underline; }
       @media (max-width: 768px) {
