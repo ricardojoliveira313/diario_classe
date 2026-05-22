@@ -10,6 +10,7 @@ import OCR from './pages/OCR';
 import Professor from './pages/Professor';
 import Pendentes from './pages/Pendentes';
 import Distorcao from './pages/Distorcao';
+import Usuarios from './pages/Usuarios';
 import Login from './pages/Login';
 import { api } from './api';
 import { theme } from './styles';
@@ -29,6 +30,7 @@ const NAV_ITEMS: { to: string; label: string; end?: boolean; badge?: boolean; ad
   { to: '/distorcao', label: '📐 Distorção' },
   { to: '/ocr',       label: '📷 OCR',       adminOnly: true },
   { to: '/pendentes', label: '⏳ Pendentes', badge: true },
+  { to: '/usuarios',  label: '👥 Usuários', adminOnly: true },
 ];
 
 const ANOS_DISPONIVEIS = [2025, 2026, 2027];
@@ -196,6 +198,7 @@ function AppContent() {
             <Route path="/ocr" element={<AdminRoute><OCR /></AdminRoute>} />
             <Route path="/professor" element={<Professor />} />
             <Route path="/pendentes" element={<Pendentes />} />
+            <Route path="/usuarios" element={<AdminRoute><Usuarios /></AdminRoute>} />
           </Routes>
         </div>
       </div>

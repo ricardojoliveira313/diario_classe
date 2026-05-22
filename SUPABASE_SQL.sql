@@ -101,6 +101,20 @@ CREATE TABLE IF NOT EXISTS "Educacenso" (
 -- Cor/Raça no Aluno
 ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS cor_raca TEXT DEFAULT '';
 
+-- ─── 2c. Tabela USUARIO (login gerenciável pelo admin) ─────────
+CREATE TABLE IF NOT EXISTS "Usuario" (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  nome       TEXT NOT NULL UNIQUE,
+  senha      TEXT NOT NULL,
+  perfil     TEXT NOT NULL DEFAULT 'viewer',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+INSERT INTO "Usuario" (nome, senha, perfil) VALUES
+  ('gestao', 'gestao2026', 'admin'),
+  ('escola', 'escola2026', 'viewer')
+ON CONFLICT (nome) DO NOTHING;
+
 -- ─── 3. Desativa RLS (Row Level Security) nas tabelas ─────────
 
 ALTER TABLE "Turma"    DISABLE ROW LEVEL SECURITY;
