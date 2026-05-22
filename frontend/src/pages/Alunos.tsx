@@ -246,11 +246,11 @@ export default function Alunos() {
                       gridTemplateColumns: COLUNAS,
                       gap: 8,
                       cursor: 'pointer',
-                      ...(editandoId === a.id ? { borderBottom: 'none', background: '#fffbeb' } : {}),
+                      ...(editandoId === a.id ? { borderBottom: 'none', background: 'var(--warning-light)' } : {}),
                     }),
                   }}
-                  onMouseEnter={e => { if (editandoId !== a.id) e.currentTarget.style.background = 'var(--ghost-bg)'; }}
-                  onMouseLeave={e => { if (editandoId !== a.id) e.currentTarget.style.background = ''; }}>
+                  onMouseEnter={e => { if (editandoId !== a.id) e.currentTarget.style.background = 'var(--ghost-hover)'; }}
+                  onMouseLeave={e => { if (editandoId !== a.id) e.currentTarget.style.background = i % 2 === 0 ? 'var(--row-even)' : 'var(--row-odd)'; }}>
                   <span style={{ fontSize: 13, color: theme.textMuted }}>{a.numero || i + 1}</span>
                   <div>
                     <div style={{ fontSize: 15, fontWeight: 600, color: theme.text }}>{a.nome}</div>
@@ -295,9 +295,27 @@ export default function Alunos() {
                     gap: 8,
                     fontSize: 13,
                   }}>
-                    {a.data_inicio_matricula && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Início Matrícula:</span> {a.data_inicio_matricula}</div>}
-                    {a.data_fim_matricula && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Fim Matrícula:</span> {a.data_fim_matricula}</div>}
-                    {a.data_movimentacao && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Movimentação:</span> {a.data_movimentacao}</div>}
+                    <div>
+                      <span style={{ fontWeight: 600, color: theme.textSecondary }}>Início Matrícula:</span>
+                      {a.data_inicio_matricula
+                        ? <span style={{ color: theme.text }}>{a.data_inicio_matricula}</span>
+                        : <span style={{ color: theme.danger, fontWeight: 600 }}>⚠️ não informado</span>
+                      }
+                    </div>
+                    <div>
+                      <span style={{ fontWeight: 600, color: theme.textSecondary }}>Fim Matrícula:</span>
+                      {a.data_fim_matricula
+                        ? <span style={{ color: theme.text }}>{a.data_fim_matricula}</span>
+                        : <span style={{ color: theme.warning, fontWeight: 600 }}>⚠️ não informado</span>
+                      }
+                    </div>
+                    <div>
+                      <span style={{ fontWeight: 600, color: theme.textSecondary }}>Movimentação:</span>
+                      {a.data_movimentacao
+                        ? <span style={{ color: theme.text }}>{a.data_movimentacao}</span>
+                        : <span style={{ color: theme.textMuted, fontStyle: 'italic' }}>—</span>
+                      }
+                    </div>
                     {t?.professora && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Professora:</span> {t.professora}</div>}
                     {t?.nome && turmaId !== '__all__' && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Turma:</span> {t.nome}</div>}
                     {a.nis && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>NIS:</span> {a.nis}</div>}
@@ -308,8 +326,8 @@ export default function Alunos() {
                 {/* Edição inline */}
                 {editandoId === a.id && (
                   <div className="slide-down" style={{
-                    padding: '14px 16px', background: '#fffbeb',
-                    borderBottom: `1px solid #fde68a`,
+                    padding: '14px 16px', background: 'var(--warning-light)',
+                    borderBottom: `1px solid ${theme.warning}`,
                     display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap',
                     borderLeft: `3px solid ${theme.warning}`,
                   }}>
@@ -337,7 +355,7 @@ export default function Alunos() {
             );
           })}
 
-          <div style={{ padding: '10px 16px', background: '#f8fafc', fontSize: 13, color: theme.textSecondary, borderTop: `1px solid ${theme.borderLight}`, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+          <div style={{ padding: '10px 16px', background: 'var(--ghost-bg)', fontSize: 13, color: theme.textSecondary, borderTop: `1px solid ${theme.borderLight}`, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
             <span><span style={{ fontWeight: 600 }}>{alunosFiltrados.length}</span> de <span style={{ fontWeight: 600 }}>{alunos.length}</span> aluno(s)</span>
             <span>Clique na linha para detalhes · Clique na situação para alterar</span>
           </div>

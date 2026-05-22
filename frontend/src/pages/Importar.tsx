@@ -304,8 +304,21 @@ export default function Importar() {
           nr['DATA DA MATRICULA'] ??
           _inicioVal
         );
-        const dataFimMatricula = fmtDate(nr['DATA FIM MATRICULA']);
-        const dataMovimentacao = fmtDate(nr['DATA MOVIMENTACAO']);
+        const _fimKey = Object.keys(nr).find(k => k.includes('FIM') && k.includes('MATRICULA'));
+        const _fimVal = _fimKey ? nr[_fimKey] : undefined;
+        const dataFimMatricula = fmtDate(
+          nr['DATA FIM MATRICULA'] ??
+          nr['DT FIM MATRICULA'] ??
+          _fimVal
+        );
+        const _movKey = Object.keys(nr).find(k => k.includes('MOVIMENTAC') || k.includes('MOVIM'));
+        const _movVal = _movKey ? nr[_movKey] : undefined;
+        const dataMovimentacao = fmtDate(
+          nr['DATA MOVIMENTACAO'] ??
+          nr['DT MOVIMENTACAO'] ??
+          nr['DATA DE MOVIMENTACAO'] ??
+          _movVal
+        );
 
               if (alunosMap.has(key)) {
                 const e = alunosMap.get(key)!;
@@ -326,10 +339,27 @@ export default function Importar() {
                 ra, nascimento: nasc,
                 serie, professora,
                 situacao, deficiencia,
-                bolsaFamilia,
-                dataInicioMatricula,
-                dataFimMatricula,
-                dataMovimentacao,
+                bolsaFamilia: parseBool(nr['BOLSA FAMILIA'] ?? nr['BOLSA FAMLIA']),
+                dataInicioMatricula: fmtDate(
+                  nr['DATA INICIO MATRICULA'] ??
+                  nr['DT INICIO MATRICULA'] ??
+                  nr['DATA DE INICIO DA MATRICULA'] ??
+                  nr['INICIO DA MATRICULA'] ??
+                  nr['INICIO MATRICULA'] ??
+                  nr['DATA DA MATRICULA'] ??
+                  nr[Object.keys(nr).find(k => k.includes('INICIO') && k.includes('MATRICULA'))]
+                ),
+                dataFimMatricula: fmtDate(
+                  nr['DATA FIM MATRICULA'] ??
+                  nr['DT FIM MATRICULA'] ??
+                  nr[Object.keys(nr).find(k => k.includes('FIM') && k.includes('MATRICULA'))]
+                ),
+                dataMovimentacao: fmtDate(
+                  nr['DATA MOVIMENTACAO'] ??
+                  nr['DT MOVIMENTACAO'] ??
+                  nr['DATA DE MOVIMENTACAO'] ??
+                  nr[Object.keys(nr).find(k => k.includes('MOVIMENTAC') || k.includes('MOVIM'))]
+                ),
                 nis: '',
                 responsavel: '',
                 faltas: mes > 0 && faltasQtd >= 0 ? { [mes]: { faltas: faltasQtd, frequencia: freqTexto } } : {},
@@ -760,7 +790,7 @@ export default function Importar() {
     }
   };
 
-  // ─── IMPORTAR ───
+  // ─── IMPORTAR (UPSERT — preserva histórico de faltas) ───
   const importar = async () => {
     if (!dadosRef.current) return;
     const { alunos } = dadosRef.current;
@@ -771,7 +801,7 @@ export default function Importar() {
 
     // Normaliza para matching: sem acento, sem ordinal, maiúsculas, espaço simples
     const normT = (s: string) => (s ?? '').toUpperCase()
-      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .replace(/[ªº°]/g, '')
       .replace(/[-]/g, ' ')
       .replace(/\s+/g, ' ').trim();
@@ -784,7 +814,6 @@ export default function Importar() {
       .trim();
 
     // Aliases: nomes usados no SED/PDF → nome cadastrado no sistema
-    // EJA no SED usa nomes como "MULTISSERIADA A NOITE ANUAL" e "SÉRIE 10 - 3º TERMO A NOITE ANUAL"
     const ALIASES: Record<string, string> = {
       'ALFABETIZACAO':           'EJA I',
       'EJA ALFABETIZACAO':       'EJA I',
@@ -793,7 +822,6 @@ export default function Importar() {
       'EJA POS ALFABETIZACAO':   'EJA I',
       'TURMA POS ALFABETIZACAO': 'EJA I',
     };
-    // Catch-all para nomes SED não padronizados: "MULTISSERIADA" e "TERMO" → EJA I
     const applyAlias = (serie: string): string => {
       const n = normT(serie);
       const nSemSufixo = n
@@ -806,26 +834,19 @@ export default function Importar() {
       return serie;
     };
 
-    try {
-      setStatus('Limpando alunos e faltas anteriores (turmas preservadas)...');
-      await api.clearAlunos();
-
-      setStatus('Carregando turmas cadastradas...');
-      const turmasExistentes = await api.getTurmas();
-      // Mapa: nome normalizado → lista de {id, professora} (suporta duplicatas como EJA I)
+    // Matching: aplica alias → exato → prefixo desempata por professora
+    const buildResolveId = (turmasExistentes: any[]) => {
       const serieToTurmasList = new Map<string, Array<{ id: string; professora: string }>>();
       for (const t of turmasExistentes) {
         const key = normT(t.nome);
         if (!serieToTurmasList.has(key)) serieToTurmasList.set(key, []);
         serieToTurmasList.get(key)!.push({ id: t.id, professora: normT(t.professora ?? '') });
       }
-      // Matching: aplica alias → exato → prefixo → versão SED sem sufixos → desempata por professora
-      const resolveId = (serie: string, professora?: string): string | null => {
+      return (serie: string, professora?: string): string | null => {
         const aliased = applyAlias(serie);
         const n = normT(aliased);
-        const nSed = normSerieSED(aliased); // versão sem "PRE ESCOLA", "MANHA", "ANUAL" etc.
+        const nSed = normSerieSED(aliased);
         let candidates: Array<{ id: string; professora: string }> = [];
-        // Tenta em ordem: exato → prefixo → exato SED → prefixo SED
         for (const key of [n, nSed]) {
           candidates = serieToTurmasList.get(key) ?? [];
           if (!candidates.length) {
@@ -837,41 +858,87 @@ export default function Importar() {
         }
         if (!candidates.length) return null;
         if (candidates.length === 1) return candidates[0].id;
-        // Múltiplas turmas com mesmo nome (ex: duas "EJA I") → desempata pela professora
         if (professora) {
           const pn = normT(professora);
           const words = pn.split(' ').filter((w: string) => w.length > 4 && !ARTIGOS.has(w));
-          // 1ª tentativa: alguma palavra significativa do nome da professora bate
           for (const c of candidates) {
             if (c.professora && words.some((w: string) => c.professora.includes(w))) return c.id;
           }
-          // 2ª tentativa: contains completo
           for (const c of candidates) {
             if (c.professora && (c.professora.includes(pn) || pn.includes(c.professora))) return c.id;
           }
         }
-        return candidates[0].id; // fallback: primeira
+        return candidates[0].id;
       };
+    };
 
-      setStatus('Inserindo alunos...');
-      const alunosInsert = alunos.map(a => ({
-        nome: a.nome, turmaId: resolveId(a.serie, a.professora),
-        ra: a.ra, numero: 0,
-        data_nascimento: a.nascimento,
-        data_inicio_matricula: a.dataInicioMatricula,
-        data_fim_matricula: a.dataFimMatricula,
-        data_movimentacao: a.dataMovimentacao,
-        deficiencia: a.deficiencia, situacao: a.situacao,
-        bolsa_familia: a.bolsaFamilia, professora: a.professora,
-        nis: a.nis || null, responsavel: a.responsavel || null,
+    try {
+      // ─── PASSO 1: Turmas — upsert por nome (preserva UUIDs) ───
+      setStatus('Carregando turmas cadastradas...');
+      const turmasExistentes = await api.getTurmas();
+      const nomeToTurmaId = new Map(turmasExistentes.map(t => [t.nome, t.id]));
+      const turmasParaUpsert = turmas.map(t => ({
+        ...(nomeToTurmaId.has(t.nome) ? { id: nomeToTurmaId.get(t.nome) } : {}),
+        nome: t.nome,
+        professora: t.professora,
       }));
+      for (let i = 0; i < turmasParaUpsert.length; i += 80) {
+        const { data: chunk } = await supabase
+          .from('Turma')
+          .upsert(turmasParaUpsert.slice(i, i + 80), { onConflict: 'id' })
+          .select();
+        if (chunk) {
+          for (const t of chunk) nomeToTurmaId.set(t.nome, t.id);
+        }
+      }
 
-      await api.bulkInsertAlunos(alunosInsert, (n) => {
-        setProgresso(n);
-        setStatus(`Inserindo alunos... ${n}/${alunos.length}`);
+      // Reconstrói resolveId com turmas atualizadas do DB (inclui novas)
+      const { data: todasTurmas } = await supabase.from('Turma').select('id, nome, professora');
+      const resolveIdAtualizado = buildResolveId(todasTurmas ?? []);
+
+      // ─── PASSO 2: Alunos — upsert por RA (preserva UUIDs → preserva faltas) ───
+      setStatus('Atualizando cadastro de alunos...');
+      const { data: existentes } = await supabase
+        .from('Aluno').select('id, ra, nome');
+      const raToExistingId = new Map<string, string>();
+      const nomeToExistingId = new Map<string, string>();
+      for (const e of (existentes ?? [])) {
+        if (e.ra) raToExistingId.set(String(e.ra), e.id);
+        nomeToExistingId.set(normalizeStr(e.nome), e.id);
+      }
+
+      const alunosParaUpsert = alunos.map(a => {
+        const existingId = raToExistingId.get(String(a.ra ?? ''))
+          ?? nomeToExistingId.get(a.nomeNorm);
+        return {
+          ...(existingId ? { id: existingId } : {}),
+          nome: a.nome,
+          turmaId: resolveIdAtualizado(a.serie, a.professora),
+          ra: a.ra,
+          numero: 0,
+          data_nascimento: a.nascimento,
+          data_inicio_matricula: a.dataInicioMatricula || null,
+          data_fim_matricula: a.dataFimMatricula || null,
+          data_movimentacao: a.dataMovimentacao || null,
+          deficiencia: a.deficiencia,
+          situacao: a.situacao,
+          bolsa_familia: a.bolsaFamilia,
+          professora: a.professora,
+          nis: a.nis || null,
+          responsavel: a.responsavel || null,
+        };
       });
 
-      // Buscar IDs dos alunos inseridos
+      for (let i = 0; i < alunosParaUpsert.length; i += 80) {
+        const { error } = await supabase
+          .from('Aluno')
+          .upsert(alunosParaUpsert.slice(i, i + 80), { onConflict: 'id' });
+        if (error) throw error;
+        setProgresso(Math.min(i + 80, alunosParaUpsert.length));
+        setStatus(`Atualizando alunos... ${Math.min(i + 80, alunosParaUpsert.length)}/${alunosParaUpsert.length}`);
+      }
+
+      // ─── PASSO 3: Re-ler IDs dos alunos ───
       const { data: alunosDb } = await supabase.from('Aluno').select('id, ra, nome');
       const raToId = new Map<string, string>();
       const nomeToId = new Map<string, string>();
@@ -880,11 +947,11 @@ export default function Importar() {
         nomeToId.set(normalizeStr(a.nome), a.id);
       }
 
-      // Inserir faltas
+      // ─── PASSO 4: Faltas — upsert por (alunoId, mes, ano) ───
       const faltasParaInserir: any[] = [];
       for (const a of alunos) {
         const alunoId = raToId.get(String(a.ra ?? '')) ?? nomeToId.get(a.nomeNorm);
-        const turmaId = resolveId(a.serie, a.professora);
+        const turmaId = resolveIdAtualizado(a.serie, a.professora);
         if (!alunoId || !turmaId) continue;
         for (const [mes, f] of Object.entries(a.faltas)) {
           faltasParaInserir.push({
@@ -895,8 +962,13 @@ export default function Importar() {
         }
       }
 
-      setStatus(`Inserindo ${faltasParaInserir.length} registros de frequência...`);
-      await api.bulkInsertFaltas(faltasParaInserir);
+      setStatus(`Atualizando ${faltasParaInserir.length} registros de frequência...`);
+      for (let i = 0; i < faltasParaInserir.length; i += 80) {
+        const { error } = await supabase
+          .from('Falta')
+          .upsert(faltasParaInserir.slice(i, i + 80), { onConflict: 'alunoId,mes,ano' });
+        if (error) throw error;
+      }
 
       setStatus('');
       setSucesso(true);
@@ -975,12 +1047,23 @@ export default function Importar() {
               </div>
             ))}
           </div>
-          <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+          <div style={{
+            marginTop: 12, padding: '10px 14px',
+            background: theme.successLight,
+            border: `1px solid ${theme.success}`,
+            borderRadius: theme.radius,
+            fontSize: 13, color: theme.successHover,
+            fontWeight: 600,
+          }}>
+            ✅ Faltas históricas serão PRESERVADAS.
+            Apenas registros do mês correspondente serão atualizados.
+          </div>
+          <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
             <button onClick={() => { setPreview(null); dadosRef.current = null; }}
               style={btn('ghost', { full: true })}>Reanalisar</button>
             <button onClick={importar}
-              style={{ ...btn('danger', { full: true }), fontWeight: 700, fontSize: 15 }}>
-              ✅ Confirmar Importação (preserva turmas e professoras)
+              style={{ ...btn('primary', { full: true }), fontWeight: 700, fontSize: 15 }}>
+              ✅ Atualizar Cadastro (histórico preservado)
             </button>
           </div>
         </div>
