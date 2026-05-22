@@ -1051,15 +1051,39 @@ export default function Importar() {
     };
 
     try {
-      // ─── PASSO 1: Turmas — upsert por nome (preserva UUIDs) ───
+      // ─── PASSO 1: Turmas — upsert por nome com alias (evita duplicatas SED) ───
       setStatus('Carregando turmas cadastradas...');
       const turmasExistentes = await api.getTurmas();
+      // Mapa: nome original → id, e nome normalizado → id (matching fuzzy)
       const nomeToTurmaId = new Map(turmasExistentes.map(t => [t.nome, t.id]));
-      const turmasParaUpsert = turmas.map(t => ({
-        ...(nomeToTurmaId.has(t.nome) ? { id: nomeToTurmaId.get(t.nome) } : {}),
-        nome: t.nome,
-        professora: t.professora,
-      }));
+      const normToTurmaId = new Map(turmasExistentes.map(t => [normT(t.nome), t.id]));
+      for (const t of turmasExistentes) {
+        const aliasT = applyAlias(t.nome);
+        if (aliasT !== t.nome) normToTurmaId.set(normT(aliasT), t.id);
+      }
+      const turmasParaUpsert = turmas.map(t => {
+        // Tenta match exato, depois por alias (SED → nome limpo)
+        let id = nomeToTurmaId.get(t.nome);
+        if (!id) {
+          const aliased = applyAlias(t.nome);
+          const nAliased = normT(aliased);
+          id = normToTurmaId.get(nAliased);
+        }
+        if (!id) {
+          // Tenta match parcial: turma SED "1 ETAPA PRE ESCOLA A MANHA ANUAL" bate "1 ETAPA A"
+          const n = normT(t.nome);
+          const simplificado = n
+            .replace(/\bPRE\s*ESCOLA\b/g, '').replace(/\bPRÉ\s*ESCOLA\b/g, '')
+            .replace(/\b(MANHA|TARDE|NOTURNO|MATUTINO|VESPERTINO|NOITE|ANUAL|INTEGRAL)\b/g, '')
+            .replace(/\s+/g, ' ').trim();
+          for (const [normNome, tid] of normToTurmaId) {
+            if (normNome === simplificado || normNome.startsWith(simplificado) || simplificado.startsWith(normNome)) {
+              id = tid; break;
+            }
+          }
+        }
+        return { ...(id ? { id } : {}), nome: t.nome, professora: t.professora };
+      });
       for (let i = 0; i < turmasParaUpsert.length; i += 80) {
         const { data: chunk } = await supabase
           .from('Turma')
