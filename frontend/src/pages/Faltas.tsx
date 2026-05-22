@@ -398,7 +398,7 @@ export default function Faltas() {
             <div style={{ display: 'flex', gap: 6 }}>
               <button onClick={exportarExcel} style={btn('success', { small: true, outline: true })}>📊 Excel</button>
               <button onClick={exportarPDF} style={btn('danger', { small: true, outline: true })}>📄 PDF</button>
-              <button onClick={exportarFolhaOCR} style={btn('primary', { small: true, outline: true })}>📋 Folha OCR</button>
+              <button onClick={exportarFolhaOCR} style={{ ...btn('primary', { small: true, outline: true }), color: '#64748b', borderColor: '#64748b' }}>📋 Folha OCR</button>
             </div>
           )}
         </div>
