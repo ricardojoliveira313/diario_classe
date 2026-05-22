@@ -46,7 +46,7 @@ function AppContent() {
   const [scrolled, setScrolled] = useState(false);
   const { theme: themeMode, toggle: toggleTheme } = useTheme();
   const { ano, setAno } = useAno();
-  const { role, logout } = useAuth();
+  const { role, username, logout } = useAuth();
 
   // Se não estiver logado, mostra tela de login
   if (!role) return <Login />;
@@ -123,9 +123,9 @@ function AppContent() {
               ))}
             </div>
 
-            {/* Badge de perfil */}
+            {/* Badge de perfil + nome do usuário */}
             <span style={roleBadgeStyle} title={role === 'admin' ? 'Acesso completo' : 'Somente visualização'}>
-              {role === 'admin' ? '🔑 Admin' : '👁️ Viewer'}
+              {role === 'admin' ? '🔑' : '👁️'} {username || (role === 'admin' ? 'Admin' : 'Viewer')}
             </span>
 
             {/* Seletor de ano */}

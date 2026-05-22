@@ -4,23 +4,27 @@ import { theme, btn } from '../styles';
 
 export default function Login() {
   const { login } = useAuth();
+  const [usuario, setUsuario] = useState('');
   const [senha, setSenha] = useState('');
   const [erro, setErro] = useState('');
   const [loading, setLoading] = useState(false);
   const [show, setShow] = useState(false);
 
   const handleLogin = () => {
-    if (!senha.trim()) { setErro('Digite a senha.'); return; }
+    if (!usuario.trim()) { setErro('Digite o usuário.'); return; }
+    if (!senha.trim())   { setErro('Digite a senha.');   return; }
     setLoading(true);
     setTimeout(() => {
-      const resultado = login(senha);
+      const resultado = login(usuario, senha);
       setLoading(false);
       if (resultado === 'errado') {
-        setErro('Senha incorreta. Tente novamente.');
+        setErro('Usuário ou senha incorretos. Tente novamente.');
         setSenha('');
       }
     }, 300);
   };
+
+  const clearErro = () => setErro('');
 
   return (
     <div style={{
@@ -50,19 +54,47 @@ export default function Login() {
           </p>
         </div>
 
+        {/* Campo usuário */}
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
+            Usuário
+          </label>
+          <input
+            type="text"
+            value={usuario}
+            onChange={e => { setUsuario(e.target.value); clearErro(); }}
+            onKeyDown={e => e.key === 'Enter' && handleLogin()}
+            placeholder="Digite seu usuário..."
+            autoFocus
+            autoComplete="username"
+            style={{
+              width: '100%',
+              padding: '12px 14px',
+              borderRadius: 8,
+              border: erro ? `1.5px solid ${theme.danger}` : `1.5px solid var(--border)`,
+              background: 'var(--input-bg)',
+              color: 'var(--text)',
+              fontSize: 15,
+              outline: 'none',
+              boxSizing: 'border-box',
+              transition: 'border-color 0.15s',
+            }}
+          />
+        </div>
+
         {/* Campo senha */}
         <div style={{ marginBottom: 16 }}>
           <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
-            Senha de acesso
+            Senha
           </label>
           <div style={{ position: 'relative' }}>
             <input
               type={show ? 'text' : 'password'}
               value={senha}
-              onChange={e => { setSenha(e.target.value); setErro(''); }}
+              onChange={e => { setSenha(e.target.value); clearErro(); }}
               onKeyDown={e => e.key === 'Enter' && handleLogin()}
               placeholder="Digite sua senha..."
-              autoFocus
+              autoComplete="current-password"
               style={{
                 width: '100%',
                 padding: '12px 44px 12px 14px',
@@ -124,8 +156,8 @@ export default function Login() {
           marginTop: 20,
           lineHeight: 1.6,
         }}>
-          Secretaria: senha de administrador<br />
-          Professores: senha de visualização
+          Entre em contato com a administração<br />
+          para obter seu usuário e senha de acesso.
         </p>
       </div>
     </div>
