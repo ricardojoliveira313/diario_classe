@@ -1110,12 +1110,11 @@ export default function Importar() {
       }
 
       const alunosParaUpsert = alunos.map(a => {
-        // REMA é um novo registro (mesmo aluno, turma diferente) — não reusa ID do ATIVO
         const isRema = a.situacao === 'REMA';
         const existingId = isRema ? undefined
           : (raToExistingId.get(String(a.ra ?? '')) ?? nomeToExistingId.get(a.nomeNorm));
         return {
-          ...(existingId ? { id: existingId } : {}),
+          id: existingId ?? crypto.randomUUID(),
           nome: a.nome,
           turmaId: resolveIdAtualizado(a.serie, a.professora),
           ra: a.ra,
