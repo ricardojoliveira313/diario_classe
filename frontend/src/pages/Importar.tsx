@@ -687,9 +687,9 @@ export default function Importar() {
           break;
         }
       }
-      // headerIdx < 5 → cabeçalho na linha 0–4 = arquivo SED normal (não Educacenso)
-      // Educacenso tem ~20 linhas de metadados → headerIdx ~20
-      if (headerIdx < 5 || idxCPF < 0) continue;
+      // Educacenso pode ter cabeçalho na linha 0 (exportação direta)
+      // ou na linha ~20 (com metadados do MEC). Ambos são válidos — só verifica se achou CPF.
+      if (idxCPF < 0) continue;
 
       for (let r = headerIdx + 1; r < rows.length; r++) {
         const row = rows[r] ?? [];
@@ -717,6 +717,8 @@ export default function Importar() {
 
         // Chave exata: nome|data
         mapa.set(`${nomeNorm}|${nasc}`, entry);
+        // Chave por CPF (permite cruzar independente do nome)
+        if (cpf) mapa.set(`CPF:${cpf}`, entry);
         // Chave fuzzy: nome significativo|data (tolera artigos)
         if (nasc) {
           const simp = nomeSignificativo(nomeNorm);
@@ -860,12 +862,13 @@ export default function Importar() {
           a.responsavel = a.responsavel || bf.responsavel;
           a.bolsaFamilia = true;
         }
-        // Cruzamento CPF + Deficiência + Cor/Raça (EDUCACENSO): nome+data exato, depois fuzzy
-        const ecExato = cpfMap.get(`${a.nomeNorm}|${a.nascimento}`);
-        const ecFuzzy = a.nascimento ? cpfMap.get(`~${nomeSimp}|${a.nascimento}`) : undefined;
-        const ec = ecExato ?? ecFuzzy;
+        // Cruzamento CPF + Deficiência + Cor/Raça (EDUCACENSO): CPF → nome+data → fuzzy
+        const ecPorCPF = a.cpf ? cpfMap.get(`CPF:${a.cpf}`) : undefined;
+        const ecExato = !ecPorCPF ? cpfMap.get(`${a.nomeNorm}|${a.nascimento}`) : undefined;
+        const ecFuzzy = !ecPorCPF && a.nascimento ? cpfMap.get(`~${nomeSimp}|${a.nascimento}`) : undefined;
+        const ec = ecPorCPF ?? ecExato ?? ecFuzzy;
         if (ec) {
-          a.cpf = a.cpf || ec.cpf || '';
+          a.cpf = ec.cpf || a.cpf || '';
           a.deficiencia = a.deficiencia || ec.deficiencia || '';
           a.corRaca = a.corRaca || ec.corRaca || '';
         }
