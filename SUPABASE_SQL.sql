@@ -80,6 +80,9 @@ ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS turma_origem          TEXT DEFAULT 
 ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS professora_origem     TEXT DEFAULT '';
 -- CPF do aluno
 ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS cpf                  TEXT DEFAULT NULL;
+-- Destino do remanejamento (pra onde o aluno REMA foi)
+ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS turma_destino       TEXT DEFAULT '';
+ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS professora_destino  TEXT DEFAULT '';
 
 ALTER TABLE "Turma" ADD COLUMN IF NOT EXISTS professora TEXT DEFAULT '';
 ALTER TABLE "Turma" ADD COLUMN IF NOT EXISTS periodo    TEXT DEFAULT '';

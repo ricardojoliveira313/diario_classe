@@ -81,6 +81,8 @@ interface AlunoUnificado {
   corRaca: string;
   turmaOrigem: string;
   professoraOrigem: string;
+  turmaDestino: string;
+  professoraDestino: string;
   faltas: Record<number, { faltas: number; frequencia: string }>;
 }
 
@@ -216,7 +218,7 @@ export default function Importar() {
             bolsaFamilia: false,
             dataInicioMatricula: '', dataFimMatricula: '', dataMovimentacao: '',
             nis: '', responsavel: '', cpf: '',
-            turmaOrigem: '', professoraOrigem: '', corRaca: '',
+            turmaOrigem: '', professoraOrigem: '', turmaDestino: '', professoraDestino: '', corRaca: '',
             faltas: {},
           });
           continue;
@@ -247,7 +249,7 @@ export default function Importar() {
           dataFimMatricula: isAtivo ? (dataMovim ?? '') : '',
           dataMovimentacao: isAtivo ? '' : (dataMovim ?? ''),
           nis: '', responsavel: '', cpf: '',
-          turmaOrigem: '', professoraOrigem: '', corRaca: '',
+          turmaOrigem: '', professoraOrigem: '', turmaDestino: '', professoraDestino: '', corRaca: '',
           faltas: {},
         });
       }
@@ -388,7 +390,7 @@ export default function Importar() {
                 responsavel: '',
                 cpf: String(nr['CPF'] ?? '').replace(/\D/g, '') || '',
                 corRaca: '',
-                turmaOrigem: '', professoraOrigem: '',
+                turmaOrigem: '', professoraOrigem: '', turmaDestino: '', professoraDestino: '',
                 faltas: mes > 0 && faltasQtd >= 0 ? { [mes]: { faltas: faltasQtd, frequencia: freqTexto } } : {},
               });
             }
@@ -515,7 +517,7 @@ export default function Importar() {
                 bolsaFamilia: false,
                 dataInicioMatricula: '', dataFimMatricula: '', dataMovimentacao: '',
                 nis: '', responsavel: '', cpf: '',
-                turmaOrigem: '', professoraOrigem: '', corRaca: '',
+                turmaOrigem: '', professoraOrigem: '', turmaDestino: '', professoraDestino: '', corRaca: '',
                 faltas: {},
               });
             }
@@ -811,6 +813,9 @@ export default function Importar() {
             // Vincula o destino à origem do remanejamento
             ativo.turmaOrigem      = rema.serie;
             ativo.professoraOrigem = rema.professora;
+            // Vincula a origem ao destino (REMA sabe pra onde foi)
+            rema.turmaDestino      = ativo.serie;
+            rema.professoraDestino = ativo.professora;
             // Propaga dados complementares para o destino
             ativo.bolsaFamilia  = ativo.bolsaFamilia  || rema.bolsaFamilia;
             ativo.nis           = ativo.nis           || rema.nis;
@@ -1081,8 +1086,10 @@ export default function Importar() {
       }
 
       const alunosParaUpsert = alunos.map(a => {
-        const existingId = raToExistingId.get(String(a.ra ?? ''))
-          ?? nomeToExistingId.get(a.nomeNorm);
+        // REMA é um novo registro (mesmo aluno, turma diferente) — não reusa ID do ATIVO
+        const isRema = a.situacao === 'REMA';
+        const existingId = isRema ? undefined
+          : (raToExistingId.get(String(a.ra ?? '')) ?? nomeToExistingId.get(a.nomeNorm));
         return {
           ...(existingId ? { id: existingId } : {}),
           nome: a.nome,
@@ -1103,6 +1110,8 @@ export default function Importar() {
           cor_raca: a.corRaca || '',
           turma_origem: a.turmaOrigem || '',
           professora_origem: a.professoraOrigem || '',
+          turma_destino: a.turmaDestino || '',
+          professora_destino: a.professoraDestino || '',
         };
       });
 

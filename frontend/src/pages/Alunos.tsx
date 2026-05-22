@@ -345,6 +345,12 @@ export default function Alunos() {
                     </div>
                     {t?.professora && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Professora:</span> {t.professora}</div>}
                     {t?.nome && turmaId !== '__all__' && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Turma:</span> {t.nome}</div>}
+                    {a.turma_origem && a.situacao === 'ATIVO' && (
+                      <div><span style={{ fontWeight: 600, color: theme.orange }}>⬅ Veio de:</span> {a.turma_origem}{a.professora_origem ? ` (${a.professora_origem})` : ''}</div>
+                    )}
+                    {a.turma_destino && a.situacao === 'REMA' && (
+                      <div><span style={{ fontWeight: 600, color: theme.primary }}>➡ Foi para:</span> {a.turma_destino}{a.professora_destino ? ` (${a.professora_destino})` : ''}</div>
+                    )}
                     {a.nis && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>NIS:</span> {a.nis}</div>}
                     {a.responsavel && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Responsável:</span> {a.responsavel}</div>}
                     {/* CPF editável */}
