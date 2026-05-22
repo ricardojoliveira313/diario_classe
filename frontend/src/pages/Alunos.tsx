@@ -19,6 +19,7 @@ export default function Alunos() {
   const [salvando, setSalvando] = useState(false);
   const [editandoCpf, setEditandoCpf] = useState('');
   const [editandoCor, setEditandoCor] = useState('');
+  const [copiado, setCopiado] = useState('');
   const [loading, setLoading] = useState(true);
   const [detalhesAbertos, setDetalhesAbertos] = useState<Set<string>>(new Set());
 
@@ -149,6 +150,9 @@ export default function Alunos() {
   };
 
   const formataCPF = (cpf: string) => cpf ? cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : '';
+  const copiar = async (texto: string, label: string) => {
+    try { await navigator.clipboard.writeText(texto); setCopiado(label); setTimeout(() => setCopiado(''), 1500); } catch {}
+  };
   const COLUNAS = '44px 1fr 110px 85px 100px 40px 110px 130px 125px 90px';
 
   return (
@@ -276,8 +280,9 @@ export default function Alunos() {
                       {turmaId === '__all__' && t ? ` · ${t.nome}` : ''}
                     </div>
                   </div>
-                  <span style={{ fontSize: 13, color: theme.textSecondary, fontFamily: 'monospace' }}>
+                  <span style={{ fontSize: 13, color: theme.textSecondary, fontFamily: 'monospace', cursor: 'pointer' }} onClick={() => copiar(String(a.ra ?? ''), 'ra')} title="Clique para copiar RA">
                     {a.ra}{a.dig_ra ? `-${a.dig_ra}` : ''}
+                    {copiado === 'ra' && <span style={{ marginLeft: 4, fontSize: 11, color: theme.success }}>✅</span>}
                   </span>
                   <button onClick={e => { e.stopPropagation(); abrirEdicao(a); }} style={{
                     fontSize: 11, fontWeight: 700, textAlign: 'center',
@@ -297,8 +302,8 @@ export default function Alunos() {
                   <span style={{ textAlign: 'center', fontSize: 15 }}>{a.bolsa_familia ? '✅' : '—'}</span>
                   <span style={{ fontSize: 12, color: theme.textSecondary }}>{a.professora || t?.professora || ''}</span>
                     <span style={{ fontSize: 12, color: theme.textSecondary }}>{t?.nome || ''}</span>
-                    <span style={{ fontSize: 12, textAlign: 'center', color: a.cpf ? theme.text : theme.textMuted, fontFamily: 'monospace' }}>
-                      {formataCPF(a.cpf) || '—'}
+                    <span style={{ fontSize: 12, textAlign: 'center', color: a.cpf ? theme.text : theme.textMuted, fontFamily: 'monospace', cursor: a.cpf ? 'pointer' : 'default' }} onClick={() => a.cpf && copiar(a.cpf, 'cpf')} title={a.cpf ? 'Clique para copiar CPF' : ''}>
+                      {copiado === 'cpf' ? '✅' : (formataCPF(a.cpf) || '—')}
                     </span>
                     <span style={{ fontSize: 12, textAlign: 'center', color: a.cor_raca ? theme.text : theme.textMuted }}>
                       {a.cor_raca || '—'}

@@ -104,6 +104,9 @@ ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS cor_raca TEXT DEFAULT '';
 -- Índice único em CPF (parcial: só alunos com CPF) para upsert da Educacenso
 CREATE UNIQUE INDEX IF NOT EXISTS educacenso_cpf_uniq ON "Educacenso" (cpf) WHERE cpf <> '';
 
+-- RLS desativado na Educacenso (se não rodou antes)
+ALTER TABLE "Educacenso" DISABLE ROW LEVEL SECURITY;
+
 -- ─── 2c. Tabela USUARIO (login gerenciável pelo admin) ─────────
 CREATE TABLE IF NOT EXISTS "Usuario" (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
