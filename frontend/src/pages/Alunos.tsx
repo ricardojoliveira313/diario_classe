@@ -17,6 +17,8 @@ export default function Alunos() {
   const [novaSituacao, setNovaSituacao] = useState('');
   const [dataMovimentacao, setDataMovimentacao] = useState('');
   const [salvando, setSalvando] = useState(false);
+  const [editandoCpf, setEditandoCpf] = useState('');
+  const [editandoCor, setEditandoCor] = useState('');
   const [loading, setLoading] = useState(true);
   const [detalhesAbertos, setDetalhesAbertos] = useState<Set<string>>(new Set());
 
@@ -338,10 +340,59 @@ export default function Alunos() {
                     </div>
                     {t?.professora && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Professora:</span> {t.professora}</div>}
                     {t?.nome && turmaId !== '__all__' && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Turma:</span> {t.nome}</div>}
-                    {a.cor_raca && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Cor/Raça:</span> {a.cor_raca}</div>}
                     {a.nis && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>NIS:</span> {a.nis}</div>}
                     {a.responsavel && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Responsável:</span> {a.responsavel}</div>}
-                    {a.cpf && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>CPF:</span> {a.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</div>}
+                    {/* CPF editável */}
+                    <div>
+                      <span style={{ fontWeight: 600, color: theme.textSecondary }}>CPF:</span>
+                      {editandoCpf === a.id ? (
+                        <span>
+                          <input value={a.cpf || ''} onChange={e => {
+                            const v = e.target.value.replace(/\D/g, '').slice(0, 11);
+                            setAlunos(prev => prev.map(x => x.id === a.id ? { ...x, cpf: v } : x));
+                          }} style={{ ...input, width: 140, marginLeft: 6 }} placeholder="00000000000" maxLength={11} />
+                          <button onClick={async () => {
+                            await api.updateAluno(a.id, { cpf: a.cpf || null });
+                            setEditandoCpf('');
+                          }} style={{ ...btn('success', { small: true }), marginLeft: 4 }}>💾</button>
+                          <button onClick={() => setEditandoCpf('')} style={{ ...btn('ghost', { small: true }) }}>✕</button>
+                        </span>
+                      ) : (
+                        <span>
+                          {a.cpf ? a.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : <span style={{ color: theme.textMuted, fontStyle: 'italic', cursor: 'pointer' }} onClick={() => { setEditandoCpf(a.id); setEditandoCor(''); }}>+ adicionar CPF</span>}
+                          {a.cpf && <button onClick={() => setEditandoCpf(a.id)} style={{ ...btn('ghost', { small: true }), marginLeft: 4, fontSize: 11 }}>✏️</button>}
+                        </span>
+                      )}
+                    </div>
+                    {/* Cor/Raça editável */}
+                    <div>
+                      <span style={{ fontWeight: 600, color: theme.textSecondary }}>Cor/Raça:</span>
+                      {editandoCor === a.id ? (
+                        <span>
+                          <select value={a.cor_raca || ''} onChange={e => {
+                            setAlunos(prev => prev.map(x => x.id === a.id ? { ...x, cor_raca: e.target.value } : x));
+                          }} style={{ ...input, width: 140, marginLeft: 6 }}>
+                            <option value="">--</option>
+                            <option value="Branca">Branca</option>
+                            <option value="Preta">Preta</option>
+                            <option value="Parda">Parda</option>
+                            <option value="Amarela">Amarela</option>
+                            <option value="Indígena">Indígena</option>
+                            <option value="Não declarado">Não declarado</option>
+                          </select>
+                          <button onClick={async () => {
+                            await api.updateAluno(a.id, { cor_raca: a.cor_raca || null });
+                            setEditandoCor('');
+                          }} style={{ ...btn('success', { small: true }), marginLeft: 4 }}>💾</button>
+                          <button onClick={() => setEditandoCor('')} style={{ ...btn('ghost', { small: true }) }}>✕</button>
+                        </span>
+                      ) : (
+                        <span>
+                          {a.cor_raca || <span style={{ color: theme.textMuted, fontStyle: 'italic', cursor: 'pointer' }} onClick={() => { setEditandoCor(a.id); setEditandoCpf(''); }}>+ adicionar</span>}
+                          {a.cor_raca && <button onClick={() => setEditandoCor(a.id)} style={{ ...btn('ghost', { small: true }), marginLeft: 4, fontSize: 11 }}>✏️</button>}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 )}
 
