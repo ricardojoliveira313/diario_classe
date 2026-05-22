@@ -35,6 +35,7 @@ export default function Faltas() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  const isMobile = window.innerWidth < 640;
   const numDias = DIAS_LETIVOS[mes] ?? 22;
 
   useEffect(() => {
@@ -248,6 +249,116 @@ export default function Faltas() {
     win.document.close();
   };
 
+  // ── Folha OCR — Grade de Dias com X (A4 paisagem, células VAZIAS) ─────
+  const exportarFolhaOCR = () => {
+    const turmaObj = turmas.find(t => t.id === turmaId);
+    const nomeMes = MESES[mes - 1];
+    const diasNoMes = new Date(ano, mes, 0).getDate();
+
+    const diasCols = Array.from({ length: diasNoMes }, (_, i) => {
+      const date = new Date(ano, mes - 1, i + 1);
+      const dw = date.getDay();
+      return { dia: i + 1, isWeekend: dw === 0 || dw === 6 };
+    });
+
+    const headerDias = diasCols.map(d =>
+      `<th style="border:1px solid #64748b;padding:0;width:22px;min-width:22px;max-width:22px;height:28px;text-align:center;vertical-align:middle;font-size:8px;font-weight:700;background:${d.isWeekend ? '#334155' : '#1e40af'};color:${d.isWeekend ? '#94a3b8' : '#ffffff'};">${d.dia}</th>`
+    ).join('');
+
+    const linhas = alunos.map((a, i) => {
+      const rowBg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
+      const celulas = diasCols.map(d =>
+        `<td style="border:1px solid ${d.isWeekend ? '#94a3b8' : '#cbd5e1'};width:22px;min-width:22px;max-width:22px;height:22px;background:${d.isWeekend ? '#f1f5f9' : rowBg};"></td>`
+      ).join('');
+      const defi = a.deficiencia ? ' ♿' : '';
+      const bf = a.bolsa_familia ? ' 💚' : '';
+      return `<tr>
+        <td style="border:1px solid #cbd5e1;padding:2px 4px;text-align:center;width:26px;font-size:11px;font-weight:700;">${String(a.numero || i + 1).padStart(2, '0')}</td>
+        <td style="border:1px solid #cbd5e1;padding:2px 6px;font-size:10px;white-space:nowrap;">${a.nome}${defi}${bf}</td>
+        ${celulas}
+      </tr>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<title>Folha OCR — ${turmaObj?.nome ?? ''} — ${nomeMes} ${ano}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; margin: 6mm; color: #000; background: #fff; }
+  table { border-collapse: collapse; }
+  @media print { @page { size: A4 landscape; margin: 7mm 6mm; } body { margin: 0; } }
+</style>
+</head>
+<body>
+
+<div style="text-align:center;border-bottom:2px solid #1e40af;padding-bottom:5px;margin-bottom:7px;">
+  <div style="font-size:9px;color:#64748b;font-weight:600;letter-spacing:0.5px;">PREFEITURA MUNICIPAL DE SANTO ANDRÉ</div>
+  <div style="font-size:15px;font-weight:900;color:#1e40af;margin:1px 0;">EMEIEF LUIZ GONZAGA</div>
+  <div style="font-size:9px;color:#475569;font-weight:600;">Folha de Frequência Diária — ${nomeMes.toUpperCase()} / ${ano}</div>
+</div>
+
+<table style="width:100%;border:none;margin-bottom:6px;">
+  <tr>
+    <td style="border:none;font-size:10px;padding:1px 0;">
+      <b style="color:#475569;">TURMA:</b>
+      <span style="font-size:12px;font-weight:900;color:#1e40af;margin-left:5px;">${turmaObj?.nome ?? '—'}</span>
+    </td>
+    <td style="border:none;font-size:10px;padding:1px 0;text-align:center;">
+      <b style="color:#475569;">PROFESSORA:</b>
+      <span style="font-weight:700;margin-left:5px;">${turmaObj?.professora ?? '—'}</span>
+    </td>
+    <td style="border:none;font-size:10px;padding:1px 0;text-align:right;">
+      <b style="color:#475569;">Alunos:</b> ${alunos.length}
+      &nbsp;&nbsp;
+      <b style="color:#475569;">Dias letivos:</b> ${numDias}
+    </td>
+  </tr>
+</table>
+
+<div style="font-size:9px;padding:3px 8px;background:#fef3c7;border:1px solid #fbbf24;border-radius:3px;margin-bottom:5px;color:#92400e;font-weight:700;">
+  ✏️ Escreva <strong>X</strong> no dia em que o aluno <strong>FALTOU</strong>. Deixe em <strong>BRANCO</strong> se veio à aula. Fins de semana (cinza escuro) não preencher.
+</div>
+
+<table style="width:100%;">
+  <thead>
+    <tr>
+      <th style="border:1px solid #64748b;padding:2px;width:26px;font-size:9px;text-align:center;background:#0f172a;color:#ffffff;">Nº</th>
+      <th style="border:1px solid #64748b;padding:2px 6px;font-size:9px;text-align:left;background:#0f172a;color:#ffffff;min-width:130px;">NOME DO ALUNO</th>
+      ${headerDias}
+    </tr>
+  </thead>
+  <tbody>
+    ${linhas}
+  </tbody>
+</table>
+
+<div style="margin-top:5mm;display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:4mm;">
+  <div style="font-size:9px;color:#475569;">
+    <b>Legenda:</b>
+    <span style="margin-left:6px;background:#fee2e2;padding:1px 6px;border-radius:2px;font-weight:900;color:#dc2626;font-size:11px;">X</span> = Falta
+    &nbsp;&nbsp;
+    <span style="background:#f1f5f9;padding:1px 10px;border-radius:2px;border:1px solid #cbd5e1;font-size:10px;">  </span> = Presente (vazio)
+    &nbsp;&nbsp;
+    <span style="background:#334155;padding:1px 8px;border-radius:2px;font-size:10px;color:#94a3b8;">■</span> = Fim de semana (não preencher)
+  </div>
+  <div style="font-size:10px;display:flex;gap:12mm;">
+    <span>Assinatura do(a) Professor(a): _________________________</span>
+    <span>Data: ___/___/______</span>
+  </div>
+</div>
+
+<script>setTimeout(()=>window.print(),400);</script>
+</body>
+</html>`;
+
+    const win = window.open('', '_blank');
+    if (!win) { alert('Permita pop-ups para abrir a folha.'); return; }
+    win.document.write(html);
+    win.document.close();
+  };
+
   const exportarExcel = () => {
     const turmaObj = turmas.find(t => t.id === turmaId);
     const dados = alunos.map((a, i) => {
@@ -287,6 +398,7 @@ export default function Faltas() {
             <div style={{ display: 'flex', gap: 6 }}>
               <button onClick={exportarExcel} style={btn('success', { small: true, outline: true })}>📊 Excel</button>
               <button onClick={exportarPDF} style={btn('danger', { small: true, outline: true })}>📄 PDF</button>
+              <button onClick={exportarFolhaOCR} style={btn('primary', { small: true, outline: true })}>📋 Folha OCR</button>
             </div>
           )}
         </div>
@@ -359,13 +471,13 @@ export default function Faltas() {
                     position: 'sticky', left: 0, zIndex: 2,
                     background: theme.primary,
                     padding: '10px 12px', textAlign: 'left',
-                    fontSize: 12, fontWeight: 600, minWidth: 210,
+                    fontSize: 12, fontWeight: 600, minWidth: isMobile ? 150 : 210,
                     borderRight: '2px solid rgba(255,255,255,0.25)',
                   }}>
                     # Aluno
                   </th>
                   {Array(numDias).fill(0).map((_, d) => (
-                    <th key={d} style={{ width: 24, textAlign: 'center', fontSize: 10, padding: '8px 1px', fontWeight: 600 }}>
+                    <th key={d} style={{ width: isMobile ? 38 : 24, textAlign: 'center', fontSize: isMobile ? 9 : 10, padding: '8px 1px', fontWeight: 600 }}>
                       {d + 1}
                     </th>
                   ))}
@@ -424,17 +536,20 @@ export default function Faltas() {
                               onClick={() => toggleDia(a.id, d)}
                               title={`Dia ${d + 1}: ${ST_LABEL[status]} — clique para alternar`}
                               style={{
-                                width: 24, textAlign: 'center', cursor: 'pointer',
+                                width: isMobile ? 38 : 24,
+                                textAlign: 'center', cursor: 'pointer',
                                 background: ST_BG[status],
                                 color: ST_COR[status],
-                                fontWeight: 700, fontSize: 11,
-                                padding: '7px 0',
+                                fontWeight: 700,
+                                fontSize: isMobile ? 13 : 11,
+                                padding: isMobile ? '12px 0' : '7px 0',
                                 borderLeft: '1px solid var(--border-light)',
                                 userSelect: 'none',
                                 transition: 'opacity 0.1s',
+                                touchAction: 'manipulation',
                               }}
-                              onMouseEnter={e => (e.currentTarget.style.opacity = '0.75')}
-                              onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+                              onMouseEnter={!isMobile ? (e => (e.currentTarget.style.opacity = '0.75')) : undefined}
+                              onMouseLeave={!isMobile ? (e => (e.currentTarget.style.opacity = '1')) : undefined}
                             >
                               {status}
                             </td>
@@ -479,7 +594,11 @@ export default function Faltas() {
               padding: '14px', fontSize: 17,
               background: saved ? theme.success : theme.primary,
               transition: 'all 0.2s ease',
-              borderRadius: theme.radiusMd,
+              borderRadius: isMobile ? 0 : theme.radiusMd,
+              position: isMobile ? 'sticky' : 'static',
+              bottom: isMobile ? 0 : 'auto',
+              zIndex: isMobile ? 10 : 'auto',
+              boxShadow: isMobile ? '0 -2px 10px rgba(0,0,0,0.2)' : 'none',
             }}
             onClick={salvar} disabled={saving}
           >
