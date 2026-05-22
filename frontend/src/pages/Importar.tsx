@@ -294,7 +294,7 @@ export default function Importar() {
               const deficiencia = String(nr['DEFICIENCIA'] ?? '').trim();
               const professora = String(nr['PROFESSORA'] ?? '').trim();
               const bolsaFamilia = parseBool(nr['BOLSA FAMILIA'] ?? nr['BOLSA FAMLIA']);
-              const dataInicioMatricula = fmtDate(nr['DATA INICIO MATRICULA'] ?? nr['DATA INICIO MATRICULA']);
+              const dataInicioMatricula = fmtDate(nr['DATA INICIO MATRICULA'] ?? nr['DATA DE INICIO DA MATRICULA']);
               const dataFimMatricula = fmtDate(nr['DATA FIM MATRICULA']);
               const dataMovimentacao = fmtDate(nr['DATA MOVIMENTACAO']);
 
@@ -634,10 +634,12 @@ export default function Importar() {
           existente.professora = existente.professora || a.professora;
           existente.situacao = a.situacao !== 'ATIVO' ? a.situacao : existente.situacao;
           existente.deficiencia = existente.deficiencia || a.deficiencia;
-          // Prefere a série mais específica: PDF tem "1º ano A", Excel tem só "1"
           if (a.serie && a.serie.length > (existente.serie?.length ?? 0)) {
             existente.serie = a.serie;
           }
+          if (a.dataInicioMatricula) existente.dataInicioMatricula = a.dataInicioMatricula;
+          if (a.dataFimMatricula) existente.dataFimMatricula = a.dataFimMatricula;
+          if (a.dataMovimentacao) existente.dataMovimentacao = a.dataMovimentacao;
           Object.assign(existente.faltas, a.faltas);
         } else {
           todosAlunos.set(key, a);
