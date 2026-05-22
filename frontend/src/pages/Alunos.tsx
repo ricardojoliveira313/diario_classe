@@ -246,7 +246,7 @@ export default function Alunos() {
                       gridTemplateColumns: COLUNAS,
                       gap: 8,
                       cursor: 'pointer',
-                      ...(editandoId === a.id ? { borderBottom: 'none', background: '#fffbeb' } : {}),
+                      ...(editandoId === a.id ? { borderBottom: 'none', background: 'var(--edit-bg)' } : {}),
                     }),
                   }}
                   onMouseEnter={e => { if (editandoId !== a.id) e.currentTarget.style.background = 'var(--ghost-bg)'; }}
@@ -308,8 +308,8 @@ export default function Alunos() {
                 {/* Edição inline */}
                 {editandoId === a.id && (
                   <div className="slide-down" style={{
-                    padding: '14px 16px', background: '#fffbeb',
-                    borderBottom: `1px solid #fde68a`,
+                    padding: '14px 16px', background: 'var(--edit-bg)',
+                    borderBottom: `1px solid var(--edit-border)`,
                     display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap',
                     borderLeft: `3px solid ${theme.warning}`,
                   }}>
@@ -337,7 +337,7 @@ export default function Alunos() {
             );
           })}
 
-          <div style={{ padding: '10px 16px', background: '#f8fafc', fontSize: 13, color: theme.textSecondary, borderTop: `1px solid ${theme.borderLight}`, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+          <div style={{ padding: '10px 16px', background: 'var(--footer-row)', fontSize: 13, color: theme.textSecondary, borderTop: `1px solid ${theme.borderLight}`, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
             <span><span style={{ fontWeight: 600 }}>{alunosFiltrados.length}</span> de <span style={{ fontWeight: 600 }}>{alunos.length}</span> aluno(s)</span>
             <span>Clique na linha para detalhes · Clique na situação para alterar</span>
           </div>

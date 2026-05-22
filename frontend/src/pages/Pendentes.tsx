@@ -76,7 +76,7 @@ export default function Pendentes() {
               style={{
                 padding: '6px 12px', borderRadius: theme.radius, border: `1px solid ${theme.border}`,
                 cursor: 'pointer', fontWeight: filtro === f ? 700 : 400,
-                background: filtro === f ? theme.primary : 'white',
+                background: filtro === f ? theme.primary : 'var(--ghost-bg)',
                 color: filtro === f ? 'white' : theme.textSecondary,
                 fontSize: 12, transition: 'all 0.15s ease',
               }}>
@@ -151,7 +151,7 @@ export default function Pendentes() {
 
             {isOpen && (
               <div style={{ borderTop: `1px solid ${theme.borderLight}` }}>
-                <div style={{ background: '#f8fafc', padding: '8px 16px', display: 'grid', gridTemplateColumns: '36px 1fr 1fr 70px 80px', gap: 8, fontSize: 11, color: theme.textSecondary, fontWeight: 700 }}>
+                <div style={{ background: 'var(--footer-row)', padding: '8px 16px', display: 'grid', gridTemplateColumns: '36px 1fr 1fr 70px 80px', gap: 8, fontSize: 11, color: theme.textSecondary, fontWeight: 700 }}>
                   <span>Nº</span><span>OCR (foto)</span><span>Banco de dados</span><span style={{ textAlign: 'center' }}>Faltas</span><span style={{ textAlign: 'center' }}>Status</span>
                 </div>
                 <div style={{ maxHeight: 400, overflowY: 'auto' }}>
@@ -160,7 +160,7 @@ export default function Pendentes() {
                       display: 'grid', gridTemplateColumns: '36px 1fr 1fr 70px 80px',
                       gap: 8, padding: '8px 16px', borderBottom: `1px solid ${theme.borderLight}`,
                       alignItems: 'center',
-                      background: d.confianca === 'alta' ? 'white' : BG_CONF[d.confianca] ?? 'white',
+                      background: d.confianca === 'alta' ? 'var(--row-even)' : BG_CONF[d.confianca] ?? 'var(--row-even)',
                     }}>
                       <span style={{ fontSize: 12, color: theme.textMuted }}>{d.numero}</span>
                       <div>
@@ -184,7 +184,7 @@ export default function Pendentes() {
                   ))}
                 </div>
                 {item.status === 'pendente' && (
-                  <div style={{ padding: 12, display: 'flex', gap: 8, background: '#f8fafc', borderTop: `1px solid ${theme.borderLight}` }}>
+                  <div style={{ padding: 12, display: 'flex', gap: 8, background: 'var(--footer-row)', borderTop: `1px solid ${theme.borderLight}` }}>
                     <button onClick={() => aprovar(item)} disabled={salvando === item.id}
                       style={{ ...btn('success', { full: true }), fontSize: 14 }}>
                       {salvando === item.id ? <><Spinner size={16} /> Salvando...</> : '✅ Aprovar e Salvar'}

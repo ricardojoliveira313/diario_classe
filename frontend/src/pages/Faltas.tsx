@@ -3,12 +3,18 @@ import * as XLSX from 'xlsx';
 import { api } from '../api';
 import { theme, btn, input, label, MESES, DIAS_LETIVOS, SITUACAO_COR, SITUACAO_LABEL } from '../styles';
 import { Loading, EmptyState, StatCard, Spinner } from '../components';
+import { useTheme } from '../ThemeContext';
 
 type Status = 'P' | 'F' | 'J' | 'A';
 const CICLO: Status[] = ['P', 'F', 'J', 'A'];
-const ST_BG: Record<Status, string> = { P: '#dcfce7', F: '#fee2e2', J: '#ffedd5', A: '#ede9fe' };
-const ST_COR: Record<Status, string> = { P: '#16a34a', F: '#dc2626', J: '#ea580c', A: '#7c3aed' };
 const ST_LABEL: Record<Status, string> = { P: 'Presença', F: 'Falta', J: 'Justificado', A: 'Atestado médico' };
+
+// Cores claras (light mode)
+const ST_BG_LIGHT: Record<Status, string> = { P: '#dcfce7', F: '#fee2e2', J: '#ffedd5', A: '#ede9fe' };
+const ST_COR_LIGHT: Record<Status, string> = { P: '#16a34a', F: '#dc2626', J: '#ea580c', A: '#7c3aed' };
+// Cores escuras (dark mode) — fundo semi-transparente + texto mais brilhante
+const ST_BG_DARK: Record<Status, string> = { P: 'rgba(74,222,128,0.13)', F: 'rgba(248,113,113,0.13)', J: 'rgba(251,146,60,0.13)', A: 'rgba(167,139,250,0.13)' };
+const ST_COR_DARK: Record<Status, string> = { P: '#4ade80', F: '#f87171', J: '#fb923c', A: '#a78bfa' };
 
 const initDias = (n: number): Status[] => Array(n).fill('P') as Status[];
 const encodeDias = (d: Status[]) => 'DIAS:' + d.join('');
@@ -24,6 +30,11 @@ const decodeDias = (freq: string, n: number): Status[] => {
 const ct = (dias: Status[], tipo: Status) => dias.filter(d => d === tipo).length;
 
 export default function Faltas() {
+  const { theme: themeMode } = useTheme();
+  const isDark = themeMode === 'dark';
+  const ST_BG = isDark ? ST_BG_DARK : ST_BG_LIGHT;
+  const ST_COR = isDark ? ST_COR_DARK : ST_COR_LIGHT;
+
   const [turmas, setTurmas] = useState<any[]>([]);
   const [turmaId, setTurmaId] = useState('');
   const [mes, setMes] = useState(new Date().getMonth() + 1);
@@ -184,7 +195,7 @@ export default function Faltas() {
         border: `1px solid ${theme.borderLight}`,
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
-          <h1 style={{ fontSize: 26, fontWeight: 800 }}>📋 Lançamento de Faltas</h1>
+          <h1 style={{ fontSize: 26, fontWeight: 800, color: theme.text }}>📋 Lançamento de Faltas</h1>
           {alunos.length > 0 && (
             <div style={{ display: 'flex', gap: 6 }}>
               <button onClick={exportarExcel} style={btn('success', { small: true, outline: true })}>📊 Excel</button>
@@ -286,7 +297,7 @@ export default function Faltas() {
                   const ausencias = nF + nJ + nA;
                   const emAlerta = !statusTxt && ausencias >= limiteAlerta;
                   const freq = ((numDias - ausencias) / numDias * 100).toFixed(0);
-                  const rowBg = emAlerta ? '#fff1f2' : i % 2 === 0 ? 'var(--card)' : 'var(--bg)';
+                  const rowBg = emAlerta ? 'var(--row-alerta)' : i % 2 === 0 ? 'var(--row-even)' : 'var(--row-odd)';
                   return (
                     <tr key={a.id} style={{ background: rowBg }}>
                       <td style={{
@@ -298,7 +309,7 @@ export default function Faltas() {
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
                           <span style={{ fontSize: 11, color: theme.textMuted, paddingTop: 2, minWidth: 18 }}>{a.numero || i + 1}</span>
                           <div>
-                            <div style={{ fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: theme.text, display: 'flex', alignItems: 'center', gap: 4 }}>
                               {emAlerta && <span title="Frequência abaixo de 75%">⚠️</span>}
                               {a.nome}
                             </div>
@@ -354,10 +365,10 @@ export default function Faltas() {
                   );
                 })}
                 {/* Linha de totais */}
-                <tr style={{ background: 'var(--bg)', borderTop: '2px solid var(--border-light)' }}>
+                <tr style={{ background: 'var(--footer-row)', borderTop: '2px solid var(--border-light)' }}>
                   <td style={{
                     position: 'sticky', left: 0, zIndex: 1,
-                    background: 'var(--bg)',
+                    background: 'var(--footer-row)',
                     padding: '10px 12px', fontWeight: 700, fontSize: 13,
                     borderRight: '2px solid var(--border-light)',
                     color: theme.textSecondary,
