@@ -932,7 +932,7 @@ export default function Importar() {
         <input ref={fileRef} type="file" multiple accept=".xlsx,.xls,.pdf,.txt"
           style={{ display: 'none' }} onChange={e => handleFiles(e.target.files)} />
         <div style={{ fontSize: 42, marginBottom: 8 }}>📂</div>
-        <p style={{ fontWeight: 700, color: theme.primary, marginBottom: 4, fontSize: 17 }}>
+        <p style={{ fontWeight: 700, color: theme.primaryText, marginBottom: 4, fontSize: 17 }}>
           {files.length > 0 ? `${files.length} arquivo(s) selecionado(s)` : 'Clique ou arraste arquivos aqui'}
         </p>
         <p style={{ fontSize: 13, color: theme.textMuted }}>.xlsx .xls .pdf .txt — múltiplos arquivos</p>
@@ -971,7 +971,7 @@ export default function Importar() {
             ].map(([label, val]) => (
                 <div key={label as string} style={{ textAlign: 'center', padding: 16, background: theme.primaryBg, borderRadius: theme.radius }}>
                 <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 4, fontWeight: 600 }}>{label as string}</div>
-                <div style={{ fontSize: 28, fontWeight: 800, color: theme.primary }}>{val as number}</div>
+                <div style={{ fontSize: 28, fontWeight: 800, color: theme.primaryText }}>{val as number}</div>
               </div>
             ))}
           </div>

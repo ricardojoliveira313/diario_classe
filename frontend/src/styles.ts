@@ -5,6 +5,8 @@ export const theme = {
   primaryHover: '#1e3a8a',
   primaryLight: '#dbeafe',
   primaryBg: '#eff6ff',
+  // Cor de texto azul — escura no light, clara no dark (para evitar baixo contraste)
+  primaryText: 'var(--primary-text)',
   sky: '#0ea5e9',
   skyHover: '#0284c7',
   success: '#10b981',

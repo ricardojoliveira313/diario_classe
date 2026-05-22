@@ -295,7 +295,7 @@ export default function Distorcao() {
                       <span style={{ fontWeight: 700, fontSize: 14, color: theme.danger }}>{a.idade}</span>
                       <div style={{ fontSize: 10, color: theme.textMuted }}>anos</div>
                     </div>
-                    <span style={{ textAlign: 'center', fontSize: 12, fontWeight: 600, color: theme.primary }}>
+                    <span style={{ textAlign: 'center', fontSize: 12, fontWeight: 600, color: theme.primaryText }}>
                       {a.turma?.nome ?? '—'}
                     </span>
                     <div style={{ textAlign: 'center' }}>

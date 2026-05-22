@@ -27,7 +27,7 @@ export function EmptyState({ icon, message, action }: { icon: string; message: s
     <div style={{ textAlign: 'center', color: theme.textSecondary, marginTop: 60, animation: 'fadeIn 0.3s ease both' }}>
       <div style={{ fontSize: 56, marginBottom: 12 }}>{icon}</div>
       <p style={{ fontSize: 17, marginBottom: action ? 12 : 0 }}>{message}</p>
-      {action && <a href={action.href} style={{ color: theme.primary, fontWeight: 600, fontSize: 15 }}>→ {action.label}</a>}
+      {action && <a href={action.href} style={{ color: theme.primaryText, fontWeight: 600, fontSize: 15 }}>→ {action.label}</a>}
     </div>
   );
 }
