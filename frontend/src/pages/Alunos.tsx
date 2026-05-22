@@ -136,7 +136,8 @@ export default function Alunos() {
     win.document.close();
   };
 
-  const COLUNAS = '44px 1fr 110px 85px 100px 40px 110px 130px';
+  const formataCPF = (cpf: string) => cpf ? cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : '';
+  const COLUNAS = '44px 1fr 110px 85px 100px 40px 110px 130px 140px';
 
   return (
     <div style={{ marginTop: 16, animation: 'fadeIn 0.25s ease both' }}>
@@ -233,6 +234,7 @@ export default function Alunos() {
             <span style={{ textAlign: 'center' }}>Situação</span><span style={{ textAlign: 'center' }}>Deficiência</span>
             <span style={{ textAlign: 'center' }}>BF</span>
             <span>Professora</span><span>Turma</span>
+            <span style={{ textAlign: 'center' }}>CPF</span>
           </div>
 
           {alunosFiltrados.map((a, i) => {
@@ -281,7 +283,10 @@ export default function Alunos() {
                   </span>
                   <span style={{ textAlign: 'center', fontSize: 15 }}>{a.bolsa_familia ? '✅' : '—'}</span>
                   <span style={{ fontSize: 12, color: theme.textSecondary }}>{a.professora || t?.professora || ''}</span>
-                  <span style={{ fontSize: 12, color: theme.textSecondary }}>{t?.nome || ''}</span>
+                    <span style={{ fontSize: 12, color: theme.textSecondary }}>{t?.nome || ''}</span>
+                    <span style={{ fontSize: 12, textAlign: 'center', color: a.cpf ? theme.text : theme.textMuted, fontFamily: 'monospace' }}>
+                      {formataCPF(a.cpf) || '—'}
+                    </span>
                 </div>
 
                 {/* Detalhes expandidos */}
