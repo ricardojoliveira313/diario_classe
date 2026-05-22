@@ -1064,23 +1064,32 @@ export default function Importar() {
       const turmasParaUpsert = turmas.map(t => {
         // Tenta match exato, depois por alias (SED → nome limpo)
         let id = nomeToTurmaId.get(t.nome);
+        let matchName: string | undefined;
         if (!id) {
           const aliased = applyAlias(t.nome);
           const nAliased = normT(aliased);
-          id = normToTurmaId.get(nAliased);
+          for (const [origName, tid] of nomeToTurmaId) {
+            if (normT(origName) === nAliased) { id = tid; matchName = origName; break; }
+          }
         }
         if (!id) {
-          // Tenta match parcial: turma SED "1 ETAPA PRE ESCOLA A MANHA ANUAL" bate "1 ETAPA A"
+          // Tenta match parcial: SED "1 ETAPA PRE ESCOLA A MANHA" → "1 ETAPA A"
           const n = normT(t.nome);
           const simplificado = n
             .replace(/\bPRE\s*ESCOLA\b/g, '').replace(/\bPRÉ\s*ESCOLA\b/g, '')
             .replace(/\b(MANHA|TARDE|NOTURNO|MATUTINO|VESPERTINO|NOITE|ANUAL|INTEGRAL)\b/g, '')
             .replace(/\s+/g, ' ').trim();
-          for (const [normNome, tid] of normToTurmaId) {
-            if (normNome === simplificado || normNome.startsWith(simplificado) || simplificado.startsWith(normNome)) {
-              id = tid; break;
+          for (const [origName, tid] of nomeToTurmaId) {
+            const nn = normT(origName);
+            if (nn === simplificado || nn.startsWith(simplificado) || simplificado.startsWith(nn)) {
+              id = tid; matchName = origName; break;
             }
           }
+        }
+        // Se já existe, preserva nome e professora originais (não sobrescreve com SED)
+        if (id && matchName) {
+          const existente = turmasExistentes.find((x: any) => x.id === id);
+          return { id, nome: matchName, professora: (t.professora || existente?.professora || '') };
         }
         return { ...(id ? { id } : {}), nome: t.nome, professora: t.professora };
       });
