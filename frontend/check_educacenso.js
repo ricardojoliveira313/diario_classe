@@ -1,0 +1,11 @@
+const X = require('xlsx');
+const f = 'C:\\diario_classe\\EDUCACENSO - ALUNOS - CPF (1).xlsx';
+const wb = X.readFile(f, { type: 'file', cellDates: true });
+const ws = wb.Sheets[wb.SheetNames[0]];
+const rows = X.utils.sheet_to_json(ws, { header: 1 });
+const h = rows[20];
+console.log('Header row 20:');
+h.forEach(function(c, i) { if (c) console.log('  ' + i + ': ' + JSON.stringify(c)); });
+console.log('\nSample row 24:');
+var r = rows[24];
+r.forEach(function(c, i) { if (c != null) console.log('  ' + i + ': ' + JSON.stringify(c)); });

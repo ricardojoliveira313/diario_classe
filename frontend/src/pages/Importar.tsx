@@ -78,6 +78,7 @@ interface AlunoUnificado {
   nis: string;
   responsavel: string;
   cpf: string;
+  corRaca: string;
   turmaOrigem: string;
   professoraOrigem: string;
   faltas: Record<number, { faltas: number; frequencia: string }>;
@@ -215,7 +216,7 @@ export default function Importar() {
             bolsaFamilia: false,
             dataInicioMatricula: '', dataFimMatricula: '', dataMovimentacao: '',
             nis: '', responsavel: '', cpf: '',
-            turmaOrigem: '', professoraOrigem: '',
+            turmaOrigem: '', professoraOrigem: '', corRaca: '',
             faltas: {},
           });
           continue;
@@ -246,7 +247,7 @@ export default function Importar() {
           dataFimMatricula: isAtivo ? (dataMovim ?? '') : '',
           dataMovimentacao: isAtivo ? '' : (dataMovim ?? ''),
           nis: '', responsavel: '', cpf: '',
-          turmaOrigem: '', professoraOrigem: '',
+          turmaOrigem: '', professoraOrigem: '', corRaca: '',
           faltas: {},
         });
       }
@@ -386,6 +387,7 @@ export default function Importar() {
                 nis: '',
                 responsavel: '',
                 cpf: String(nr['CPF'] ?? '').replace(/\D/g, '') || '',
+                corRaca: '',
                 turmaOrigem: '', professoraOrigem: '',
                 faltas: mes > 0 && faltasQtd >= 0 ? { [mes]: { faltas: faltasQtd, frequencia: freqTexto } } : {},
               });
@@ -513,7 +515,7 @@ export default function Importar() {
                 bolsaFamilia: false,
                 dataInicioMatricula: '', dataFimMatricula: '', dataMovimentacao: '',
                 nis: '', responsavel: '', cpf: '',
-                turmaOrigem: '', professoraOrigem: '',
+                turmaOrigem: '', professoraOrigem: '', corRaca: '',
                 faltas: {},
               });
             }
@@ -649,7 +651,7 @@ export default function Importar() {
   }
 
   // ─── PARSE: EDUCACENSO xlsx (CPF + Deficiência) ───
-  async function parseEducacensoCPF(files: File[]): Promise<Map<string, { cpf: string; deficiencia: string }>> {
+  async function parseEducacensoCPF(files: File[]): Promise<Map<string, { cpf: string; deficiencia: string; corRaca: string }>> {
     const mapa = new Map<string, { cpf: string; deficiencia: string }>();
 
     for (const file of files) {
@@ -662,7 +664,7 @@ export default function Importar() {
       const rows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1 });
 
       // Procura linha de cabeçalho com "Nome" e "CPF"
-      let headerIdx = -1, idxNome = -1, idxNasc = -1, idxCPF = -1, idxDef = -1;
+      let headerIdx = -1, idxNome = -1, idxNasc = -1, idxCPF = -1, idxDef = -1, idxCor = -1;
       for (let r = 0; r < rows.length; r++) {
         const vals = (rows[r] ?? []).map((v: any) => normalizeStr(String(v ?? '')));
         if (vals.some(v => v.includes('NOME')) && vals.some(v => v === 'CPF')) {
@@ -671,6 +673,7 @@ export default function Importar() {
           idxNasc = vals.findIndex(v => v.includes('NASCIMENTO'));
           idxCPF  = vals.findIndex(v => v === 'CPF');
           idxDef  = vals.findIndex(v => v.startsWith('TIPO(S) DE DEFICIENCIA'));
+          idxCor  = vals.findIndex(v => v === 'COR/RACA' || v === 'COR' || v === 'RACA');
           break;
         }
       }
@@ -698,7 +701,9 @@ export default function Importar() {
         const defRaw = idxDef >= 0 ? String(row[idxDef] ?? '').trim() : '';
         const deficiencia = (!defRaw || defRaw === '--') ? '' : defRaw;
         const cpf = cpfRaw.length === 11 ? cpfRaw : '';
-        const entry = { cpf, deficiencia };
+        const corRaw = idxCor >= 0 ? String(row[idxCor] ?? '').trim() : '';
+        const corRaca = (!corRaw || corRaw === '--') ? '' : corRaw;
+        const entry = { cpf, deficiencia, corRaca };
 
         // Chave exata: nome|data
         mapa.set(`${nomeNorm}|${nasc}`, entry);
@@ -842,13 +847,14 @@ export default function Importar() {
           a.responsavel = a.responsavel || bf.responsavel;
           a.bolsaFamilia = true;
         }
-        // Cruzamento CPF + Deficiência (EDUCACENSO): nome+data exato, depois fuzzy
+        // Cruzamento CPF + Deficiência + Cor/Raça (EDUCACENSO): nome+data exato, depois fuzzy
         const ecExato = cpfMap.get(`${a.nomeNorm}|${a.nascimento}`);
         const ecFuzzy = a.nascimento ? cpfMap.get(`~${nomeSimp}|${a.nascimento}`) : undefined;
         const ec = ecExato ?? ecFuzzy;
         if (ec) {
           a.cpf = a.cpf || ec.cpf || '';
           a.deficiencia = a.deficiencia || ec.deficiencia || '';
+          a.corRaca = a.corRaca || ec.corRaca || '';
         }
       }
 
@@ -916,7 +922,9 @@ export default function Importar() {
         faltas: totalFaltas,
       };
       setPreview(prev);
-      dadosRef.current = { turmas: Array.from(turmasUnicas.values()), alunos: alunosArr, faltasArr: [] };
+      // Converte cpfMap (Map) em array para serialização
+      const educacensoArr = Array.from(cpfMap.entries()).map(([chave, val]) => ({ chave, ...val }));
+      dadosRef.current = { turmas: Array.from(turmasUnicas.values()), alunos: alunosArr, faltasArr: [], educacenso: educacensoArr };
       setStatus('');
     } catch (ex: any) {
       setErro('Erro na análise: ' + ex.message);
@@ -1061,6 +1069,7 @@ export default function Importar() {
           nis: a.nis || null,
           responsavel: a.responsavel || null,
           cpf: a.cpf || null,
+          cor_raca: a.corRaca || '',
           turma_origem: a.turmaOrigem || '',
           professora_origem: a.professoraOrigem || '',
         };
@@ -1084,7 +1093,25 @@ export default function Importar() {
         nomeToId.set(normalizeStr(a.nome), a.id);
       }
 
-      // ─── PASSO 4: Faltas — upsert por (alunoId, mes, ano) ───
+      // ─── PASSO 4: EDUCACENSO — salva na tabela independente ───
+      const { educacenso } = dadosRef.current;
+      if (educacenso && educacenso.length > 0) {
+        setStatus(`Salvando ${educacenso.length} registros do EDUCACENSO...`);
+        for (let i = 0; i < educacenso.length; i += 80) {
+          const { error } = await supabase
+            .from('Educacenso')
+            .upsert(educacenso.slice(i, i + 80).map(e => ({
+              nome: e.chave.split('|')[0] || '',
+              data_nascimento: e.chave.split('|')[1] || '',
+              cpf: e.cpf || '',
+              deficiencia: e.deficiencia || '',
+              cor_raca: e.corRaca || '',
+            })), { onConflict: 'id' });
+          if (error) console.error('Erro ao salvar Educacenso:', error);
+        }
+      }
+
+      // ─── PASSO 5: Faltas — upsert por (alunoId, mes, ano) ───
       const faltasParaInserir: any[] = [];
       for (const a of alunos) {
         const alunoId = raToId.get(String(a.ra ?? '')) ?? nomeToId.get(a.nomeNorm);

@@ -99,6 +99,7 @@ export default function Alunos() {
         'Data Início Matrícula': a.data_inicio_matricula ?? '',
         'Data Fim Matrícula': a.data_fim_matricula ?? '',
         'Data Movimentação': a.data_movimentacao ?? '',
+        'Cor/Raça': a.cor_raca ?? '',
         'CPF': a.cpf ? a.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : '',
       };
     });
@@ -120,7 +121,8 @@ export default function Alunos() {
       const ra = String(a.ra ?? '').padEnd(12);
       const sit = (SITUACAO_LABEL[a.situacao] ?? a.situacao ?? '').padEnd(14);
       const defi = (a.deficiencia ?? '').substring(0, 22).padEnd(22);
-      return `${String(a.numero || i + 1).padStart(2)} ${nome} ${ra} ${sit} ${defi}`;
+      const cor = (a.cor_raca ?? '').substring(0, 15).padEnd(15);
+      return `${String(a.numero || i + 1).padStart(2)} ${nome} ${ra} ${sit} ${defi} ${cor}`;
     });
     const titulo = `RELAÇÃO DE ALUNOS — ${turmaSel?.nome ?? 'Todas as Turmas'}`;
     const conteudo = [
@@ -128,7 +130,7 @@ export default function Alunos() {
       `  ${titulo}`,
       '='.repeat(100),
       '',
-      ` Nº  Nome                                    RA             Situação       Deficiência`,
+      ` Nº  Nome                                    RA             Situação       Deficiência              Cor/Raça`,
       '─'.repeat(100),
       ...linhas,
       '─'.repeat(100),
@@ -332,6 +334,7 @@ export default function Alunos() {
                     </div>
                     {t?.professora && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Professora:</span> {t.professora}</div>}
                     {t?.nome && turmaId !== '__all__' && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Turma:</span> {t.nome}</div>}
+                    {a.cor_raca && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Cor/Raça:</span> {a.cor_raca}</div>}
                     {a.nis && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>NIS:</span> {a.nis}</div>}
                     {a.responsavel && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Responsável:</span> {a.responsavel}</div>}
                     {a.cpf && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>CPF:</span> {a.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</div>}

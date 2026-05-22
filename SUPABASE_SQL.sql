@@ -86,6 +86,21 @@ ALTER TABLE "Turma" ADD COLUMN IF NOT EXISTS periodo    TEXT DEFAULT '';
 
 ALTER TABLE "Falta" ADD COLUMN IF NOT EXISTS frequencia      TEXT DEFAULT '';
 
+-- ─── 2b. Tabela EDUCACENSO (dados persistentes do Censo Escolar) ──────
+CREATE TABLE IF NOT EXISTS "Educacenso" (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  nome            TEXT NOT NULL,
+  data_nascimento TEXT DEFAULT '',
+  cpf             TEXT DEFAULT '',
+  deficiencia     TEXT DEFAULT '',
+  cor_raca        TEXT DEFAULT '',
+  identificador   TEXT DEFAULT '',  -- "Identificação única" do Educacenso
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Cor/Raça no Aluno
+ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS cor_raca TEXT DEFAULT '';
+
 -- ─── 3. Desativa RLS (Row Level Security) nas tabelas ─────────
 
 ALTER TABLE "Turma"    DISABLE ROW LEVEL SECURITY;
