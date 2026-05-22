@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import Alunos from './pages/Alunos';
 import Faltas from './pages/Faltas';
 import Importar from './pages/Importar';
@@ -10,23 +10,35 @@ import OCR from './pages/OCR';
 import Professor from './pages/Professor';
 import Pendentes from './pages/Pendentes';
 import Distorcao from './pages/Distorcao';
+import Login from './pages/Login';
 import { api } from './api';
 import { theme } from './styles';
 import { ThemeProvider, useTheme } from './ThemeContext';
 import { AnoProvider, useAno } from './AnoContext';
+import { AuthProvider, useAuth } from './AuthContext';
+import type { Role } from './AuthContext';
 
-const NAV_ITEMS = [
-  { to: '/', label: '📊 Dashboard', end: true },
-  { to: '/importar', label: '📥 Importar' },
-  { to: '/turmas', label: '👩‍🏫 Turmas' },
-  { to: '/alunos', label: '👥 Alunos' },
-  { to: '/faltas', label: '📋 Faltas' },
+// ─── Itens de navegação ────────────────────────────────────────────────────
+// adminOnly: true → item escondido para perfil "viewer"
+const NAV_ITEMS: { to: string; label: string; end?: boolean; badge?: boolean; adminOnly?: boolean }[] = [
+  { to: '/',          label: '📊 Dashboard', end: true },
+  { to: '/importar',  label: '📥 Importar',  adminOnly: true },
+  { to: '/turmas',    label: '👩‍🏫 Turmas' },
+  { to: '/alunos',    label: '👥 Alunos' },
+  { to: '/faltas',    label: '📋 Faltas' },
   { to: '/distorcao', label: '📐 Distorção' },
-  { to: '/ocr', label: '📷 OCR' },
+  { to: '/ocr',       label: '📷 OCR',       adminOnly: true },
   { to: '/pendentes', label: '⏳ Pendentes', badge: true },
 ];
 
 const ANOS_DISPONIVEIS = [2025, 2026, 2027];
+
+// ─── Guarda de rota: redireciona viewers para / se tentarem acessar rota admin ─
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { role } = useAuth();
+  if (role !== 'admin') return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
 
 function AppContent() {
   const [menuAberto, setMenuAberto] = useState(false);
@@ -34,6 +46,10 @@ function AppContent() {
   const [scrolled, setScrolled] = useState(false);
   const { theme: themeMode, toggle: toggleTheme } = useTheme();
   const { ano, setAno } = useAno();
+  const { role, logout } = useAuth();
+
+  // Se não estiver logado, mostra tela de login
+  if (!role) return <Login />;
 
   useEffect(() => {
     api.contarPendentes().then(setNPendentes).catch(() => {});
@@ -47,45 +63,39 @@ function AppContent() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
+  // Filtra itens do menu conforme o perfil
+  const navItems = NAV_ITEMS.filter(item => role === 'admin' || !item.adminOnly);
+
   const navStyle: React.CSSProperties = {
-    position: 'sticky',
-    top: 0,
-    zIndex: 50,
+    position: 'sticky', top: 0, zIndex: 50,
     background: theme.primary,
     boxShadow: scrolled ? theme.shadowMd : 'none',
     transition: 'box-shadow 0.2s ease',
-    userSelect: 'none',
-    WebkitUserSelect: 'none',
+    userSelect: 'none', WebkitUserSelect: 'none',
   };
 
   const innerStyle: React.CSSProperties = {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 2,
-    maxWidth: 1200,
-    margin: '0 auto',
-    padding: '0 10px',
-    minHeight: 52,
+    display: 'flex', alignItems: 'center', gap: 2,
+    maxWidth: 1200, margin: '0 auto', padding: '0 10px', minHeight: 52,
   };
 
   const linkBase: React.CSSProperties = {
-    color: '#bfdbfe',
-    textDecoration: 'none',
-    padding: '10px 12px',
-    borderRadius: theme.radius,
-    fontSize: 14,
-    fontWeight: 500,
-    transition: 'all 0.15s ease',
-    whiteSpace: 'nowrap',
-    userSelect: 'none',
-    WebkitUserSelect: 'none',
+    color: '#bfdbfe', textDecoration: 'none', padding: '10px 12px',
+    borderRadius: theme.radius, fontSize: 14, fontWeight: 500,
+    transition: 'all 0.15s ease', whiteSpace: 'nowrap',
+    userSelect: 'none', WebkitUserSelect: 'none',
   };
 
   const linkActive: React.CSSProperties = {
-    ...linkBase,
-    background: 'rgba(255,255,255,0.15)',
-    color: 'white',
-    fontWeight: 700,
+    ...linkBase, background: 'rgba(255,255,255,0.15)', color: 'white', fontWeight: 700,
+  };
+
+  const roleBadgeStyle: React.CSSProperties = {
+    background: role === 'admin' ? 'rgba(16,185,129,0.25)' : 'rgba(251,191,36,0.25)',
+    color: role === 'admin' ? '#6ee7b7' : '#fde68a',
+    border: `1px solid ${role === 'admin' ? 'rgba(16,185,129,0.4)' : 'rgba(251,191,36,0.4)'}`,
+    borderRadius: 6, padding: '2px 7px', fontSize: 11, fontWeight: 700,
+    whiteSpace: 'nowrap',
   };
 
   return (
@@ -99,90 +109,57 @@ function AppContent() {
 
             {/* Desktop menu */}
             <div style={{ display: 'flex', gap: 1, flex: 1, overflow: 'hidden' }}>
-              {NAV_ITEMS.map(item => (
+              {navItems.map(item => (
                 <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.end}
+                  key={item.to} to={item.to} end={item.end}
                   style={({ isActive }) => isActive ? linkActive : linkBase}
                 >
                   {item.badge && nPendentes > 0 ? (
                     <span>{item.label}
-                      <span style={{
-                        marginLeft: 4,
-                        background: theme.danger,
-                        color: 'white',
-                        borderRadius: 10,
-                        padding: '0px 5px',
-                        fontSize: 11,
-                        fontWeight: 700,
-                      }}>{nPendentes}</span>
+                      <span style={{ marginLeft: 4, background: theme.danger, color: 'white', borderRadius: 10, padding: '0px 5px', fontSize: 11, fontWeight: 700 }}>{nPendentes}</span>
                     </span>
                   ) : item.label}
                 </NavLink>
               ))}
             </div>
 
+            {/* Badge de perfil */}
+            <span style={roleBadgeStyle} title={role === 'admin' ? 'Acesso completo' : 'Somente visualização'}>
+              {role === 'admin' ? '🔑 Admin' : '👁️ Viewer'}
+            </span>
+
             {/* Seletor de ano */}
             <select
-              value={ano}
-              onChange={e => setAno(Number(e.target.value))}
+              value={ano} onChange={e => setAno(Number(e.target.value))}
               title="Ano letivo"
-              style={{
-                background: 'rgba(255,255,255,0.12)',
-                border: '1px solid rgba(255,255,255,0.25)',
-                color: 'white',
-                borderRadius: 6,
-                padding: '4px 6px',
-                fontSize: 13,
-                fontWeight: 700,
-                cursor: 'pointer',
-                marginLeft: 4,
-                minWidth: 60,
-              }}
+              style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.25)', color: 'white', borderRadius: 6, padding: '4px 6px', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginLeft: 4, minWidth: 60 }}
             >
-              {ANOS_DISPONIVEIS.map(a => (
-                <option key={a} value={a} style={{ background: theme.primary, color: 'white' }}>{a}</option>
-              ))}
+              {ANOS_DISPONIVEIS.map(a => <option key={a} value={a} style={{ background: theme.primary, color: 'white' }}>{a}</option>)}
             </select>
 
             {/* Theme toggle */}
             <button onClick={toggleTheme} title={themeMode === 'light' ? 'Modo escuro' : 'Modo claro'}
-              style={{
-                background: 'rgba(255,255,255,0.1)',
-                border: 'none',
-                color: 'white',
-                cursor: 'pointer',
-                padding: '6px 8px',
-                borderRadius: 6,
-                fontSize: 16,
-                lineHeight: 1,
-              }}>
+              style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', cursor: 'pointer', padding: '6px 8px', borderRadius: 6, fontSize: 16, lineHeight: 1 }}>
               {themeMode === 'light' ? '🌙' : '☀️'}
+            </button>
+
+            {/* Sair */}
+            <button onClick={logout} title="Sair"
+              style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fca5a5', cursor: 'pointer', padding: '6px 8px', borderRadius: 6, fontSize: 13, fontWeight: 600, lineHeight: 1, whiteSpace: 'nowrap' }}>
+              ⬅ Sair
             </button>
 
             {/* Mobile hamburger */}
             <button
               onClick={() => setMenuAberto(!menuAberto)}
-              style={{
-                display: 'none',
-                background: 'rgba(255,255,255,0.1)',
-                border: 'none',
-                color: 'white',
-                fontSize: 20,
-                cursor: 'pointer',
-                padding: '6px 10px',
-                borderRadius: theme.radius,
-                marginLeft: 'auto',
-              }}
+              style={{ display: 'none', background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', fontSize: 20, cursor: 'pointer', padding: '6px 10px', borderRadius: theme.radius, marginLeft: 'auto' }}
               className="mobile-menu-btn"
             >
               {menuAberto ? '✕' : '☰'}
             </button>
 
             {/* GitHub */}
-            <a href="https://github.com/ricardojoliveira313/diario_classe"
-              target="_blank" rel="noopener noreferrer"
+            <a href="https://github.com/ricardojoliveira313/diario_classe" target="_blank" rel="noopener noreferrer"
               style={{ color: '#93c5fd', textDecoration: 'none', padding: '6px 8px', borderRadius: 6, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
               <svg height="15" width="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
               <span style={{ display: 'inline' }}>GitHub</span>
@@ -191,27 +168,19 @@ function AppContent() {
 
           {/* Mobile menu dropdown */}
           {menuAberto && (
-            <div style={{
-              display: 'none',
-              flexDirection: 'column',
-              padding: '8px 12px 12px',
-              gap: 4,
-              borderTop: '1px solid rgba(255,255,255,0.1)',
-            }} className="mobile-menu">
-              {NAV_ITEMS.map(item => (
+            <div style={{ display: 'none', flexDirection: 'column', padding: '8px 12px 12px', gap: 4, borderTop: '1px solid rgba(255,255,255,0.1)' }} className="mobile-menu">
+              {navItems.map(item => (
                 <NavLink
                   key={item.to} to={item.to} end={item.end}
                   onClick={() => setMenuAberto(false)}
-                  style={({ isActive }) => ({
-                    ...linkBase,
-                    padding: '10px 12px',
-                    display: 'block',
-                    ...(isActive ? linkActive : {}),
-                  })}
+                  style={({ isActive }) => ({ ...linkBase, padding: '10px 12px', display: 'block', ...(isActive ? linkActive : {}) })}
                 >
                   {item.badge && nPendentes > 0 ? `${item.label} (${nPendentes})` : item.label}
                 </NavLink>
               ))}
+              <button onClick={logout} style={{ ...linkBase, background: 'none', border: 'none', color: '#fca5a5', cursor: 'pointer', textAlign: 'left', padding: '10px 12px' }}>
+                ⬅ Sair
+              </button>
             </div>
           )}
         </nav>
@@ -219,12 +188,12 @@ function AppContent() {
         <div style={{ padding: 20, maxWidth: 1200, margin: '0 auto' }}>
           <Routes>
             <Route path="/" element={<Dashboard />} />
-            <Route path="/importar" element={<Importar />} />
+            <Route path="/importar" element={<AdminRoute><Importar /></AdminRoute>} />
             <Route path="/turmas" element={<Turmas />} />
             <Route path="/alunos" element={<Alunos />} />
             <Route path="/faltas" element={<Faltas />} />
             <Route path="/distorcao" element={<Distorcao />} />
-            <Route path="/ocr" element={<OCR />} />
+            <Route path="/ocr" element={<AdminRoute><OCR /></AdminRoute>} />
             <Route path="/professor" element={<Professor />} />
             <Route path="/pendentes" element={<Pendentes />} />
           </Routes>
@@ -238,7 +207,9 @@ function App() {
   return (
     <ThemeProvider>
       <AnoProvider>
-        <AppContent />
+        <AuthProvider>
+          <AppContent />
+        </AuthProvider>
       </AnoProvider>
     </ThemeProvider>
   );
