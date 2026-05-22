@@ -161,6 +161,94 @@ export default function Faltas() {
     win.document.close();
   };
 
+  // ── Folha de Frequência para OCR (lista simples A4 retrato) ─────────────────
+  const exportarFolhaOCR = () => {
+    const turmaObj = turmas.find(t => t.id === turmaId);
+    const nomeMes = MESES[mes - 1];
+
+    const linhas = alunos.map((a, i) => {
+      const defi = a.deficiencia ? ' ♿' : '';
+      const bf = a.bolsa_familia ? ' 💚' : '';
+      return `
+      <tr>
+        <td style="border:1px solid #555;padding:5px 6px;font-size:13px;text-align:center;width:30px;font-weight:700;">${String(a.numero || i + 1).padStart(2, '0')}</td>
+        <td style="border:1px solid #555;padding:5px 8px;font-size:13px;">${a.nome}${defi}${bf}</td>
+        <td style="border:2px solid #1e40af;padding:5px 4px;text-align:center;width:54px;font-size:22px;font-weight:900;"></td>
+        <td style="border:2px solid #f59e0b;padding:5px 4px;text-align:center;width:54px;font-size:22px;font-weight:900;"></td>
+      </tr>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<title>Folha Frequência — ${turmaObj?.nome ?? ''} — ${nomeMes} ${ano}</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 6mm; font-size: 13px; color: #000; }
+  table { border-collapse: collapse; width: 100%; }
+  @media print { @page { size: A4 portrait; margin: 7mm; } body { margin: 0; } }
+</style>
+</head>
+<body>
+
+<div style="text-align:center; margin-bottom:8px;">
+  <div style="font-size:20px; font-weight:bold; letter-spacing:1px;">FOLHA DE FREQUÊNCIA</div>
+  <div style="font-size:12px; font-weight:bold;">EMEIEF LUIZ GONZAGA</div>
+</div>
+
+<table style="border:none; margin-bottom:6px;">
+  <tr>
+    <td style="border:none; padding:2px 4px; font-size:12px;"><b>Prof(a):</b> ${turmaObj?.professora ?? '________________________________'}</td>
+    <td style="border:none; padding:2px 4px; font-size:12px;"><b>Turma:</b> ${turmaObj?.nome ?? ''}</td>
+    <td style="border:none; padding:2px 4px; font-size:14px; font-weight:bold; color:red; white-space:nowrap;">${nomeMes.toUpperCase()} / ${ano}</td>
+  </tr>
+</table>
+
+<div style="font-size:11px; margin-bottom:5px; padding:4px 6px; background:#f1f5f9; border-radius:4px;">
+  ✏️ <b>Instruções:</b> Escreva o número total de faltas do mês em cada coluna.
+  &nbsp;&nbsp;
+  <span style="color:#1e40af; font-weight:bold;">F = Faltas</span>
+  &nbsp;&nbsp;
+  <span style="color:#d97706; font-weight:bold;">J = Justificadas / Atestado</span>
+  &nbsp;&nbsp;
+  (0 = sem faltas)
+</div>
+
+<table>
+  <thead>
+    <tr style="background:#1e40af; color:white;">
+      <th style="border:1px solid #1e40af; padding:7px 4px; width:30px; font-size:12px; text-align:center;">Nº</th>
+      <th style="border:1px solid #1e40af; padding:7px 8px; font-size:12px; text-align:left;">NOME DO ALUNO</th>
+      <th style="border:2px solid #93c5fd; padding:7px 4px; width:54px; font-size:13px; text-align:center; background:#1d4ed8;">F<br><span style="font-size:9px; font-weight:400;">Faltas</span></th>
+      <th style="border:2px solid #fde68a; padding:7px 4px; width:54px; font-size:13px; text-align:center; background:#b45309;">J<br><span style="font-size:9px; font-weight:400;">Justif.</span></th>
+    </tr>
+  </thead>
+  <tbody>
+    ${linhas}
+  </tbody>
+</table>
+
+<div style="margin-top:8mm; font-size:10px; color:#444;">
+  <b>Total de dias letivos do mês:</b> ${numDias}
+  &nbsp;&nbsp;&nbsp;
+  <b>Alunos:</b> ${alunos.length}
+</div>
+
+<div style="margin-top:6mm; font-size:11px; display:flex; gap:20mm; flex-wrap:wrap;">
+  <span>Assinatura do Professor(a): _________________________________</span>
+  <span>Data: _____ / _____ / __________</span>
+</div>
+
+<script>setTimeout(()=>window.print(),400);</script>
+</body>
+</html>`;
+
+    const win = window.open('', '_blank');
+    if (!win) { alert('Permita pop-ups no navegador para abrir a Folha.'); return; }
+    win.document.write(html);
+    win.document.close();
+  };
+
   // ── Diário Tradicional (grade com todos os dias do mês) ──────────────────────
   const exportarDiario = () => {
     const turmaObj = turmas.find(t => t.id === turmaId);
@@ -320,7 +408,8 @@ export default function Faltas() {
           <h1 style={{ fontSize: 26, fontWeight: 800, color: theme.text }}>📋 Lançamento de Faltas</h1>
           {alunos.length > 0 && (
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              <button onClick={exportarDiario} style={btn('warning', { small: true, outline: true })} title="Formulário tradicional com todos os dias do mês para o professor preencher">🖨️ Diário</button>
+              <button onClick={exportarFolhaOCR} style={btn('primary', { small: true, outline: true })} title="Folha simples (A4 retrato) para professor preencher número de faltas — fácil de fotografar">📋 Folha</button>
+              <button onClick={exportarDiario} style={btn('warning', { small: true, outline: true })} title="Diário tradicional com todos os dias do mês">🖨️ Diário</button>
               <button onClick={exportarExcel} style={btn('success', { small: true, outline: true })}>📊 Excel</button>
               <button onClick={exportarPDF} style={btn('danger', { small: true, outline: true })}>📄 PDF</button>
             </div>
