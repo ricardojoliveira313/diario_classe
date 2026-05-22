@@ -4,6 +4,7 @@ import { api } from '../api';
 import { theme, btn, input, label, MESES, DIAS_LETIVOS, SITUACAO_COR, SITUACAO_LABEL } from '../styles';
 import { Loading, EmptyState, StatCard, Spinner } from '../components';
 import { useTheme } from '../ThemeContext';
+import { useAno } from '../AnoContext';
 
 type Status = 'P' | 'F' | 'J' | 'A';
 const CICLO: Status[] = ['P', 'F', 'J', 'A'];
@@ -34,11 +35,11 @@ export default function Faltas() {
   const isDark = themeMode === 'dark';
   const ST_BG = isDark ? ST_BG_DARK : ST_BG_LIGHT;
   const ST_COR = isDark ? ST_COR_DARK : ST_COR_LIGHT;
+  const { ano } = useAno();
 
   const [turmas, setTurmas] = useState<any[]>([]);
   const [turmaId, setTurmaId] = useState('');
   const [mes, setMes] = useState(new Date().getMonth() + 1);
-  const [ano] = useState(2026);
   const [alunos, setAlunos] = useState<any[]>([]);
   const [diasAluno, setDiasAluno] = useState<Record<string, Status[]>>({});
   const [statusTextos, setStatusTextos] = useState<Record<string, string>>({});

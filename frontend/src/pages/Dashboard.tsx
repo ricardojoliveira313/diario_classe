@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
-import { theme, MESES_ABR, MESES, DIAS_LETIVOS, input, row } from '../styles';
+import { theme, MESES_ABR, MESES, DIAS_LETIVOS, getDiasLetivos, input, row } from '../styles';
 import { Loading, EmptyState, StatCard } from '../components';
+import { useAno } from '../AnoContext';
 
 export default function Dashboard() {
+  const { ano } = useAno();
   const [turmas, setTurmas] = useState<any[]>([]);
   const [alunos, setAlunos] = useState<any[]>([]);
   const [faltas, setFaltas] = useState<any[]>([]);
@@ -18,8 +20,8 @@ export default function Dashboard() {
 
   useEffect(() => {
     setLoadingFaltas(true);
-    api.getFaltasMes(mes, 2026).then(f => { setFaltas(f); setLoadingFaltas(false); });
-  }, [mes]);
+    api.getFaltasMes(mes, ano).then(f => { setFaltas(f); setLoadingFaltas(false); });
+  }, [mes, ano]);
 
   if (loading) return <Loading />;
 
@@ -29,7 +31,7 @@ export default function Dashboard() {
   const rema = alunos.filter(a => a.situacao === 'REMA').length;
   const bolsa = alunos.filter(a => a.bolsa_familia).length;
   const comDefi = alunos.filter(a => a.deficiencia).length;
-  const dl = DIAS_LETIVOS[mes] ?? 22;
+  const dl = getDiasLetivos(mes, ano);
   const limiteAlerta = Math.ceil(dl * 0.25);
 
   const faltasMap = new Map<string, number>(faltas.map(f => [f.alunoId, f.faltas ?? 0]));
@@ -51,7 +53,7 @@ export default function Dashboard() {
         <h1 style={{ fontSize: 26, fontWeight: 800, color: theme.text }}>📊 Dashboard</h1>
         <select value={mes} onChange={e => setMes(Number(e.target.value))}
           style={{ ...input, width: 'auto', marginBottom: 0 }}>
-          {MESES_ABR.map((m, i) => <option key={i + 1} value={i + 1}>{m} 2026</option>)}
+          {MESES_ABR.map((m, i) => <option key={i + 1} value={i + 1}>{m} {ano}</option>)}
         </select>
       </div>
 
