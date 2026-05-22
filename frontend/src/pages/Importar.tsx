@@ -661,6 +661,8 @@ export default function Importar() {
       // Enriquece com professor da tabela TURMA-PROFESSORES
       const alunosArr = Array.from(todosAlunos.values());
       for (const a of alunosArr) {
+        // Garante que serie é sempre string (Educacenso pode ter serie undefined)
+        if (!a.serie) a.serie = '';
         // Busca exata, depois parcial (ex: "1 ANO A" bate "1 ANO A MANHA")
         const serieNorm = normalizeStr(a.serie);
         let tp = turmasMap.get(serieNorm);
@@ -672,7 +674,7 @@ export default function Importar() {
         }
         if (tp) {
           if (tp.professor && !a.professora) a.professora = tp.professor;
-          if (tp.periodo && !a.serie.toLowerCase().includes(tp.periodo.toLowerCase())) {
+          if (tp.periodo && a.serie && !a.serie.toLowerCase().includes(tp.periodo.toLowerCase())) {
             // Não sobrescreve o nome da turma, só usa o período para enriquecer se necessário
           }
         }
