@@ -1007,15 +1007,36 @@ export default function Importar() {
     };
 
     try {
-      // ─── PASSO 1: Turmas — upsert por nome (preserva UUIDs) ───
+      // ─── PASSO 1: Turmas — upsert por nome normalizado (evita duplicatas ANUAL/SED) ───
+      // Problema anterior: "1° ANO A MANHA ANUAL" (Excel) e "1º ANO A" (PDF) criavam
+      // turmas separadas porque o match era exato. Agora usa resolveExistente (normalizado)
+      // para encontrar a turma canônica já cadastrada e preservar seu nome.
       setStatus('Carregando turmas cadastradas...');
       const turmasExistentes = await api.getTurmas();
-      const nomeToTurmaId = new Map(turmasExistentes.map(t => [t.nome, t.id]));
-      const turmasParaUpsert = turmas.map(t => ({
-        ...(nomeToTurmaId.has(t.nome) ? { id: nomeToTurmaId.get(t.nome) } : {}),
-        nome: t.nome,
-        professora: t.professora,
-      }));
+      const resolveExistente = buildResolveId(turmasExistentes);
+      const idToExistente = new Map<string, any>(turmasExistentes.map((t: any) => [t.id, t]));
+      const nomeToTurmaId = new Map<string, string>(turmasExistentes.map((t: any) => [t.nome, t.id]));
+
+      const turmasParaUpsertRaw = turmas.map(t => {
+        const exactId = nomeToTurmaId.get(t.nome) ?? null;
+        const normId  = exactId ?? resolveExistente(t.nome, t.professora) ?? null;
+        const exist   = normId ? idToExistente.get(normId) : null;
+        return {
+          ...(normId ? { id: normId } : {}),
+          // Preserva nome canônico já no DB; usa nome do arquivo só para turmas novas
+          nome: exist ? exist.nome : t.nome,
+          // Atualiza professora somente se a existente estiver vazia
+          professora: t.professora || (exist?.professora ?? ''),
+        };
+      });
+      // Deduplica: "1° ANO A MANHA ANUAL" e "1º ANO A" podem resolver pro mesmo ID
+      const seenTurmaIds = new Set<string>();
+      const turmasParaUpsert = turmasParaUpsertRaw.filter(t => {
+        const key = (t as any).id ?? t.nome;
+        if (seenTurmaIds.has(key)) return false;
+        seenTurmaIds.add(key);
+        return true;
+      });
       for (let i = 0; i < turmasParaUpsert.length; i += 80) {
         const { data: chunk } = await supabase
           .from('Turma')
@@ -1105,6 +1126,17 @@ export default function Importar() {
           .from('Falta')
           .upsert(faltasParaInserir.slice(i, i + 80), { onConflict: 'alunoId,mes,ano' });
         if (error) throw error;
+      }
+
+      // ─── PASSO 5: Limpa turmas que ficaram sem alunos (duplicatas de imports anteriores) ───
+      setStatus('Limpando turmas duplicadas...');
+      const { data: alunosComTurma } = await supabase
+        .from('Aluno').select('turmaId').not('turmaId', 'is', null);
+      const idsComAlunos = new Set((alunosComTurma ?? []).map((a: any) => a.turmaId));
+      const { data: todasTurmasFim } = await supabase.from('Turma').select('id');
+      const turmasVazias = (todasTurmasFim ?? []).filter((t: any) => !idsComAlunos.has(t.id));
+      if (turmasVazias.length > 0) {
+        await supabase.from('Turma').delete().in('id', turmasVazias.map((t: any) => t.id));
       }
 
       setStatus('');
