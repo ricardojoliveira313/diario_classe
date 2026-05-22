@@ -161,6 +161,128 @@ export default function Faltas() {
     win.document.close();
   };
 
+  // ── Diário Tradicional (grade com todos os dias do mês) ──────────────────────
+  const exportarDiario = () => {
+    const turmaObj = turmas.find(t => t.id === turmaId);
+    const nomeMes = MESES[mes - 1];
+    const diasNoMes = new Date(ano, mes, 0).getDate();
+
+    const DIAS_FULL = [
+      'Domingo','Segunda-Feira','Terça-Feira','Quarta-Feira',
+      'Quinta-Feira','Sexta-Feira','Sábado',
+    ];
+
+    const diasCols = Array.from({ length: diasNoMes }, (_, d) => {
+      const date = new Date(ano, mes - 1, d + 1);
+      const dw = date.getDay(); // 0=Dom, 6=Sáb
+      return { dia: d + 1, isWeekend: dw === 0 || dw === 6, nomeDia: DIAS_FULL[dw] };
+    });
+
+    const thDia = (bg: string) =>
+      `border:1px solid #aaa;padding:0;font-size:7px;background:${bg};` +
+      `writing-mode:vertical-rl;transform:rotate(180deg);height:54px;` +
+      `text-align:center;vertical-align:bottom;min-width:19px;max-width:19px;`;
+
+    const tdDia = (bg: string) =>
+      `border:1px solid #aaa;padding:0;text-align:center;height:22px;` +
+      `font-size:9px;background:${bg};min-width:19px;max-width:19px;`;
+
+    const thExtra = (bg: string) =>
+      `border:1px solid #aaa;padding:0;font-size:7.5px;font-weight:bold;` +
+      `background:${bg};writing-mode:vertical-rl;transform:rotate(180deg);` +
+      `height:54px;text-align:center;vertical-align:bottom;min-width:26px;max-width:26px;`;
+
+    const tdExtra = (bg: string) =>
+      `border:1px solid #aaa;padding:0;text-align:center;height:22px;` +
+      `font-size:9px;background:${bg};min-width:26px;max-width:26px;`;
+
+    const headerDias = diasCols.map(d =>
+      `<th style="${thDia(d.isWeekend ? '#c8e6c9' : '#f5f5f5')}">${d.dia}/${mes < 10 ? '0' + mes : mes}<br>${d.nomeDia}</th>`
+    ).join('');
+
+    const alunosRows = alunos.map((a, i) => {
+      const cells = diasCols.map(d =>
+        `<td style="${tdDia(d.isWeekend ? '#c8e6c9' : '#fff')}"></td>`
+      ).join('');
+      const badges = (a.deficiencia ? ' ♿' : '') + (a.bolsa_familia ? ' 💚' : '');
+      return `<tr>
+        <td style="border:1px solid #aaa;padding:1px 3px;font-size:9px;text-align:center;width:26px;">${String(a.numero || i + 1).padStart(2, '0')}</td>
+        <td style="border:1px solid #aaa;padding:1px 5px;font-size:9px;white-space:nowrap;min-width:145px;">${a.nome}${badges}</td>
+        ${cells}
+        <td style="${tdExtra('#ffcdd2')}"></td>
+        <td style="${tdExtra('#c8e6c9')}"></td>
+        <td style="${tdExtra('#fff9c4')}"></td>
+      </tr>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<title>Diário — ${turmaObj?.nome ?? ''} — ${nomeMes} ${ano}</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 4mm; font-size: 10px; color: #000; }
+  table { border-collapse: collapse; width: 100%; }
+  @media print {
+    @page { size: A4 landscape; margin: 5mm 4mm; }
+    body { margin: 0; }
+  }
+</style>
+</head>
+<body>
+
+<div style="text-align:center;margin-bottom:5px;">
+  <div style="font-size:16px;font-weight:bold;letter-spacing:1px;">DIÁRIO</div>
+  <div style="font-size:11px;font-weight:bold;">EMEIEF LUIZ GONZAGA</div>
+</div>
+
+<table style="margin-bottom:3px;border:none;">
+  <tr>
+    <td style="border:none;padding:1px 4px;font-size:9px;white-space:nowrap;"><b>Escola:</b> EMEIEF LUIZ GONZAGA</td>
+    <td style="border:none;padding:1px 4px;font-size:9px;white-space:nowrap;"><b>Professor(a):</b> ${turmaObj?.professora ?? ''}</td>
+    <td style="border:none;padding:1px 4px;font-size:9px;white-space:nowrap;"><b>Turma:</b> ${turmaObj?.nome ?? ''}</td>
+    <td style="border:none;padding:1px 4px;font-size:12px;font-weight:bold;color:red;text-align:right;white-space:nowrap;">${nomeMes.toUpperCase()} — ${ano}</td>
+  </tr>
+</table>
+
+<div style="font-size:9px;margin-bottom:3px;padding:2px 0;">
+  <b>"C" = COMPARECIMENTOS &nbsp;&nbsp;&nbsp; "F" = FALTAS</b>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <span style="background:yellow;padding:1px 7px;font-weight:bold;border:1px solid #ccc;">J = FALTA JUSTIFICADA (ATESTADO)</span>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th style="border:1px solid #aaa;padding:2px;font-size:9px;text-align:center;width:26px;">Nº</th>
+      <th style="border:1px solid #aaa;padding:2px;font-size:9px;text-align:left;min-width:145px;">NOME</th>
+      ${headerDias}
+      <th style="${thExtra('#ffcdd2')}">Total de faltas</th>
+      <th style="${thExtra('#c8e6c9')}">Comparecimentos</th>
+      <th style="${thExtra('#fff9c4')}">JUSTIFICADA (ATESTADO)</th>
+    </tr>
+  </thead>
+  <tbody>
+    ${alunosRows}
+  </tbody>
+</table>
+
+<div style="margin-top:10mm;font-size:9px;display:flex;gap:25mm;flex-wrap:wrap;">
+  <span>Assinatura do Professor(a): _________________________________</span>
+  <span>Data: _____ / _____ / __________</span>
+  <span>Assinatura da Coordenação: _________________________________</span>
+</div>
+
+<script>setTimeout(()=>window.print(),500);</script>
+</body>
+</html>`;
+
+    const win = window.open('', '_blank');
+    if (!win) { alert('Permita pop-ups no navegador para abrir o Diário.'); return; }
+    win.document.write(html);
+    win.document.close();
+  };
+
   const exportarExcel = () => {
     const turmaObj = turmas.find(t => t.id === turmaId);
     const dados = alunos.map((a, i) => {
@@ -197,7 +319,8 @@ export default function Faltas() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
           <h1 style={{ fontSize: 26, fontWeight: 800, color: theme.text }}>📋 Lançamento de Faltas</h1>
           {alunos.length > 0 && (
-            <div style={{ display: 'flex', gap: 6 }}>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button onClick={exportarDiario} style={btn('warning', { small: true, outline: true })} title="Formulário tradicional com todos os dias do mês para o professor preencher">🖨️ Diário</button>
               <button onClick={exportarExcel} style={btn('success', { small: true, outline: true })}>📊 Excel</button>
               <button onClick={exportarPDF} style={btn('danger', { small: true, outline: true })}>📄 PDF</button>
             </div>
