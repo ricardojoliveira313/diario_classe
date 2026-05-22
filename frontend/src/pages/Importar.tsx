@@ -1124,24 +1124,28 @@ export default function Importar() {
         nomeToId.set(normalizeStr(a.nome), a.id);
       }
 
-      // ─── PASSO 4: EDUCACENSO — salva na tabela independente (upsert por CPF) ───
+      // ─── PASSO 4: EDUCACENSO — salva na tabela independente ───
+      // (dados primários já estão no Aluno — esta é uma cache auxiliar)
       const { educacenso } = dadosRef.current;
       if (educacenso && educacenso.length > 0) {
         const records = educacenso
           .filter((e: any) => e.cpf && e.cpf.length === 11 && !e.chave.startsWith('CPF:') && !e.chave.startsWith('~'));
         if (records.length > 0) {
           setStatus(`Salvando ${records.length} registros do EDUCACENSO...`);
+          // Remove registros antigos com esses CPFs, depois insere novos
+          const cpfs = [...new Set(records.map((e: any) => e.cpf))];
+          await supabase.from('Educacenso').delete().in('cpf', cpfs).then(() => {}, () => {});
           for (let i = 0; i < records.length; i += 80) {
             const { error } = await supabase
               .from('Educacenso')
-              .upsert(records.slice(i, i + 80).map((e: any) => ({
+              .insert(records.slice(i, i + 80).map((e: any) => ({
                 nome: e.chave.split('|')[0] || '',
                 data_nascimento: e.chave.split('|')[1] || '',
                 cpf: e.cpf || '',
                 deficiencia: e.deficiencia || '',
                 cor_raca: e.corRaca || '',
-              })), { onConflict: 'cpf' });
-            if (error) throw error;
+              })));
+            if (error) console.error('Erro ao salvar Educacenso:', error);
           }
         }
       }
