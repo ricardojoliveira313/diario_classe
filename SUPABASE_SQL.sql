@@ -75,6 +75,7 @@ ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS professora            TEXT DEFAULT 
 ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS numero                INTEGER DEFAULT 0;
 ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS nis                   TEXT DEFAULT NULL;
 ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS responsavel           TEXT DEFAULT NULL;
+ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS cpf                   TEXT DEFAULT NULL;
 -- Remanejamento (novas colunas)
 ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS turma_origem          TEXT DEFAULT '';
 ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS professora_origem     TEXT DEFAULT '';

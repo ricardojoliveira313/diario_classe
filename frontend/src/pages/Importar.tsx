@@ -77,6 +77,7 @@ interface AlunoUnificado {
   dataMovimentacao: string;
   nis: string;
   responsavel: string;
+  cpf: string;
   faltas: Record<number, { faltas: number; frequencia: string }>;
 }
 
@@ -203,7 +204,7 @@ export default function Importar() {
           dataInicioMatricula: '',
           dataFimMatricula: isAtivo ? (dataMovim ?? '') : '',
           dataMovimentacao: isAtivo ? '' : (dataMovim ?? ''),
-          nis: '', responsavel: '', faltas: {},
+          nis: '', responsavel: '', cpf: '', faltas: {},
         });
       }
     }
@@ -219,6 +220,9 @@ export default function Importar() {
       for (const file of files) {
         const name = file.name.toLowerCase();
         if (!name.endsWith('.xlsx') && !name.endsWith('.xls')) continue;
+        // Pula arquivos do Educacenso/Censo — têm parser próprio
+        const nameUp = file.name.toUpperCase();
+        if (nameUp.includes('EDUCACENSO') || nameUp.includes('CENSO')) continue;
         pendentes++;
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -286,6 +290,7 @@ export default function Importar() {
                 dataMovimentacao,
                 nis: '',
                 responsavel: '',
+                cpf: '',
                 faltas: mes > 0 && faltasQtd >= 0 ? { [mes]: { faltas: faltasQtd, frequencia: freqTexto } } : {},
               });
             }
@@ -411,7 +416,7 @@ export default function Importar() {
                 professora: '', situacao: situ, deficiencia: defi,
                 bolsaFamilia: false,
                 dataInicioMatricula: '', dataFimMatricula: '', dataMovimentacao: '',
-                nis: '', responsavel: '', faltas: {},
+                nis: '', responsavel: '', cpf: '', faltas: {},
               });
             }
           }
@@ -421,6 +426,72 @@ export default function Importar() {
         reader.readAsText(file);
       }
       if (pendentes === 0) resolve(alunos);
+    });
+  }
+
+  // ─── PARSE: Educacenso (deficiência + CPF) ───
+  // Formato: arquivo XLSX do INEP com cabeçalhos nas primeiras 20 linhas, dados a partir da linha 21
+  function parseEducacenso(files: File[]): Promise<Map<string, { deficiencia: string; cpf: string }>> {
+    return new Promise((resolve) => {
+      const mapa = new Map<string, { deficiencia: string; cpf: string }>();
+      let pendentes = 0;
+
+      for (const file of files) {
+        const nameUp = file.name.toUpperCase();
+        if (!nameUp.includes('EDUCACENSO') && !nameUp.includes('CENSO')) continue;
+        if (!file.name.toLowerCase().endsWith('.xlsx') && !file.name.toLowerCase().endsWith('.xls')) continue;
+        pendentes++;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const wb = XLSX.read(e.target!.result, { type: 'array', cellDates: false });
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            // Lê como array para encontrar a linha de cabeçalho manualmente
+            const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as any[][];
+
+            // Encontra a linha com 'Nome' e 'Data de nascimento'
+            let headerIdx = -1;
+            let colNome = -1, colNasc = -1, colDef = -1, colCpf = -1;
+            for (let i = 0; i < Math.min(rows.length, 35); i++) {
+              const row = rows[i];
+              if (!Array.isArray(row)) continue;
+              for (let j = 0; j < row.length; j++) {
+                const h = normalizeStr(String(row[j] ?? ''));
+                if (h === 'NOME') colNome = j;
+                if (h === 'DATA DE NASCIMENTO') colNasc = j;
+                if (h.startsWith('TIPO(S) DE DEFICIENCIA')) colDef = j;
+                if (h === 'CPF') colCpf = j;
+              }
+              if (colNome >= 0 && colNasc >= 0) { headerIdx = i; break; }
+            }
+
+            if (headerIdx >= 0) {
+              for (let i = headerIdx + 1; i < rows.length; i++) {
+                const row = rows[i];
+                if (!Array.isArray(row)) continue;
+                const nome = normalizeStr(String(row[colNome] ?? '').trim());
+                if (!nome || nome.length < 3) continue;
+                const nasc = fmtDate(String(row[colNasc] ?? '').trim());
+                const defRaw = colDef >= 0 ? String(row[colDef] ?? '').trim() : '';
+                const deficiencia = (!defRaw || defRaw === '--') ? '' : defRaw;
+                const cpf = colCpf >= 0 ? String(row[colCpf] ?? '').trim() : '';
+                mapa.set(`${nome}|${nasc}`, { deficiencia, cpf });
+                // Chave fuzzy sem artigos
+                const nomeSimp = nomeSignificativo(nome);
+                if (nomeSimp !== nome && nomeSimp.length >= 3) {
+                  mapa.set(`~${nomeSimp}|${nasc}`, { deficiencia, cpf });
+                }
+              }
+            }
+          } catch (err) {
+            console.warn('Educacenso parse error:', err);
+          }
+          pendentes--;
+          if (pendentes === 0) resolve(mapa);
+        };
+        reader.readAsArrayBuffer(file);
+      }
+      if (pendentes === 0) resolve(mapa);
     });
   }
 
@@ -570,13 +641,14 @@ export default function Importar() {
       const xlsxFiles = files.filter(f => f.name.toLowerCase().endsWith('.xlsx'));
       const txtFiles = files.filter(f => f.name.toLowerCase().endsWith('.txt'));
 
-      const [alunosPDF, alunosHTML, alunosExcel, turmasMap, bolsaMapPDF, bolsaMapTXT] = await Promise.all([
+      const [alunosPDF, alunosHTML, alunosExcel, turmasMap, bolsaMapPDF, bolsaMapTXT, educacensoMap] = await Promise.all([
         parsePDFs(pdfFiles),
         parseHTMLSED(xlsFiles),
         parseExcels(xlsxFiles),
         parseTurmasProfessores(files),
         parseBolsaFamiliaPDF(pdfFiles),
         parseBolsaFamiliaTXT(txtFiles),
+        parseEducacenso([...xlsxFiles]),
       ]);
       // Merge: TXT tem prioridade (mais confiável), PDF completa o que faltar
       const bolsaMap = new Map([...bolsaMapPDF, ...bolsaMapTXT]);
@@ -634,6 +706,15 @@ export default function Importar() {
           a.nis = a.nis || bf.nis;
           a.responsavel = a.responsavel || bf.responsavel;
           a.bolsaFamilia = true;
+        }
+
+        // Cruzamento Educacenso: deficiência + CPF por nome+data
+        const ecExato = educacensoMap.get(`${a.nomeNorm}|${a.nascimento}`);
+        const ecFuzzy = a.nascimento ? educacensoMap.get(`~${nomeSignificativo(a.nomeNorm)}|${a.nascimento}`) : undefined;
+        const ec = ecExato ?? ecFuzzy;
+        if (ec) {
+          if (ec.deficiencia && !a.deficiencia) a.deficiencia = ec.deficiencia;
+          if (ec.cpf && !a.cpf) a.cpf = ec.cpf;
         }
       }
 
@@ -696,6 +777,7 @@ export default function Importar() {
         deficiencia: a.deficiencia, situacao: a.situacao,
         bolsa_familia: a.bolsaFamilia, professora: a.professora,
         nis: a.nis || null, responsavel: a.responsavel || null,
+        cpf: a.cpf || null,
       }));
 
       await api.bulkInsertAlunos(alunosInsert, (n) => {
