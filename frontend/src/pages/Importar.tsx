@@ -626,7 +626,6 @@ export default function Importar() {
   // ─── PARSE: EDUCACENSO xlsx (CPF) ───
   async function parseEducacensoCPF(files: File[]): Promise<Map<string, string>> {
     const cpfMap = new Map<string, string>();
-    const XLSX = (await import('xlsx')).default;
 
     for (const file of files) {
       if (!file.name.toLowerCase().endsWith('.xlsx')) continue;
