@@ -77,6 +77,7 @@ interface AlunoUnificado {
   dataMovimentacao: string;
   nis: string;
   responsavel: string;
+  cpf: string;
   faltas: Record<number, { faltas: number; frequencia: string }>;
 }
 
@@ -211,7 +212,7 @@ export default function Importar() {
             situacao: 'ATIVO', deficiencia: '',
             bolsaFamilia: false,
             dataInicioMatricula: '', dataFimMatricula: '', dataMovimentacao: '',
-            nis: '', responsavel: '', faltas: {},
+            nis: '', responsavel: '', cpf: '', faltas: {},
           });
           continue;
         }
@@ -240,7 +241,7 @@ export default function Importar() {
           dataInicioMatricula: '',
           dataFimMatricula: isAtivo ? (dataMovim ?? '') : '',
           dataMovimentacao: isAtivo ? '' : (dataMovim ?? ''),
-          nis: '', responsavel: '', faltas: {},
+          nis: '', responsavel: '', cpf: '', faltas: {},
         });
       }
     }
@@ -362,6 +363,7 @@ export default function Importar() {
                 ),
                 nis: '',
                 responsavel: '',
+                cpf: String(nr['CPF'] ?? '').replace(/\D/g, '') || '',
                 faltas: mes > 0 && faltasQtd >= 0 ? { [mes]: { faltas: faltasQtd, frequencia: freqTexto } } : {},
               });
             }
@@ -487,7 +489,7 @@ export default function Importar() {
                 professora: '', situacao: situ, deficiencia: defi,
                 bolsaFamilia: false,
                 dataInicioMatricula: '', dataFimMatricula: '', dataMovimentacao: '',
-                nis: '', responsavel: '', faltas: {},
+                nis: '', responsavel: '', cpf: '', faltas: {},
               });
             }
           }
@@ -670,6 +672,7 @@ export default function Importar() {
           existente.bolsaFamilia = existente.bolsaFamilia || a.bolsaFamilia;
           existente.nis = existente.nis || a.nis;
           existente.responsavel = existente.responsavel || a.responsavel;
+          existente.cpf = existente.cpf || a.cpf;
           existente.professora = existente.professora || a.professora;
           existente.situacao = a.situacao !== 'ATIVO' ? a.situacao : existente.situacao;
           existente.deficiencia = existente.deficiencia || a.deficiencia;
@@ -926,6 +929,7 @@ export default function Importar() {
           professora: a.professora,
           nis: a.nis || null,
           responsavel: a.responsavel || null,
+          cpf: a.cpf || null,
         };
       });
 

@@ -91,6 +91,7 @@ export default function Alunos() {
         'Data Início Matrícula': a.data_inicio_matricula ?? '',
         'Data Fim Matrícula': a.data_fim_matricula ?? '',
         'Data Movimentação': a.data_movimentacao ?? '',
+        'CPF': a.cpf ? a.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : '',
       };
     });
     const ws = XLSX.utils.json_to_sheet(dados);
@@ -320,6 +321,7 @@ export default function Alunos() {
                     {t?.nome && turmaId !== '__all__' && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Turma:</span> {t.nome}</div>}
                     {a.nis && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>NIS:</span> {a.nis}</div>}
                     {a.responsavel && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Responsável:</span> {a.responsavel}</div>}
+                    {a.cpf && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>CPF:</span> {a.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</div>}
                   </div>
                 )}
 

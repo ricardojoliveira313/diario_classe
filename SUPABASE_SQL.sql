@@ -78,6 +78,8 @@ ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS responsavel           TEXT DEFAULT 
 -- Remanejamento (novas colunas)
 ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS turma_origem          TEXT DEFAULT '';
 ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS professora_origem     TEXT DEFAULT '';
+-- CPF do aluno
+ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS cpf                  TEXT DEFAULT NULL;
 
 ALTER TABLE "Turma" ADD COLUMN IF NOT EXISTS professora TEXT DEFAULT '';
 ALTER TABLE "Turma" ADD COLUMN IF NOT EXISTS periodo    TEXT DEFAULT '';
