@@ -651,6 +651,12 @@ export default function Importar() {
   }
 
   // ─── PARSE: EDUCACENSO xlsx (CPF + Deficiência) ───
+  function safeStr(v: any): string {
+    try { return String(v ?? ''); } catch { return ''; }
+  }
+  function safeNorm(v: any): string {
+    try { return normalizeStr(safeStr(v)); } catch { return ''; }
+  }
   async function parseEducacensoCPF(files: File[]): Promise<Map<string, { cpf: string; deficiencia: string; corRaca: string }>> {
     const mapa = new Map<string, { cpf: string; deficiencia: string }>();
 
@@ -660,19 +666,23 @@ export default function Importar() {
 
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+      if (!wb.SheetNames || wb.SheetNames.length === 0) continue;
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1 });
+      if (!ws) continue;
+      const rows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1 }) ?? [];
 
       // Procura linha de cabeçalho com "Nome" e "CPF"
       let headerIdx = -1, idxNome = -1, idxNasc = -1, idxCPF = -1, idxDef = -1, idxCor = -1;
       for (let r = 0; r < rows.length; r++) {
-        const vals = (rows[r] ?? []).map((v: any) => normalizeStr(String(v ?? '')));
+        const row = rows[r];
+        if (!Array.isArray(row)) continue;
+        const vals = row.map((v: any) => safeNorm(v));
         if (vals.some(v => v.includes('NOME')) && vals.some(v => v === 'CPF')) {
           headerIdx = r;
           idxNome = vals.findIndex(v => v.includes('NOME'));
           idxNasc = vals.findIndex(v => v.includes('NASCIMENTO'));
           idxCPF  = vals.findIndex(v => v === 'CPF');
-          idxDef  = vals.findIndex(v => v.startsWith('TIPO(S) DE DEFICIENCIA'));
+          idxDef  = vals.findIndex(v => typeof v === 'string' && v.startsWith('TIPO(S) DE DEFICIENCIA'));
           idxCor  = vals.findIndex(v => v === 'COR/RACA' || v === 'COR' || v === 'RACA');
           break;
         }
