@@ -275,28 +275,37 @@ export default function Importar() {
               const serie = String(nr['SERIE'] ?? nr['TURMA'] ?? '').trim();
               if (!nome) continue;
 
-              const ra = parseInt(String(nr['RA'] ?? '')) || null;
-              const nasc = fmtDate(nr['DATA DE NASCIMENTO'] ?? nr['DATA NASCIMENTO']);
-              const key = `${normalizeStr(nome)}|${ra}|${nasc}`;
-              const mes = getMes(sheetName, nr);
+        const ra = parseInt(String(nr['RA'] ?? '')) || null;
+        const nasc = fmtDate(nr['DATA DE NASCIMENTO'] ?? nr['DATA NASCIMENTO']);
+        const key = `${normalizeStr(nome)}|${ra}|${nasc}`;
+        const mes = getMes(sheetName, nr);
 
-              let faltasQtd = 0;
-              let freqTexto = '';
-              if (isDiario) {
-                const freqRaw = String(nr['FREQUENCIA DOS ALUNOS(A)'] ?? '').trim().replace(/^["']|["']$/g, '').trim();
-                const freqNumM = freqRaw.match(/^(\d{1,2})/);
-                faltasQtd = freqNumM ? Math.min(parseInt(freqNumM[1]), 22) : 0;
-                const freqNorm = normalizeStr(freqRaw);
-                freqTexto = !freqNumM && freqRaw && !freqNorm.startsWith('NAO HA FALTAS') ? freqRaw : '';
-              }
+        let faltasQtd = 0;
+        let freqTexto = '';
+        if (isDiario) {
+          const freqRaw = String(nr['FREQUENCIA DOS ALUNOS(A)'] ?? '').trim().replace(/^["']|["']$/g, '').trim();
+          const freqNumM = freqRaw.match(/^(\d{1,2})/);
+          faltasQtd = freqNumM ? Math.min(parseInt(freqNumM[1]), 22) : 0;
+          const freqNorm = normalizeStr(freqRaw);
+          freqTexto = !freqNumM && freqRaw && !freqNorm.startsWith('NAO HA FALTAS') ? freqRaw : '';
+        }
 
-              const situacao = normalizeSituacao(String(nr['SITUACAO'] ?? 'ATIVO'));
-              const deficiencia = String(nr['DEFICIENCIA'] ?? '').trim();
-              const professora = String(nr['PROFESSORA'] ?? '').trim();
-              const bolsaFamilia = parseBool(nr['BOLSA FAMILIA'] ?? nr['BOLSA FAMLIA']);
-              const dataInicioMatricula = fmtDate(nr['DATA INICIO MATRICULA'] ?? nr['DATA DE INICIO DA MATRICULA']);
-              const dataFimMatricula = fmtDate(nr['DATA FIM MATRICULA']);
-              const dataMovimentacao = fmtDate(nr['DATA MOVIMENTACAO']);
+        const situacao = normalizeSituacao(String(nr['SITUACAO'] ?? 'ATIVO'));
+        const deficiencia = String(nr['DEFICIENCIA'] ?? '').trim();
+        const professora = String(nr['PROFESSORA'] ?? '').trim();
+        const bolsaFamilia = parseBool(nr['BOLSA FAMILIA'] ?? nr['BOLSA FAMLIA']);
+        const _inicioKey = Object.keys(nr).find(k => k.includes('INICIO') && k.includes('MATRICULA'));
+        const _inicioVal = _inicioKey ? nr[_inicioKey] : undefined;
+        const dataInicioMatricula = fmtDate(
+          nr['DATA INICIO MATRICULA'] ??
+          nr['DATA DE INICIO DA MATRICULA'] ??
+          nr['INICIO DA MATRICULA'] ??
+          nr['INICIO MATRICULA'] ??
+          nr['DATA DA MATRICULA'] ??
+          _inicioVal
+        );
+        const dataFimMatricula = fmtDate(nr['DATA FIM MATRICULA']);
+        const dataMovimentacao = fmtDate(nr['DATA MOVIMENTACAO']);
 
               if (alunosMap.has(key)) {
                 const e = alunosMap.get(key)!;
