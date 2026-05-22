@@ -623,6 +623,64 @@ export default function Importar() {
     return mapa;
   }
 
+  // ─── PARSE: EDUCACENSO xlsx (CPF) ───
+  async function parseEducacensoCPF(files: File[]): Promise<Map<string, string>> {
+    const cpfMap = new Map<string, string>();
+    const XLSX = (await import('xlsx')).default;
+
+    for (const file of files) {
+      if (!file.name.toLowerCase().endsWith('.xlsx')) continue;
+      const name = normalizeFileName(file.name);
+      if (!name.includes('EDUCACENSO') && !name.includes('CPF')) continue;
+
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1 });
+
+      // Procura linha de cabeçalho com "Nome" e "CPF"
+      let headerIdx = -1, idxNome = -1, idxNasc = -1, idxCPF = -1;
+      for (let r = 0; r < rows.length; r++) {
+        const vals = (rows[r] ?? []).map((v: any) => normalizeStr(String(v ?? '')));
+        if (vals.some(v => v.includes('NOME')) && vals.some(v => v === 'CPF')) {
+          headerIdx = r;
+          idxNome = vals.findIndex(v => v.includes('NOME'));
+          idxNasc = vals.findIndex(v => v.includes('NASCIMENTO'));
+          idxCPF = vals.findIndex(v => v === 'CPF');
+          break;
+        }
+      }
+      if (headerIdx < 0 || idxCPF < 0) continue;
+
+      for (let r = headerIdx + 1; r < rows.length; r++) {
+        const row = rows[r] ?? [];
+        const nomeRaw = String(row[idxNome] ?? '').trim();
+        const cpfRaw = String(row[idxCPF] ?? '').replace(/\D/g, '');
+        if (!nomeRaw || nomeRaw === '--' || cpfRaw.length !== 11) continue;
+
+        const nomeNorm = normalizeStr(nomeRaw);
+        let nasc = '';
+        if (idxNasc >= 0) {
+          const nascRaw = row[idxNasc];
+          if (nascRaw instanceof Date) {
+            nasc = `${String(nascRaw.getDate()).padStart(2,'0')}/${String(nascRaw.getMonth()+1).padStart(2,'0')}/${nascRaw.getFullYear()}`;
+          } else {
+            const d = String(nascRaw ?? '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+            if (d) nasc = `${d[1].padStart(2,'0')}/${d[2].padStart(2,'0')}/${d[3]}`;
+          }
+        }
+        // Chave exata: nome|data
+        cpfMap.set(`${nomeNorm}|${nasc}`, cpfRaw);
+        // Chave fuzzy: nome significativo|data (tolera artigos)
+        if (nasc) {
+          const simp = nomeSignificativo(nomeNorm);
+          if (simp.length >= 3) cpfMap.set(`~${simp}|${nasc}`, cpfRaw);
+        }
+      }
+    }
+    return cpfMap;
+  }
+
   const handleFiles = (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
     setFiles(prev => [...prev, ...Array.from(fileList)]);
@@ -648,13 +706,14 @@ export default function Importar() {
       const xlsxFiles = files.filter(f => f.name.toLowerCase().endsWith('.xlsx'));
       const txtFiles = files.filter(f => f.name.toLowerCase().endsWith('.txt'));
 
-      const [alunosPDF, alunosHTML, alunosExcel, turmasMap, bolsaMapPDF, bolsaMapTXT] = await Promise.all([
+      const [alunosPDF, alunosHTML, alunosExcel, turmasMap, bolsaMapPDF, bolsaMapTXT, cpfMap] = await Promise.all([
         parsePDFs(pdfFiles),
         parseHTMLSED(xlsFiles),
         parseExcels(xlsxFiles),
         parseTurmasProfessores(files),
         parseBolsaFamiliaPDF(pdfFiles),
         parseBolsaFamiliaTXT(txtFiles),
+        parseEducacensoCPF(xlsxFiles),
       ]);
       // Merge: TXT tem prioridade (mais confiável), PDF completa o que faltar
       const bolsaMap = new Map([...bolsaMapPDF, ...bolsaMapTXT]);
@@ -719,6 +778,10 @@ export default function Importar() {
           a.responsavel = a.responsavel || bf.responsavel;
           a.bolsaFamilia = true;
         }
+        // Cruzamento CPF (EDUCACENSO): nome+data exato, depois fuzzy
+        const cpfExato = cpfMap.get(`${a.nomeNorm}|${a.nascimento}`);
+        const cpfFuzzy = a.nascimento ? cpfMap.get(`~${nomeSimp}|${a.nascimento}`) : undefined;
+        a.cpf = a.cpf || cpfExato || cpfFuzzy || '';
       }
 
       // Turmas únicas — prefere professora não-vazia
