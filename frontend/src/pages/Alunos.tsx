@@ -166,7 +166,14 @@ export default function Alunos() {
             <label style={label}>Turma</label>
             <select style={input} value={turmaId} onChange={e => setTurmaId(e.target.value)}>
               <option value="__all__">— Todas as turmas —</option>
-              {turmas.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
+              {turmas.map(t => {
+                const duplicado = turmas.filter(x => x.nome === t.nome).length > 1;
+                return (
+                  <option key={t.id} value={t.id}>
+                    {t.nome}{duplicado && t.professora ? ` — ${t.professora}` : ''}
+                  </option>
+                );
+              })}
             </select>
           </div>
           <div>

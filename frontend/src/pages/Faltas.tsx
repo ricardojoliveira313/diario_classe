@@ -419,7 +419,15 @@ export default function Faltas() {
           <div>
             <label style={label}>Turma</label>
             <select style={input} value={turmaId} onChange={e => setTurmaId(e.target.value)}>
-              {turmas.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
+              {turmas.map(t => {
+                // Se existem duas turmas com o mesmo nome (ex: duas "EJA I"), mostra a professora
+                const duplicado = turmas.filter(x => x.nome === t.nome).length > 1;
+                return (
+                  <option key={t.id} value={t.id}>
+                    {t.nome}{duplicado && t.professora ? ` — ${t.professora}` : ''}
+                  </option>
+                );
+              })}
             </select>
           </div>
           <div>
