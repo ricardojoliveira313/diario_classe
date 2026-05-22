@@ -101,6 +101,9 @@ CREATE TABLE IF NOT EXISTS "Educacenso" (
 -- Cor/Raça no Aluno
 ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS cor_raca TEXT DEFAULT '';
 
+-- Índice único em CPF (parcial: só alunos com CPF) para upsert da Educacenso
+CREATE UNIQUE INDEX IF NOT EXISTS educacenso_cpf_uniq ON "Educacenso" (cpf) WHERE cpf <> '';
+
 -- ─── 2c. Tabela USUARIO (login gerenciável pelo admin) ─────────
 CREATE TABLE IF NOT EXISTS "Usuario" (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -121,7 +124,8 @@ ALTER TABLE "Turma"    DISABLE ROW LEVEL SECURITY;
 ALTER TABLE "Aluno"    DISABLE ROW LEVEL SECURITY;
 ALTER TABLE "Falta"    DISABLE ROW LEVEL SECURITY;
 ALTER TABLE "Pendente" DISABLE ROW LEVEL SECURITY;
-ALTER TABLE "Usuario"  DISABLE ROW LEVEL SECURITY;
+ALTER TABLE "Usuario"    DISABLE ROW LEVEL SECURITY;
+ALTER TABLE "Educacenso" DISABLE ROW LEVEL SECURITY;
 
 -- ─── 4. Recarrega o cache do PostgREST ───────────────────────
 -- (resolve o erro "Could not find the table in the schema cache")

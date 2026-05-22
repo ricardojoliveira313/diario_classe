@@ -96,7 +96,7 @@ export default function Importar() {
   const [sucesso, setSucesso] = useState(false);
   const [fixing, setFixing] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  const dadosRef = useRef<{ turmas: any[]; alunos: AlunoUnificado[]; faltasArr: any[] } | null>(null);
+  const dadosRef = useRef<{ turmas: any[]; alunos: AlunoUnificado[]; faltasArr: any[]; educacenso?: any[] } | null>(null);
 
   const fixSchema = useCallback(async () => {
     setFixing(true);
@@ -658,7 +658,7 @@ export default function Importar() {
     try { return normalizeStr(safeStr(v)); } catch { return ''; }
   }
   async function parseEducacensoCPF(files: File[]): Promise<Map<string, { cpf: string; deficiencia: string; corRaca: string }>> {
-    const mapa = new Map<string, { cpf: string; deficiencia: string }>();
+    const mapa = new Map<string, { cpf: string; deficiencia: string; corRaca: string }>();
 
     for (const file of files) {
       if (!file.name.toLowerCase().endsWith('.xlsx')) continue;
@@ -861,7 +861,7 @@ export default function Importar() {
         }
         if (tp) {
           if (tp.professor && !a.professora) a.professora = tp.professor;
-          if (tp.periodo && !a.serie.toLowerCase().includes(tp.periodo.toLowerCase())) {
+          if (tp.periodo && a.serie && !a.serie.toLowerCase().includes(tp.periodo.toLowerCase())) {
             // Não sobrescreve o nome da turma, só usa o período para enriquecer se necessário
           }
         }
@@ -951,8 +951,10 @@ export default function Importar() {
         faltas: totalFaltas,
       };
       setPreview(prev);
-      // Converte cpfMap (Map) em array para serialização
-      const educacensoArr = Array.from(cpfMap.entries()).map(([chave, val]) => ({ chave, ...val }));
+      // Converte cpfMap (Map) em array para serialização — só entradas com nome real
+      const educacensoArr = Array.from(cpfMap.entries())
+        .filter(([chave]) => !chave.startsWith('CPF:') && !chave.startsWith('~'))
+        .map(([chave, val]) => ({ chave, ...val }));
       dadosRef.current = { turmas: Array.from(turmasUnicas.values()), alunos: alunosArr, faltasArr: [], educacenso: educacensoArr };
       setStatus('');
     } catch (ex: any) {
@@ -1122,21 +1124,25 @@ export default function Importar() {
         nomeToId.set(normalizeStr(a.nome), a.id);
       }
 
-      // ─── PASSO 4: EDUCACENSO — salva na tabela independente ───
+      // ─── PASSO 4: EDUCACENSO — salva na tabela independente (upsert por CPF) ───
       const { educacenso } = dadosRef.current;
       if (educacenso && educacenso.length > 0) {
-        setStatus(`Salvando ${educacenso.length} registros do EDUCACENSO...`);
-        for (let i = 0; i < educacenso.length; i += 80) {
-          const { error } = await supabase
-            .from('Educacenso')
-            .upsert(educacenso.slice(i, i + 80).map(e => ({
-              nome: e.chave.split('|')[0] || '',
-              data_nascimento: e.chave.split('|')[1] || '',
-              cpf: e.cpf || '',
-              deficiencia: e.deficiencia || '',
-              cor_raca: e.corRaca || '',
-            })), { onConflict: 'id' });
-          if (error) console.error('Erro ao salvar Educacenso:', error);
+        const records = educacenso
+          .filter((e: any) => e.cpf && e.cpf.length === 11 && !e.chave.startsWith('CPF:') && !e.chave.startsWith('~'));
+        if (records.length > 0) {
+          setStatus(`Salvando ${records.length} registros do EDUCACENSO...`);
+          for (let i = 0; i < records.length; i += 80) {
+            const { error } = await supabase
+              .from('Educacenso')
+              .upsert(records.slice(i, i + 80).map((e: any) => ({
+                nome: e.chave.split('|')[0] || '',
+                data_nascimento: e.chave.split('|')[1] || '',
+                cpf: e.cpf || '',
+                deficiencia: e.deficiencia || '',
+                cor_raca: e.corRaca || '',
+              })), { onConflict: 'cpf' });
+            if (error) throw error;
+          }
         }
       }
 
