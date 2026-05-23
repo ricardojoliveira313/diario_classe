@@ -39,7 +39,7 @@ function parseBool(val: any): boolean {
 }
 
 function normalizeStr(s: string): string {
-  return s.toUpperCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  return s.toUpperCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[ªº°]/g, '');
 }
 
 const ARTIGOS = new Set(['DE', 'DA', 'DO', 'DOS', 'DAS', 'E', 'NO', 'NA']);
@@ -1128,15 +1128,14 @@ export default function Importar() {
           .replace(/\bPRE\s*ESCOLA\b/g, '').replace(/\bPRÉ\s*ESCOLA\b/g, '')
           .replace(/\b(MANHA|TARDE|NOTURNO|MATUTINO|VESPERTINO|NOITE|ANUAL|INTEGRAL)\b/g, '')
           .replace(/\s+/g, ' ').trim();
-        // Procura turma limpa correspondente
         for (const [origName, tid] of nomeToTurmaId) {
           if (t.id === tid) continue;
           const nn = normT(origName);
           if (nn === simplificado || nn.startsWith(simplificado) || simplificado.startsWith(nn)) {
-            // Reatribui alunos da SED → limpa
-            await supabase.from('Aluno').update({ turmaId: tid }).eq('turmaId', t.id).then(() => {}, () => {});
-            // Deleta a turma SED
-            await supabase.from('Turma').delete().eq('id', t.id).then(() => {}, () => {});
+            // Reatribui alunos e faltas da turma SED → limpa
+            await supabase.from('Aluno').update({ turmaId: tid }).eq('turmaId', t.id);
+            await supabase.from('Falta').update({ turmaId: tid }).eq('turmaId', t.id);
+            await supabase.from('Turma').delete().eq('id', t.id);
             break;
           }
         }
