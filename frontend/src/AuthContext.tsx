@@ -14,13 +14,14 @@
 
 import { createContext, useContext, useState } from 'react';
 import type { ReactNode } from 'react';
+import { supabase } from './api';
 
 export type Role = 'admin' | 'viewer';
 
 interface AuthCtx {
   role: Role | null;
   username: string | null;
-  login: (usuario: string, senha: string) => 'admin' | 'viewer' | 'errado';
+  login: (usuario: string, senha: string) => Promise<'admin' | 'viewer' | 'errado'>;
   logout: () => void;
 }
 
@@ -61,15 +62,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return null;
   });
 
-  const login = (usuario: string, senha: string): 'admin' | 'viewer' | 'errado' => {
-    const user = USERS.find(
+  const login = async (usuario: string, senha: string): Promise<'admin' | 'viewer' | 'errado'> => {
+    // 1º: VITE_USERS (rápido, sem DB)
+    const envUser = USERS.find(
       u => u.usuario === usuario.trim().toLowerCase() && u.senha === senha
     );
-    if (!user) return 'errado';
-    const s = { role: user.role, username: usuario.trim() };
-    setState(s);
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(s));
-    return user.role;
+    if (envUser) {
+      const s = { role: envUser.role, username: usuario.trim() };
+      setState(s);
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify(s));
+      return envUser.role;
+    }
+    // 2º: tabela Usuario no Supabase
+    try {
+      const { data } = await supabase
+        .from('Usuario')
+        .select('nome, senha, perfil')
+        .eq('nome', usuario.trim())
+        .maybeSingle();
+      if (data && data.senha === senha) {
+        const role: Role = data.perfil === 'viewer' ? 'viewer' : 'admin';
+        const s = { role, username: usuario.trim() };
+        setState(s);
+        sessionStorage.setItem(SESSION_KEY, JSON.stringify(s));
+        return role;
+      }
+    } catch {}
+    return 'errado';
   };
 
   const logout = () => {

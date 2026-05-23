@@ -17,6 +17,9 @@ export default function Alunos() {
   const [novaSituacao, setNovaSituacao] = useState('');
   const [dataMovimentacao, setDataMovimentacao] = useState('');
   const [salvando, setSalvando] = useState(false);
+  const [editandoCpf, setEditandoCpf] = useState('');
+  const [editandoCor, setEditandoCor] = useState('');
+  const [copiado, setCopiado] = useState('');
   const [loading, setLoading] = useState(true);
   const [detalhesAbertos, setDetalhesAbertos] = useState<Set<string>>(new Set());
 
@@ -54,10 +57,18 @@ export default function Alunos() {
 
   const salvarSituacao = async (alunoId: string) => {
     setSalvando(true);
+    const aluno = alunos.find(a => a.id === alunoId);
     const updates: any = { situacao: novaSituacao };
     if (dataMovimentacao) {
       updates.data_movimentacao = dataMovimentacao;
       if (['BXTR', 'TRAN', 'N COM', 'REMA'].includes(novaSituacao)) updates.data_fim_matricula = dataMovimentacao;
+    }
+    if (novaSituacao === 'REMA' && aluno) {
+      const t = turmaMap.get(aluno.turmaId);
+      if (t) {
+        updates.turma_origem = t.nome;
+        updates.professora_origem = t.professora;
+      }
     }
     await api.updateAluno(alunoId, updates);
     setAlunos(prev => prev.map(a => a.id === alunoId ? { ...a, ...updates } : a));
@@ -91,6 +102,7 @@ export default function Alunos() {
         'Data Início Matrícula': a.data_inicio_matricula ?? '',
         'Data Fim Matrícula': a.data_fim_matricula ?? '',
         'Data Movimentação': a.data_movimentacao ?? '',
+        'Cor/Raça': a.cor_raca ?? '',
         'CPF': a.cpf ? a.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : '',
       };
     });
@@ -112,7 +124,8 @@ export default function Alunos() {
       const ra = String(a.ra ?? '').padEnd(12);
       const sit = (SITUACAO_LABEL[a.situacao] ?? a.situacao ?? '').padEnd(14);
       const defi = (a.deficiencia ?? '').substring(0, 22).padEnd(22);
-      return `${String(a.numero || i + 1).padStart(2)} ${nome} ${ra} ${sit} ${defi}`;
+      const cor = (a.cor_raca ?? '').substring(0, 15).padEnd(15);
+      return `${String(a.numero || i + 1).padStart(2)} ${nome} ${ra} ${sit} ${defi} ${cor}`;
     });
     const titulo = `RELAÇÃO DE ALUNOS — ${turmaSel?.nome ?? 'Todas as Turmas'}`;
     const conteudo = [
@@ -120,7 +133,7 @@ export default function Alunos() {
       `  ${titulo}`,
       '='.repeat(100),
       '',
-      ` Nº  Nome                                    RA             Situação       Deficiência`,
+      ` Nº  Nome                                    RA             Situação       Deficiência              Cor/Raça`,
       '─'.repeat(100),
       ...linhas,
       '─'.repeat(100),
@@ -137,7 +150,10 @@ export default function Alunos() {
   };
 
   const formataCPF = (cpf: string) => cpf ? cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : '';
-  const COLUNAS = '44px 1fr 110px 85px 100px 40px 110px 130px 140px';
+  const copiar = async (texto: string, label: string) => {
+    try { await navigator.clipboard.writeText(texto); setCopiado(label); setTimeout(() => setCopiado(''), 1500); } catch {}
+  };
+  const COLUNAS = '44px 1fr 110px 85px 100px 40px 110px 130px 125px 90px';
 
   return (
     <div style={{ marginTop: 16, animation: 'fadeIn 0.25s ease both' }}>
@@ -235,6 +251,7 @@ export default function Alunos() {
             <span style={{ textAlign: 'center' }}>BF</span>
             <span>Professora</span><span>Turma</span>
             <span style={{ textAlign: 'center' }}>CPF</span>
+            <span style={{ textAlign: 'center' }}>Cor/Raça</span>
           </div>
 
           {alunosFiltrados.map((a, i) => {
@@ -263,8 +280,9 @@ export default function Alunos() {
                       {turmaId === '__all__' && t ? ` · ${t.nome}` : ''}
                     </div>
                   </div>
-                  <span style={{ fontSize: 13, color: theme.textSecondary, fontFamily: 'monospace' }}>
+                  <span style={{ fontSize: 13, color: theme.textSecondary, fontFamily: 'monospace', cursor: 'pointer' }} onClick={() => copiar(String(a.ra ?? ''), 'ra')} title="Clique para copiar RA">
                     {a.ra}{a.dig_ra ? `-${a.dig_ra}` : ''}
+                    {copiado === 'ra' && <span style={{ marginLeft: 4, fontSize: 11, color: theme.success }}>✅</span>}
                   </span>
                   <button onClick={e => { e.stopPropagation(); abrirEdicao(a); }} style={{
                     fontSize: 11, fontWeight: 700, textAlign: 'center',
@@ -284,8 +302,11 @@ export default function Alunos() {
                   <span style={{ textAlign: 'center', fontSize: 15 }}>{a.bolsa_familia ? '✅' : '—'}</span>
                   <span style={{ fontSize: 12, color: theme.textSecondary }}>{a.professora || t?.professora || ''}</span>
                     <span style={{ fontSize: 12, color: theme.textSecondary }}>{t?.nome || ''}</span>
-                    <span style={{ fontSize: 12, textAlign: 'center', color: a.cpf ? theme.text : theme.textMuted, fontFamily: 'monospace' }}>
-                      {formataCPF(a.cpf) || '—'}
+                    <span style={{ fontSize: 12, textAlign: 'center', color: a.cpf ? theme.text : theme.textMuted, fontFamily: 'monospace', cursor: a.cpf ? 'pointer' : 'default' }} onClick={() => a.cpf && copiar(a.cpf, 'cpf')} title={a.cpf ? 'Clique para copiar CPF' : ''}>
+                      {copiado === 'cpf' ? '✅' : (formataCPF(a.cpf) || '—')}
+                    </span>
+                    <span style={{ fontSize: 12, textAlign: 'center', color: a.cor_raca ? theme.text : theme.textMuted }}>
+                      {a.cor_raca || '—'}
                     </span>
                 </div>
 
@@ -324,9 +345,65 @@ export default function Alunos() {
                     </div>
                     {t?.professora && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Professora:</span> {t.professora}</div>}
                     {t?.nome && turmaId !== '__all__' && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Turma:</span> {t.nome}</div>}
+                    {a.turma_origem && a.situacao === 'ATIVO' && (
+                      <div><span style={{ fontWeight: 600, color: theme.orange }}>⬅ Veio de:</span> {a.turma_origem}{a.professora_origem ? ` (${a.professora_origem})` : ''}</div>
+                    )}
+                    {a.turma_destino && a.situacao === 'REMA' && (
+                      <div><span style={{ fontWeight: 600, color: theme.primary }}>➡ Foi para:</span> {a.turma_destino}{a.professora_destino ? ` (${a.professora_destino})` : ''}</div>
+                    )}
                     {a.nis && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>NIS:</span> {a.nis}</div>}
                     {a.responsavel && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Responsável:</span> {a.responsavel}</div>}
-                    {a.cpf && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>CPF:</span> {a.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</div>}
+                    {/* CPF editável */}
+                    <div>
+                      <span style={{ fontWeight: 600, color: theme.textSecondary }}>CPF:</span>
+                      {editandoCpf === a.id ? (
+                        <span>
+                          <input value={a.cpf || ''} onChange={e => {
+                            const v = e.target.value.replace(/\D/g, '').slice(0, 11);
+                            setAlunos(prev => prev.map(x => x.id === a.id ? { ...x, cpf: v } : x));
+                          }} style={{ ...input, width: 140, marginLeft: 6 }} placeholder="00000000000" maxLength={11} />
+                          <button onClick={async () => {
+                            await api.updateAluno(a.id, { cpf: a.cpf || null });
+                            setEditandoCpf('');
+                          }} style={{ ...btn('success', { small: true }), marginLeft: 4 }}>💾</button>
+                          <button onClick={() => setEditandoCpf('')} style={{ ...btn('ghost', { small: true }) }}>✕</button>
+                        </span>
+                      ) : (
+                        <span>
+                          {a.cpf ? a.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : <span style={{ color: theme.textMuted, fontStyle: 'italic', cursor: 'pointer' }} onClick={() => { setEditandoCpf(a.id); setEditandoCor(''); }}>+ adicionar CPF</span>}
+                          {a.cpf && <button onClick={() => setEditandoCpf(a.id)} style={{ ...btn('ghost', { small: true }), marginLeft: 4, fontSize: 11 }}>✏️</button>}
+                        </span>
+                      )}
+                    </div>
+                    {/* Cor/Raça editável */}
+                    <div>
+                      <span style={{ fontWeight: 600, color: theme.textSecondary }}>Cor/Raça:</span>
+                      {editandoCor === a.id ? (
+                        <span>
+                          <select value={a.cor_raca || ''} onChange={e => {
+                            setAlunos(prev => prev.map(x => x.id === a.id ? { ...x, cor_raca: e.target.value } : x));
+                          }} style={{ ...input, width: 140, marginLeft: 6 }}>
+                            <option value="">--</option>
+                            <option value="Branca">Branca</option>
+                            <option value="Preta">Preta</option>
+                            <option value="Parda">Parda</option>
+                            <option value="Amarela">Amarela</option>
+                            <option value="Indígena">Indígena</option>
+                            <option value="Não declarado">Não declarado</option>
+                          </select>
+                          <button onClick={async () => {
+                            await api.updateAluno(a.id, { cor_raca: a.cor_raca || null });
+                            setEditandoCor('');
+                          }} style={{ ...btn('success', { small: true }), marginLeft: 4 }}>💾</button>
+                          <button onClick={() => setEditandoCor('')} style={{ ...btn('ghost', { small: true }) }}>✕</button>
+                        </span>
+                      ) : (
+                        <span>
+                          {a.cor_raca || <span style={{ color: theme.textMuted, fontStyle: 'italic', cursor: 'pointer' }} onClick={() => { setEditandoCor(a.id); setEditandoCpf(''); }}>+ adicionar</span>}
+                          {a.cor_raca && <button onClick={() => setEditandoCor(a.id)} style={{ ...btn('ghost', { small: true }), marginLeft: 4, fontSize: 11 }}>✏️</button>}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 )}
 

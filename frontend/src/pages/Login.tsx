@@ -10,18 +10,16 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [show, setShow] = useState(false);
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (!usuario.trim()) { setErro('Digite o usuário.'); return; }
     if (!senha.trim())   { setErro('Digite a senha.');   return; }
     setLoading(true);
-    setTimeout(() => {
-      const resultado = login(usuario, senha);
-      setLoading(false);
-      if (resultado === 'errado') {
-        setErro('Usuário ou senha incorretos. Tente novamente.');
-        setSenha('');
-      }
-    }, 300);
+    const resultado = await login(usuario, senha);
+    setLoading(false);
+    if (resultado === 'errado') {
+      setErro('Usuário ou senha incorretos. Tente novamente.');
+      setSenha('');
+    }
   };
 
   const clearErro = () => setErro('');
