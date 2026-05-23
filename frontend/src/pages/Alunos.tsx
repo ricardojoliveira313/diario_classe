@@ -55,11 +55,11 @@ export default function Alunos() {
     if (filtroDefi && a.deficiencia !== filtroDefi) return false;
     return true;
   }).sort((a, b) => {
-    const normDate = (d: string) => d ? d.split('/').reverse().join('-') : '9999-99-99';
-    const da = normDate(a.data_inicio_matricula);
-    const db = normDate(b.data_inicio_matricula);
-    if (da !== db) return da.localeCompare(db);
-    return (a.nome || '').localeCompare(b.nome || '');
+    const nA = a.numero || 9999;
+    const nB = b.numero || 9999;
+    if (nA !== nB) return nA - nB;
+    const ordemSit: Record<string, number> = { REMA: 0, ATIVO: 1, TRAN: 2, BXTR: 3, 'N COM': 4, ABAN: 5 };
+    return (ordemSit[a.situacao] ?? 9) - (ordemSit[b.situacao] ?? 9);
   });
 
   const totalAtivos = alunos.filter(a => a.situacao === 'ATIVO').length;
@@ -76,11 +76,17 @@ export default function Alunos() {
       if (!grupos.has(a.turmaId)) grupos.set(a.turmaId, []);
       grupos.get(a.turmaId).push(a);
     }
-    const linhas: Array<{ tipo: 'aluno'; a: any; idx: number } | { tipo: 'header'; nome: string; key: string }> = [];
+    const linhas: Array<{ tipo: 'aluno'; a: any; idx: number } | { tipo: 'header'; nome: string; key: string; total: number }> = [];
     for (const [tid, arr] of grupos) {
       const t = turmaMap.get(tid);
-      arr.sort((a, b) => (a.numero || 9999) - (b.numero || 9999));
-      linhas.push({ tipo: 'header', nome: t ? `${t.nome} — ${t.professora || ''}` : 'Sem turma', key: tid });
+      arr.sort((a, b) => {
+        const nA = a.numero || 9999;
+        const nB = b.numero || 9999;
+        if (nA !== nB) return nA - nB;
+        const ordemSit: Record<string, number> = { REMA: 0, ATIVO: 1, TRAN: 2, BXTR: 3, 'N COM': 4, ABAN: 5 };
+        return (ordemSit[a.situacao] ?? 9) - (ordemSit[b.situacao] ?? 9);
+      });
+      linhas.push({ tipo: 'header', nome: t ? `📚 ${t.nome} — ${labelDocente(t.professora || '')} ${t.professora || ''}` : 'Sem turma', key: tid, total: arr.length });
       arr.forEach((a, idx) => linhas.push({ tipo: 'aluno', a, idx }));
     }
     return linhas;
@@ -295,12 +301,21 @@ export default function Alunos() {
           {renderRows.map((item, globalIdx) =>
             item.tipo === 'header' ? (
               <div key={`hdr-${item.key}`} style={{
-                padding: '10px 16px', fontWeight: 700, fontSize: 15,
-                background: 'var(--ghost-bg)', color: theme.text,
-                borderBottom: `1px solid ${theme.borderLight}`,
-                gridColumn: '1 / -1',
+                margin: '20px 0 6px',
+                padding: '8px 14px',
+                background: theme.primary,
+                color: 'white',
+                borderRadius: 8,
+                fontWeight: 700,
+                fontSize: 14,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
               }}>
-                📚 {item.nome}
+                {item.nome}
+                <span style={{ marginLeft: 'auto', fontWeight: 400, fontSize: 12, opacity: 0.8 }}>
+                  {item.total} aluno{item.total !== 1 ? 's' : ''}
+                </span>
               </div>
             ) : (() => {
               const a = item.a;
@@ -321,7 +336,7 @@ export default function Alunos() {
                     }}
                     onMouseEnter={e => { if (editandoId !== a.id) e.currentTarget.style.background = 'var(--ghost-bg)'; }}
                     onMouseLeave={e => { if (editandoId !== a.id) e.currentTarget.style.background = ''; }}>
-<span style={{ fontSize: 13, color: theme.textMuted }}>{i + 1}</span>
+<span style={{ fontSize: 13, color: theme.textMuted }}>{a.numero || <span style={{ color: theme.textMuted, fontSize: 11 }}>—</span>}</span>
                   <div>
                       <div style={{ fontSize: 15, fontWeight: 600, color: theme.text }}>{a.nome}</div>
                       <div style={{ fontSize: 12, color: theme.textMuted, marginTop: 2 }}>
