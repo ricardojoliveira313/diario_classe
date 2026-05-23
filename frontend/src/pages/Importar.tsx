@@ -1234,6 +1234,40 @@ export default function Importar() {
         nomeToExistingId.set(normalizeStr(e.nome), e.id);
       }
 
+      // ─── Carrega EDUCACENSO do banco (tabela fixa) e enriquece alunos ───
+      const { data: dbEducData } = await supabase
+        .from('Educacenso')
+        .select('nome, data_nascimento, cpf, deficiencia, cor_raca');
+      if (dbEducData) {
+        const dbEduc = new Map<string, { cpf: string; deficiencia: string; corRaca: string }>();
+        for (const rec of dbEducData) {
+          if (!rec.cpf && !rec.nome) continue;
+          const entry = { cpf: rec.cpf || '', deficiencia: rec.deficiencia || '', corRaca: rec.cor_raca || '' };
+          if (rec.cpf) dbEduc.set(`CPF:${rec.cpf}`, entry);
+          if (rec.nome) {
+            const nn = normalizeStr(rec.nome);
+            dbEduc.set(`${nn}|${rec.data_nascimento || ''}`, entry);
+            if (rec.data_nascimento) {
+              const simp = nomeSignificativo(nn);
+              if (simp.length >= 3) dbEduc.set(`~${simp}|${rec.data_nascimento}`, entry);
+            }
+          }
+        }
+        for (const a of alunos) {
+          if (a.cpf && a.deficiencia && a.corRaca) continue;
+          const ecPorCPF = a.cpf ? dbEduc.get(`CPF:${a.cpf}`) : undefined;
+          const ecExato = !ecPorCPF ? dbEduc.get(`${a.nomeNorm}|${a.nascimento}`) : undefined;
+          const simp = nomeSignificativo(a.nomeNorm);
+          const ecFuzzy = !ecPorCPF && a.nascimento ? dbEduc.get(`~${simp}|${a.nascimento}`) : undefined;
+          const ec = ecPorCPF ?? ecExato ?? ecFuzzy;
+          if (ec) {
+            if (!a.cpf) a.cpf = ec.cpf;
+            if (!a.deficiencia) a.deficiencia = ec.deficiencia;
+            if (!a.corRaca) a.corRaca = ec.corRaca || '';
+          }
+        }
+      }
+
       const alunosParaUpsert = alunos.map(a => {
         const isRema = a.situacao === 'REMA';
         const raKey = String(a.ra ?? '');
