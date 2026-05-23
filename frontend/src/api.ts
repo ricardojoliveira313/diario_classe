@@ -32,14 +32,14 @@ export const api = {
   },
 
   getAlunos: async (turmaId?: string) => {
-    let query = supabase.from('Aluno').select('*').order('numero').order('nome');
+    let query = supabase.from('Aluno').select('*').order('data_inicio_matricula', { nullsFirst: false }).order('nome');
     if (turmaId) query = query.eq('turmaId', turmaId);
     const { data, error } = await query;
     if (error) throw error;
     return data ?? [];
   },
   getAllAlunos: async () => {
-    const { data, error } = await supabase.from('Aluno').select('*').order('numero').order('nome');
+    const { data, error } = await supabase.from('Aluno').select('*').order('data_inicio_matricula', { nullsFirst: false }).order('nome');
     if (error) throw error;
     return data ?? [];
   },
