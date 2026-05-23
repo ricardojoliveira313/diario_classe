@@ -420,7 +420,7 @@ export default function Alunos() {
                     }}
                     onMouseEnter={e => { if (editandoId !== a.id) e.currentTarget.style.background = 'var(--ghost-bg)'; }}
                     onMouseLeave={e => { if (editandoId !== a.id) e.currentTarget.style.background = ''; }}>
-<span style={{ fontSize: 13, color: theme.textMuted }}>{a.numero || <span style={{ color: theme.textMuted, fontSize: 11 }}>—</span>}</span>
+<span style={{ fontSize: 13, color: theme.textMuted }}>{a.numero || i + 1}</span>
                   <div>
                       <div style={{ fontSize: 15, fontWeight: 600, color: theme.text }}>{a.nome}</div>
                       <div style={{ fontSize: 12, color: theme.textMuted, marginTop: 2 }}>
