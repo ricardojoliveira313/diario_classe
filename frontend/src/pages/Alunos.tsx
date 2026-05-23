@@ -4,6 +4,16 @@ import { api } from '../api';
 import { theme, btn, input, label, SITUACAO_COR, SITUACAO_LABEL, SITUACOES, card as cardStyle, row } from '../styles';
 import { Loading, EmptyState, StatCard, Spinner } from '../components';
 
+function labelDocente(nome: string): string {
+  if (!nome) return 'Professora';
+  const n = nome.trim().split(' ')[0].toLowerCase();
+  if (/o$|os$|us$|el$|on$|an$|ar$|or$|er$|ir$|ur$/.test(n)) return 'Professor';
+  const masculinos = ['magnus', 'andre', 'felipe', 'gabriel', 'rafael', 'daniel',
+    'miguel', 'samuel', 'israel', 'ezequiel', 'manoel', 'manuel', 'ismael'];
+  if (masculinos.includes(n)) return 'Professor';
+  return 'Professora';
+}
+
 export default function Alunos() {
   const [turmas, setTurmas] = useState<any[]>([]);
   const [turmaId, setTurmaId] = useState('__all__');
@@ -256,7 +266,7 @@ export default function Alunos() {
             <span>#</span><span>Nome</span><span>RA</span>
             <span style={{ textAlign: 'center' }}>Situação</span><span style={{ textAlign: 'center' }}>Deficiência</span>
             <span style={{ textAlign: 'center' }}>BF</span>
-            <span>Professora</span><span>Turma</span>
+            <span>Docente</span><span>Turma</span>
             <span style={{ textAlign: 'center' }}>CPF</span>
             <span style={{ textAlign: 'center' }}>Cor/Raça</span>
           </div>
@@ -333,7 +343,9 @@ export default function Alunos() {
                       <span style={{ fontWeight: 600, color: theme.textSecondary }}>Início Matrícula:</span>
                       {a.data_inicio_matricula
                         ? <span style={{ color: theme.text }}>{a.data_inicio_matricula}</span>
-                        : <span style={{ color: theme.danger, fontWeight: 600 }}>⚠️ não informado</span>
+                        : a.situacao === 'REMA'
+                          ? <span style={{ color: theme.textMuted, fontStyle: 'italic', fontSize: 12 }}>— ver turma origem</span>
+                          : <span style={{ color: theme.danger, fontWeight: 600 }}>⚠️ não informado — clique em ✏️ Situação para preencher</span>
                       }
                     </div>
                     <div>
@@ -350,7 +362,7 @@ export default function Alunos() {
                         : <span style={{ color: theme.textMuted, fontStyle: 'italic' }}>—</span>
                       }
                     </div>
-                    {t?.professora && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Professora:</span> {t.professora}</div>}
+                    {t?.professora && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>{labelDocente(t.professora)}:</span> {t.professora}</div>}
                     {t?.nome && turmaId !== '__all__' && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Turma:</span> {t.nome}</div>}
                     {a.turma_origem && a.situacao === 'ATIVO' && (
                       <div><span style={{ fontWeight: 600, color: theme.orange }}>⬅ Veio de:</span> {a.turma_origem}{a.professora_origem ? ` (${a.professora_origem})` : ''}</div>
