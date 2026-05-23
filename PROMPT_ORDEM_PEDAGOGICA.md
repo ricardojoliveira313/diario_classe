@@ -83,10 +83,16 @@ Grupo 07 — 5º ANO
   5º ANO C · Prof. Alessandra    (Tarde)
   5º ANO D · Prof. Raquel        (Tarde)
 
-Grupo 08 — EJA (Educação de Jovens e Adultos)
-  EJA I  · Prof. Maria dos Anjos (Noturno)
-  EJA II · Prof. Elaine          (Noturno)
+Grupo 08 — EJA / Pós-Alfabetização (Noturno)
+  EJA I              · Prof. Maria dos Anjos (Noturno)
+  Pós-Alfabetização  · Prof. Elaine          (Noturno)
 ```
+
+> ⚠️ **ATENÇÃO:** A turma **Pós-Alfabetização** (Prof. Elaine) **não existe no sistema ainda**.
+> Precisa ser cadastrada em **Turmas → Nova turma**:
+> - Nome: `PÓS-ALFABETIZAÇÃO` (confirmar nome exato com a escola)
+> - Professora: `Elaine`
+> Após cadastrada, aparecerá automaticamente após EJA I.
 
 ---
 
@@ -121,7 +127,8 @@ export function ordemTurma(nome: string): string {
   else if (/\b3\b.*ANO/.test(n))   grupo = '05';
   else if (/\b4\b.*ANO/.test(n))   grupo = '06';
   else if (/\b5\b.*ANO/.test(n))   grupo = '07';
-  else if (/\bEJA\b/.test(n))      grupo = '08';
+  else if (/\bEJA\b/.test(n))           grupo = '08';
+  else if (/POS.{0,3}ALFABET/.test(n)) grupo = '09'; // Pós-Alfabetização (após EJA I)
 
   // ── 2. Período ────────────────────────────────────────────────────────────
   let periodo = '9';
