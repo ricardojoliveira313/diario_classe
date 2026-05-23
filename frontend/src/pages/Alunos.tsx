@@ -54,14 +54,7 @@ export default function Alunos() {
     if (filtroProfessora && turmaMap.get(a.turmaId)?.professora !== filtroProfessora) return false;
     if (filtroDefi && a.deficiencia !== filtroDefi) return false;
     return true;
-  }).sort((a, b) => {
-    // Ordem SED: por numero da chamada. Sem numero → vai pro final.
-    const na = a.numero || 9999;
-    const nb = b.numero || 9999;
-    if (na !== nb) return na - nb;
-    const ordemSit: Record<string, number> = { REMA: 0, ATIVO: 1, TRAN: 2, BXTR: 3, 'N COM': 4, ABAN: 5 };
-    return (ordemSit[a.situacao] ?? 9) - (ordemSit[b.situacao] ?? 9);
-  });
+  }).sort((a, b) => (a.numero || 9999) - (b.numero || 9999));
 
   const totalAtivos = alunos.filter(a => a.situacao === 'ATIVO').length;
   const totalBolsa = alunos.filter(a => a.bolsa_familia).length;
