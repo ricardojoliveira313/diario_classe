@@ -437,7 +437,18 @@ export default function Importar() {
             const turma = String(r[idxTurma >= 0 ? idxTurma : 1] ?? '').trim();
             const prof  = String(r[idxProf  >= 0 ? idxProf  : 2] ?? '').trim();
             const per   = String(r[idxPer   >= 0 ? idxPer   : 3] ?? '').trim();
-            if (turma && prof) mapa.set(normalizeStr(turma), { professor: prof, periodo: per });
+            if (turma && prof) {
+              const keyExato = normalizeStr(turma);
+              mapa.set(keyExato, { professor: prof, periodo: per });
+              // Também guarda versão simplificada: "1ª ETAPA A" → "1 ETAPA A"
+              // para casar com "1ª ETAPA PRÉ- ESCOLA A MANHA ANUAL" → "1 ETAPA A"
+              const keySimp = keyExato
+                .replace(/[ªº°]/g, '').replace(/[-]/g, ' ')
+                .replace(/\bPRE\s*ESCOLA\b/g, '')
+                .replace(/\b(MANHA|TARDE|NOTURNO|MATUTINO|VESPERTINO|NOITE|ANUAL|INTEGRAL)\b/g, '')
+                .replace(/\s+/g, ' ').trim();
+              if (keySimp && keySimp !== keyExato) mapa.set(keySimp, { professor: prof, periodo: per });
+            }
           }
           pendentes--;
           if (pendentes === 0) resolve(mapa);
@@ -817,9 +828,15 @@ export default function Importar() {
       // Enriquece com professor da tabela TURMA-PROFESSORES
       const alunosArr = Array.from(todosAlunos.values());
       for (const a of alunosArr) {
-        // Busca exata, depois parcial (ex: "1 ANO A" bate "1 ANO A MANHA")
+        // Busca exata, depois simplificada (sem PRÉ-ESCOLA/MANHA/ANUAL), depois por prefixo
         const serieNorm = normalizeStr(a.serie);
-        let tp = turmasMap.get(serieNorm);
+        // Versão simplificada para casar "1ª ETAPA PRÉ- ESCOLA A MANHA ANUAL" → "1 ETAPA A"
+        const serieSimp = serieNorm
+          .replace(/[ªº°]/g, '').replace(/[-]/g, ' ')
+          .replace(/\bPRE\s*ESCOLA\b/g, '')
+          .replace(/\b(MANHA|TARDE|NOTURNO|MATUTINO|VESPERTINO|NOITE|ANUAL|INTEGRAL)\b/g, '')
+          .replace(/\s+/g, ' ').trim();
+        let tp = turmasMap.get(serieNorm) ?? turmasMap.get(serieSimp);
         if (!tp) {
           // Tenta bater por prefixo: chave do mapa contém a série ou vice-versa
           for (const [k, v] of turmasMap.entries()) {
