@@ -46,7 +46,8 @@ const TURMAS_OFICIAIS: { turma: string; professora: string; periodo: string }[] 
   { turma: '5º ANO B',   professora: 'Jessica',          periodo: 'Manhã' },
   { turma: '5º ANO C',   professora: 'Alessandra',       periodo: 'Tarde' },
   { turma: '5º ANO D',   professora: 'Raquel',           periodo: 'Tarde' },
-  { turma: 'EJA I',      professora: 'Maria dos Anjos',  periodo: 'Noite' },
+  { turma: 'EJA I',      professora: 'Maria dos Anjos',                periodo: 'Noite' },
+  { turma: 'EJA I',      professora: 'Elaine Aparecida da Silva Figueiredo', periodo: 'Noite' },
 ];
 
 // normaliza para comparação: maiúsculas, sem acento, sem ordinais, espaços simples
@@ -97,16 +98,31 @@ export default function Turmas() {
     const lista = await api.getTurmas();
     let ok = 0;
     const nao: string[] = [];
-    for (const oficial of TURMAS_OFICIAIS) {
-      const match = lista.find((t: any) => normSimp(t.nome) === normSimp(oficial.turma))
-        ?? lista.find((t: any) => norm(t.nome) === norm(oficial.turma));
-      if (match) {
+
+    // Agrupa oficiais por turma (para EJA I com 2 professoras)
+    const grupos = new Map<string, typeof TURMAS_OFICIAIS>();
+    for (const o of TURMAS_OFICIAIS) {
+      const k = normSimp(o.turma);
+      if (!grupos.has(k)) grupos.set(k, []);
+      grupos.get(k)!.push(o);
+    }
+
+    for (const [key, oficiais] of grupos) {
+      // Todas as turmas no banco que casam com esse nome
+      const matches = lista.filter((t: any) =>
+        normSimp(t.nome) === key || norm(t.nome) === norm(oficiais[0].turma)
+      );
+      if (matches.length === 0) {
+        nao.push(oficiais[0].turma + ' (não encontrada)');
+        continue;
+      }
+      // Distribui professoras: 1ª turma → 1ª prof, 2ª turma → 2ª prof, etc.
+      for (let i = 0; i < oficiais.length; i++) {
+        const t = matches[i] ?? matches[matches.length - 1];
         try {
-          await api.updateTurma(match.id, { professora: oficial.professora, periodo: oficial.periodo });
+          await api.updateTurma(t.id, { professora: oficiais[i].professora, periodo: oficiais[i].periodo });
           ok++;
-        } catch { nao.push(oficial.turma); }
-      } else {
-        nao.push(oficial.turma + ' (não encontrada)');
+        } catch { nao.push(oficiais[i].turma); }
       }
     }
     await load();
