@@ -336,22 +336,36 @@ export default function Importar() {
         const deficiencia = String(nr['DEFICIENCIA'] ?? '').trim();
         const professora = String(nr['PROFESSORA'] ?? '').trim();
         const bolsaFamilia = parseBool(nr['BOLSA FAMILIA'] ?? nr['BOLSA FAMLIA']);
-        const _inicioKey = Object.keys(nr).find(k => k.includes('INICIO') && k.includes('MATRICULA'));
-        const _inicioVal = _inicioKey ? nr[_inicioKey] : undefined;
         const dataInicioMatricula = fmtDate(
           nr['DATA INICIO MATRICULA'] ??
           nr['DATA DE INICIO DA MATRICULA'] ??
+          nr['DT INICIO MATRICULA'] ??
           nr['INICIO DA MATRICULA'] ??
           nr['INICIO MATRICULA'] ??
           nr['DATA DA MATRICULA'] ??
-          _inicioVal
+          nr['DT INICIO'] ??
+          nr[Object.keys(nr).find(k =>
+            k.replace(/[ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜ]/gi, c =>
+              'AAAAAAAEEEEIIIIOOOOOOUUUU'['ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜ'.indexOf(c)]
+            ).includes('INICIO') &&
+            k.replace(/[ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜ]/gi, c =>
+              'AAAAAAAEEEEIIIIOOOOOOUUUU'['ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜ'.indexOf(c)]
+            ).includes('MATRICULA')
+          ) ?? '']
         );
-        const _fimKey = Object.keys(nr).find(k => k.includes('FIM') && k.includes('MATRICULA'));
-        const _fimVal = _fimKey ? nr[_fimKey] : undefined;
         const dataFimMatricula = fmtDate(
           nr['DATA FIM MATRICULA'] ??
           nr['DT FIM MATRICULA'] ??
-          _fimVal
+          nr['FIM MATRICULA'] ??
+          nr['DATA FIM'] ??
+          nr[Object.keys(nr).find(k =>
+            k.replace(/[ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜ]/gi, c =>
+              'AAAAAAAEEEEIIIIOOOOOOUUUU'['ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜ'.indexOf(c)]
+            ).includes('FIM') &&
+            k.replace(/[ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜ]/gi, c =>
+              'AAAAAAAEEEEIIIIOOOOOOUUUU'['ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜ'.indexOf(c)]
+            ).includes('MATRICULA')
+          ) ?? '']
         );
         const _movKey = Object.keys(nr).find(k => k.includes('MOVIMENTAC') || k.includes('MOVIM'));
         const _movVal = _movKey ? nr[_movKey] : undefined;
@@ -384,17 +398,34 @@ export default function Importar() {
                 bolsaFamilia: parseBool(nr['BOLSA FAMILIA'] ?? nr['BOLSA FAMLIA']),
                 dataInicioMatricula: fmtDate(
                   nr['DATA INICIO MATRICULA'] ??
-                  nr['DT INICIO MATRICULA'] ??
                   nr['DATA DE INICIO DA MATRICULA'] ??
+                  nr['DT INICIO MATRICULA'] ??
                   nr['INICIO DA MATRICULA'] ??
                   nr['INICIO MATRICULA'] ??
                   nr['DATA DA MATRICULA'] ??
-                  nr[Object.keys(nr).find(k => k.includes('INICIO') && k.includes('MATRICULA'))]
+                  nr['DT INICIO'] ??
+                  nr[Object.keys(nr).find(k =>
+                    k.replace(/[ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜ]/gi, c =>
+                      'AAAAAAAEEEEIIIIOOOOOOUUUU'['ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜ'.indexOf(c)]
+                    ).includes('INICIO') &&
+                    k.replace(/[ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜ]/gi, c =>
+                      'AAAAAAAEEEEIIIIOOOOOOUUUU'['ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜ'.indexOf(c)]
+                    ).includes('MATRICULA')
+                  ) ?? '']
                 ),
                 dataFimMatricula: fmtDate(
                   nr['DATA FIM MATRICULA'] ??
                   nr['DT FIM MATRICULA'] ??
-                  nr[Object.keys(nr).find(k => k.includes('FIM') && k.includes('MATRICULA'))]
+                  nr['FIM MATRICULA'] ??
+                  nr['DATA FIM'] ??
+                  nr[Object.keys(nr).find(k =>
+                    k.replace(/[ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜ]/gi, c =>
+                      'AAAAAAAEEEEIIIIOOOOOOUUUU'['ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜ'.indexOf(c)]
+                    ).includes('FIM') &&
+                    k.replace(/[ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜ]/gi, c =>
+                      'AAAAAAAEEEEIIIIOOOOOOUUUU'['ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜ'.indexOf(c)]
+                    ).includes('MATRICULA')
+                  ) ?? '']
                 ),
                 dataMovimentacao: fmtDate(
                   nr['DATA MOVIMENTACAO'] ??
@@ -851,8 +882,35 @@ export default function Importar() {
             ativo.deficiencia   = ativo.deficiencia   || rema.deficiencia;
             if (!ativo.nascimento && rema.nascimento) ativo.nascimento = rema.nascimento;
             Object.assign(ativo.faltas, rema.faltas);
+
+            // Preservar datas do ATIVO já armazenado (não sobrescrever com vazio)
+            const existAtivo = todosAlunos.get(key);
+            if (existAtivo) {
+              if (!ativo.dataInicioMatricula && existAtivo.dataInicioMatricula)
+                ativo.dataInicioMatricula = existAtivo.dataInicioMatricula;
+              if (!ativo.dataFimMatricula && existAtivo.dataFimMatricula)
+                ativo.dataFimMatricula = existAtivo.dataFimMatricula;
+              if (!ativo.dataMovimentacao && existAtivo.dataMovimentacao)
+                ativo.dataMovimentacao = existAtivo.dataMovimentacao;
+            }
             todosAlunos.set(key, ativo);           // destino (ATIVO) — chave principal
-            todosAlunos.set(`${key}|REMA`, rema);  // origem  (REMA)  — chave separada
+
+            // Preservar datas do REMA já armazenado (não sobrescrever com vazio)
+            const remaKey = `${key}|REMA`;
+            const existRema = todosAlunos.get(remaKey);
+            if (existRema) {
+              if (!rema.dataInicioMatricula && existRema.dataInicioMatricula)
+                rema.dataInicioMatricula = existRema.dataInicioMatricula;
+              if (!rema.dataFimMatricula && existRema.dataFimMatricula)
+                rema.dataFimMatricula = existRema.dataFimMatricula;
+              if (!rema.dataMovimentacao && existRema.dataMovimentacao)
+                rema.dataMovimentacao = existRema.dataMovimentacao;
+              if (!rema.turmaDestino && existRema.turmaDestino)
+                rema.turmaDestino = existRema.turmaDestino;
+              if (!rema.professoraDestino && existRema.professoraDestino)
+                rema.professoraDestino = existRema.professoraDestino;
+            }
+            todosAlunos.set(remaKey, rema);  // origem (REMA) — chave separada
             return;
           }
 
