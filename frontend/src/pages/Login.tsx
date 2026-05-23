@@ -19,6 +19,9 @@ export default function Login() {
     if (resultado === 'errado') {
       setErro('Usuário ou senha incorretos. Tente novamente.');
       setSenha('');
+    } else {
+      // Força navegação imediata — evita ficar na tela de login após autenticação
+      window.location.href = '/';
     }
   };
 
