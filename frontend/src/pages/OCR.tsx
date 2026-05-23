@@ -2,8 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { createWorker } from 'tesseract.js';
 import { api } from '../api';
 import { useAno } from '../AnoContext';
-
-const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+import { MESES, sortTurmasPedagogico } from '../styles';
 
 interface AlunoExtrato {
   numero: number;
@@ -136,7 +135,7 @@ export default function OCR() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    api.getTurmas().then(t => { setTurmas(t); if (t.length) setTurmaId(t[0].id); });
+    api.getTurmas().then(t => { const s = sortTurmasPedagogico(t); setTurmas(s); if (s.length) setTurmaId(s[0].id); });
   }, []);
 
   const handleImage = (file: File) => {

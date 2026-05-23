@@ -195,3 +195,36 @@ export function getDiasLetivos(mes: number, ano: number): number {
 
 // Compatibilidade retroativa
 export const DIAS_LETIVOS: Record<number, number> = DIAS_LETIVOS_ANO[2026];
+
+// ── Ordenação pedagógica das turmas — EMEIEF Luiz Gonzaga ──────────────────
+// Ordem: 1ªEtapa → 2ªEtapa → 1ºAno → 2ºAno → 3ºAno → 4ºAno → 5ºAno → EJA → Pós-Alfabetização
+export function ordemTurma(nome: string): string {
+  const n = nome.toUpperCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[ªº°]/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+
+  let grupo = '99';
+  if      (/\b1\b.*ETAPA|ETAPA.*\b1\b/.test(n)) grupo = '01';
+  else if (/\b2\b.*ETAPA|ETAPA.*\b2\b/.test(n)) grupo = '02';
+  else if (/\b1\b.*ANO/.test(n))  grupo = '03';
+  else if (/\b2\b.*ANO/.test(n))  grupo = '04';
+  else if (/\b3\b.*ANO/.test(n))  grupo = '05';
+  else if (/\b4\b.*ANO/.test(n))  grupo = '06';
+  else if (/\b5\b.*ANO/.test(n))  grupo = '07';
+  // PÓS-ALFABETIZAÇÃO deve vir ANTES de EJA — o nome pode conter ambos
+  else if (/POS.{0,5}ALFABET/.test(n)) grupo = '09';
+  else if (/\bEJA\b/.test(n))     grupo = '08';
+
+  const periodo = n.includes('MANHA') ? '1'
+    : n.includes('TARDE')    ? '2'
+    : n.includes('NOTURNO')  ? '3'
+    : n.includes('INTEGRAL') ? '4' : '9';
+
+  const letra = (n.match(/\b([A-HJ-Z])\b/) || ['','Z'])[1];
+  return `${grupo}-${periodo}-${letra}`;
+}
+
+export function sortTurmasPedagogico<T extends { nome: string }>(turmas: T[]): T[] {
+  return [...turmas].sort((a, b) => ordemTurma(a.nome).localeCompare(ordemTurma(b.nome)));
+}

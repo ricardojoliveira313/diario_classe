@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { api } from '../api';
-import { theme, btn, input, label, MESES, SITUACAO_COR, SITUACAO_LABEL, getFeriado, isRecesso, isSabadoLetivo } from '../styles';
+import { theme, btn, input, label, MESES, SITUACAO_COR, SITUACAO_LABEL, getFeriado, isRecesso, isSabadoLetivo, sortTurmasPedagogico } from '../styles';
 import { Loading, EmptyState, StatCard, Spinner } from '../components';
 import { useTheme } from '../ThemeContext';
 import { useAno } from '../AnoContext';
@@ -104,7 +104,7 @@ export default function Faltas() {
   const numDias = useMemo(() => calDays.filter(d => d.isLetivo).length, [calDays]);
 
   useEffect(() => {
-    api.getTurmas().then(t => { setTurmas(t); if (t.length) setTurmaId(t[0].id); });
+    api.getTurmas().then(t => { const s = sortTurmasPedagogico(t || []); setTurmas(s); if (s.length) setTurmaId(s[0].id); });
   }, []);
 
   useEffect(() => {

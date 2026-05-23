@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { api, supabase } from '../api';
-import { theme, btn, input, label, SITUACAO_COR, SITUACAO_LABEL, SITUACOES, card as cardStyle, row } from '../styles';
+import { theme, btn, input, label, SITUACAO_COR, SITUACAO_LABEL, SITUACOES, card as cardStyle, row, sortTurmasPedagogico, ordemTurma } from '../styles';
 import { Loading, EmptyState, StatCard, Spinner } from '../components';
 import { useAuth } from '../AuthContext';
 
@@ -101,7 +101,7 @@ export default function Alunos() {
     setEnriquecendo(false);
   };
 
-  useEffect(() => { api.getTurmas().then(setTurmas); }, []);
+  useEffect(() => { api.getTurmas().then(d => setTurmas(sortTurmasPedagogico(d || []))); }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -143,7 +143,10 @@ export default function Alunos() {
       grupos.get(a.turmaId).push(a);
     }
     const linhas: Array<{ tipo: 'aluno'; a: any; idx: number } | { tipo: 'header'; nome: string; key: string; total: number }> = [];
-    for (const [tid, arr] of grupos) {
+    const gruposOrdenados = [...grupos.entries()].sort(([tidA], [tidB]) =>
+      ordemTurma(turmaMap.get(tidA)?.nome ?? '').localeCompare(ordemTurma(turmaMap.get(tidB)?.nome ?? ''))
+    );
+    for (const [tid, arr] of gruposOrdenados) {
       const t = turmaMap.get(tid);
       arr.sort((a, b) => {
         const nA = a.numero || 9999;

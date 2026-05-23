@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { api } from '../api';
 import { useAno } from '../AnoContext';
-import { theme, btn, input, label, card as cardStyle, row, SITUACAO_COR, SITUACAO_LABEL } from '../styles';
+import { theme, btn, input, label, card as cardStyle, row, SITUACAO_COR, SITUACAO_LABEL, sortTurmasPedagogico } from '../styles';
 import { Loading, EmptyState, StatCard } from '../components';
 
 function calcIdade(dataNasc: string, refDate: Date): number {
@@ -45,7 +45,7 @@ export default function Distorcao() {
   useEffect(() => {
     setLoading(true);
     Promise.all([api.getTurmas(), api.getAllAlunos()])
-      .then(([t, a]) => { setTurmas(t); setAlunos(a); setLoading(false); });
+      .then(([t, a]) => { setTurmas(sortTurmasPedagogico(t)); setAlunos(a); setLoading(false); });
   }, []);
 
   const refDate = new Date(ano, 2, 31); // 31/03 — data de referência INEP
