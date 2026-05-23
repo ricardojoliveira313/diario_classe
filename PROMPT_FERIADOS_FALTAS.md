@@ -1,132 +1,200 @@
-# PROMPT — Calendário letivo com feriados e emendas na grade de Faltas
-## Diário de Classe Digital — EMEIEF LUIZ GONZAGA
+# PROMPT — Calendário letivo 2026 com feriados reais da escola
+## Diário de Classe Digital — EMEIEF LUIZ GONZAGA — Santo André/SP
 **Arquivos-alvo:** `frontend/src/pages/Faltas.tsx` + `frontend/src/styles.ts`
 **Branch:** main
 
 ---
 
-## CONTEXTO E PROBLEMA
+## CONTEXTO
 
-A grade de faltas hoje mostra colunas numeradas `1, 2, 3 ... N` onde N = `DIAS_LETIVOS[mes]`
-(número fixo de dias letivos por mês). Esse número é calculado sem levar em conta feriados.
+Este prompt usa o **Calendário Escolar Oficial 2026** da unidade.
+Todos os feriados, emendas, dias letivos e recesso foram extraídos diretamente
+do arquivo `CALENDÁRIO ESCOLAR 2026.xlsx` da escola.
 
-O resultado: **o professor não sabe qual número corresponde a qual data do calendário**,
-e dias como `1 de Maio (Dia do Trabalhador)` aparecem como dia letivo normal — o que é errado.
+**Município:** Santo André — SP
+**Ano letivo começa:** 06/02/2026 (1º dia letivo EMEI/EMEIEF)
+**Ano letivo termina:** 22/12/2026
+
+---
+
+## PROBLEMA ATUAL
+
+A grade de faltas mostra colunas `1, 2, 3 ... N` onde N = `DIAS_LETIVOS[mes]` (número fixo).
+O professor não sabe qual coluna corresponde a qual data do calendário.
+Dias como `1 de Maio (Dia do Trabalhador)` aparecem como dia letivo normal — errado.
 
 ---
 
 ## SOLUÇÃO — Grade por data real do calendário
 
-Em vez de mostrar "1, 2, 3 ... 20 dias letivos", mostrar **todos os dias do mês (1–31)**:
-- Dias letivos normais → coluna normal com P/F/J/A clicável
-- Finais de semana → coluna cinza escuro, sem P, sem clique
-- Feriados / emendas → coluna cinza claro com ícone 🎉, sem P, sem clique
+Em vez de "N dias letivos anônimos", mostrar **todos os dias do mês (1–31)**:
+- Dias letivos → coluna normal com P/F/J/A clicável
+- Finais de semana → coluna cinza escuro, bloqueada
+- Feriados / emendas → coluna cinza médio com 🎉, bloqueada
+- Recesso escolar → coluna azul escuro com 🏖️, bloqueada
+- Sábado letivo → coluna normal com 📚 (tem aula)
 
 ---
 
-## MUDANÇA 1 — Lista de feriados nacionais + estaduais SP
+## MUDANÇA 1 — Dias letivos por mês (atualizar `styles.ts`)
 
-**Em `frontend/src/styles.ts`**, adicionar antes do export:
+Localizar `DIAS_LETIVOS_ANO` e **atualizar o ano 2026** com os valores do calendário oficial:
 
 ```typescript
-// ── Feriados nacionais + estaduais SP (2025–2027) ─────────────────────────
-// Formato: 'MM-DD' (independente do ano) ou 'AAAA-MM-DD' (data fixa)
+export const DIAS_LETIVOS_ANO: Record<number, Record<number, number>> = {
+  2026: {
+    1: 0,   // Janeiro — sem aulas (ano letivo começa 06/02)
+    2: 13,  // Fevereiro (início: 06/02)
+    3: 22,  // Março
+    4: 18,  // Abril
+    5: 20,  // Maio
+    6: 21,  // Junho
+    7: 9,   // Julho (6 DL até 08/07 + 3 DL a partir de 29/07)
+    8: 21,  // Agosto
+    9: 21,  // Setembro
+    10: 19, // Outubro
+    11: 19, // Novembro
+    12: 17, // Dezembro (último dia letivo: 22/12)
+    // Total 1º semestre: 100 DL | 2º semestre: 100 DL | Ano: 200 DL
+  },
+};
+```
+
+---
+
+## MUDANÇA 2 — Feriados 2026 reais (adicionar em `styles.ts`)
+
+Adicionar **antes** dos exports existentes:
+
+```typescript
+// ── Calendário Escolar 2026 — EMEIEF Luiz Gonzaga — Santo André/SP ────────
+
+/** Feriados fixos que se repetem todo ano (chave: 'MM-DD') */
 export const FERIADOS_FIXOS: Record<string, string> = {
-  '01-01': 'Confraternização Universal',
+  '01-01': 'Ano Novo',
+  '04-08': 'Aniversário de Santo André',   // feriado municipal
   '04-21': 'Tiradentes',
   '05-01': 'Dia do Trabalhador',
   '07-09': 'Revolução Constitucionalista (SP)',
   '09-07': 'Independência do Brasil',
-  '10-12': 'N. Sra. Aparecida',
-  '11-02': 'Finados',
-  '11-15': 'Proclamação da República',
-  '11-20': 'Consciência Negra',
+  '10-12': 'Nossa Senhora Aparecida',
+  '10-13': 'Dia do Professor',             // ponto facultativo escolar
+  '10-28': 'Dia do Servidor Público',
+  '11-02': 'Dia de Finados',
+  '11-20': 'Dia da Consciência Negra',
   '12-25': 'Natal',
 };
 
-// Feriados móveis por ano (Carnaval, Sexta-feira Santa, Corpus Christi)
+/** Feriados e emendas móveis por ano (chave: 'MM-DD') */
 export const FERIADOS_MOVEIS: Record<number, Record<string, string>> = {
-  2025: {
-    '03-03': 'Carnaval', '03-04': 'Carnaval',
-    '04-18': 'Sexta-feira Santa',
-    '06-19': 'Corpus Christi',
-  },
   2026: {
-    '02-16': 'Carnaval', '02-17': 'Carnaval',
+    '02-16': 'Emenda Carnaval',
+    '02-17': 'Carnaval',
     '04-03': 'Sexta-feira Santa',
-    '06-04': 'Corpus Christi',  // ← ajustar se necessário
-  },
-  2027: {
-    '03-01': 'Carnaval', '03-02': 'Carnaval',
-    '03-26': 'Sexta-feira Santa',
-    '05-13': 'Corpus Christi',
+    '04-20': 'Emenda Tiradentes',
+    '06-04': 'Corpus Christi',
+    '06-05': 'Emenda Corpus Christi',
+    '07-10': 'Emenda Revolução Constitucionalista',
   },
 };
 
-// Retorna o nome do feriado para uma data, ou null se não for feriado
+/** Sábados que são dias letivos (compensação — normalmente livres) */
+export const SABADOS_LETIVOS: Record<number, string[]> = {
+  2026: [
+    '2026-06-27',  // Sábado Letivo (compensação)
+    '2026-12-12',  // Sábado Letivo (compensação)
+  ],
+};
+
+/** Períodos de recesso/férias sem aulas para alunos */
+export const RECESSO_ESCOLAR: Record<number, Array<{ inicio: string; fim: string; descricao: string }>> = {
+  2026: [
+    { inicio: '2026-01-01', fim: '2026-02-05', descricao: 'Férias de verão' },
+    { inicio: '2026-07-09', fim: '2026-07-28', descricao: 'Recesso escolar — julho' },
+    { inicio: '2026-12-23', fim: '2026-12-31', descricao: 'Recesso de final de ano' },
+  ],
+};
+
+/** Retorna o nome do feriado para uma data, ou null se dia letivo */
 export function getFeriado(ano: number, mes: number, dia: number): string | null {
   const mmdd = String(mes).padStart(2, '0') + '-' + String(dia).padStart(2, '0');
-  return FERIADOS_FIXOS[mmdd]
-    ?? FERIADOS_MOVEIS[ano]?.[mmdd]
-    ?? null;
-}
-```
-
----
-
-## MUDANÇA 2 — Tipo CalendarDay e função getCalendarDays
-
-**Em `frontend/src/pages/Faltas.tsx`**, adicionar no topo (após imports, antes do componente):
-
-```typescript
-import { FERIADOS_FIXOS, FERIADOS_MOVEIS, getFeriado } from '../styles';
-
-// Um dia do calendário do mês
-interface CalendarDay {
-  dia: number;          // 1–31
-  isWeekend: boolean;   // sábado ou domingo
-  feriado: string | null; // nome do feriado, ou null
-  isEmenda: boolean;    // marcado manualmente como emenda pelo admin
-  isLetivo: boolean;    // = !isWeekend && !feriado && !isEmenda
-  schoolIdx: number;    // índice dentro dos dias letivos (0-based); -1 se não-letivo
+  return FERIADOS_FIXOS[mmdd] ?? FERIADOS_MOVEIS[ano]?.[mmdd] ?? null;
 }
 
-function buildCalendarDays(
-  ano: number,
-  mes: number,
-  emendas: string[]  // array de 'AAAA-MM-DD'
-): CalendarDay[] {
-  const totalDias = new Date(ano, mes, 0).getDate();
-  const days: CalendarDay[] = [];
-  let schoolIdx = 0;
-  for (let d = 1; d <= totalDias; d++) {
-    const date = new Date(ano, mes - 1, d);
-    const dw = date.getDay();
-    const isWeekend = dw === 0 || dw === 6;
-    const feriado = getFeriado(ano, mes, d);
-    const dataStr = `${ano}-${String(mes).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const isEmenda = emendas.includes(dataStr);
-    const isLetivo = !isWeekend && !feriado && !isEmenda;
-    days.push({ dia: d, isWeekend, feriado, isEmenda, isLetivo, schoolIdx: isLetivo ? schoolIdx++ : -1 });
+/** Retorna true se a data está no período de recesso */
+export function isRecesso(ano: number, mes: number, dia: number): string | null {
+  const data = new Date(ano, mes - 1, dia);
+  for (const r of (RECESSO_ESCOLAR[ano] ?? [])) {
+    if (data >= new Date(r.inicio) && data <= new Date(r.fim)) return r.descricao;
   }
-  return days;
+  return null;
+}
+
+/** Retorna true se é sábado letivo (excepcionalmente com aula) */
+export function isSabadoLetivo(ano: number, mes: number, dia: number): boolean {
+  const s = `${ano}-${String(mes).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;
+  return (SABADOS_LETIVOS[ano] ?? []).includes(s);
 }
 ```
 
 ---
 
-## MUDANÇA 3 — Estado de emendas (localStorage + admin)
+## MUDANÇA 3 — Tipo e função de calendário (em `Faltas.tsx`)
 
-**No componente `FaltasPage`**, adicionar estado:
+Adicionar **no topo de `Faltas.tsx`** (após os imports existentes):
 
 ```typescript
-// Chave: 'emendas-AAAA' → JSON array de 'AAAA-MM-DD'
+import { getFeriado, isRecesso, isSabadoLetivo } from '../styles';
+
+interface CalendarDay {
+  dia: number;
+  isWeekend: boolean;
+  isSabadoLetivo: boolean;   // sábado com aula — letivo mesmo sendo fim de semana
+  feriado: string | null;
+  recesso: string | null;
+  isEmenda: boolean;         // marcado manualmente pelo admin
+  isLetivo: boolean;
+  schoolIdx: number;         // índice 0-based no array dias[]; -1 se não-letivo
+}
+
+function buildCalendarDays(ano: number, mes: number, emendas: string[]): CalendarDay[] {
+  const totalDias = new Date(ano, mes, 0).getDate();
+  const result: CalendarDay[] = [];
+  let schoolIdx = 0;
+
+  for (let d = 1; d <= totalDias; d++) {
+    const dw = new Date(ano, mes - 1, d).getDay();
+    const weekend = dw === 0 || dw === 6;
+    const sabLetivo = isSabadoLetivo(ano, mes, d);
+    const feriado = getFeriado(ano, mes, d);
+    const recesso = isRecesso(ano, mes, d);
+    const dataStr = `${ano}-${String(mes).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const emenda = emendas.includes(dataStr);
+    const letivo = !feriado && !recesso && !emenda && (!weekend || sabLetivo);
+
+    result.push({
+      dia: d, isWeekend: weekend, isSabadoLetivo: sabLetivo,
+      feriado, recesso, isEmenda: emenda, isLetivo: letivo,
+      schoolIdx: letivo ? schoolIdx++ : -1,
+    });
+  }
+  return result;
+}
+```
+
+---
+
+## MUDANÇA 4 — Estado no componente (em `Faltas.tsx`)
+
+**Substituir** a linha `const numDias = DIAS_LETIVOS[mes] ?? 22;` por:
+
+```typescript
+// Emendas manuais do admin (persistidas no localStorage por ano)
 const EMENDAS_KEY = `emendas-${ano}`;
 const [emendas, setEmendas] = useState<string[]>(() => {
   try { return JSON.parse(localStorage.getItem(EMENDAS_KEY) || '[]'); }
   catch { return []; }
 });
-
 const toggleEmenda = (dataStr: string) => {
   if (role !== 'admin') return;
   setEmendas(prev => {
@@ -138,115 +206,82 @@ const toggleEmenda = (dataStr: string) => {
   });
 };
 
-// Recalcular dias do calendário sempre que mes/ano/emendas mudar
-const calDays = useMemo(
-  () => buildCalendarDays(ano, mes, emendas),
-  [ano, mes, emendas]
-);
-
-// numDias = total de dias letivos do mês (calculado dinamicamente)
+const calDays = useMemo(() => buildCalendarDays(ano, mes, emendas), [ano, mes, emendas]);
 const numDias = useMemo(() => calDays.filter(d => d.isLetivo).length, [calDays]);
 ```
 
-> **ATENÇÃO:** Remover a linha `const numDias = DIAS_LETIVOS[mes] ?? 22;` e usar o `numDias`
-> calculado acima. Também remover a importação de `DIAS_LETIVOS` de `../styles` se não usada em outro lugar.
-
 ---
 
-## MUDANÇA 4 — Grid com colunas por data real
+## MUDANÇA 5 — Cabeçalho da grade (em `Faltas.tsx`)
 
-### 4a — Cabeçalho (header das colunas)
+**Substituir** `{Array(numDias).fill(0).map((_, d) => (<th key={d}>{d+1}</th>))}` por:
 
-Substituir:
-```typescript
-{Array(numDias).fill(0).map((_, d) => (
-  <th key={d} style={{ ... }}>
-    {d + 1}
-  </th>
-))}
-```
-
-Por:
 ```typescript
 {calDays.map(cd => {
   const dataStr = `${ano}-${String(mes).padStart(2,'0')}-${String(cd.dia).padStart(2,'0')}`;
-  const bgHeader = cd.isWeekend
-    ? '#374151'               // cinza escuro — fim de semana
-    : cd.feriado || cd.isEmenda
-      ? '#4b5563'             // cinza médio — feriado / emenda
-      : undefined;            // padrão azul do thead
+  const naoLetivo = !cd.isLetivo;
+  const bg = cd.isWeekend && !cd.isSabadoLetivo ? '#374151'
+           : cd.recesso ? '#1e3a5f'
+           : naoLetivo ? '#4b5563'
+           : undefined;
+
+  const tooltip =
+    cd.feriado ?? (cd.isEmenda ? '⛔ Emenda marcada' : null) ??
+    cd.recesso ?? (cd.isSabadoLetivo ? '📚 Sábado Letivo' : null) ??
+    (cd.isWeekend ? 'Final de semana' : `Dia ${cd.dia}`);
+
   return (
-    <th
-      key={cd.dia}
-      title={cd.feriado ?? (cd.isEmenda ? 'Emenda' : cd.isWeekend ? 'Final de semana' : `Dia ${cd.dia}`)}
-      onClick={role === 'admin' && !cd.isWeekend && !cd.feriado ? () => toggleEmenda(dataStr) : undefined}
+    <th key={cd.dia} title={tooltip}
+      onClick={
+        role === 'admin' && !cd.isWeekend && !cd.feriado && !cd.recesso
+          ? () => toggleEmenda(dataStr) : undefined
+      }
       style={{
-        width: isMobile ? 38 : 24,
-        textAlign: 'center',
-        fontSize: isMobile ? 9 : 10,
-        padding: '8px 1px',
-        fontWeight: 600,
-        background: bgHeader,
-        cursor: role === 'admin' && !cd.isWeekend && !cd.feriado ? 'pointer' : 'default',
-        opacity: cd.isWeekend || cd.feriado || cd.isEmenda ? 0.6 : 1,
+        width: isMobile ? 38 : 24, textAlign: 'center',
+        fontSize: isMobile ? 9 : 10, padding: '6px 1px',
+        fontWeight: 600, background: bg, lineHeight: 1.2,
+        opacity: naoLetivo ? 0.55 : 1,
+        cursor: role === 'admin' && !cd.isWeekend && !cd.feriado && !cd.recesso
+          ? 'pointer' : 'default',
       }}
     >
-      {cd.dia}
-      {(cd.feriado || cd.isEmenda) && <div style={{ fontSize: 7, lineHeight: 1 }}>🎉</div>}
-      {cd.isWeekend && <div style={{ fontSize: 7, lineHeight: 1 }}>—</div>}
+      <div>{cd.dia}</div>
+      {cd.feriado && <div style={{ fontSize: 7 }}>🎉</div>}
+      {!cd.feriado && cd.recesso && <div style={{ fontSize: 7 }}>🏖️</div>}
+      {cd.isEmenda && <div style={{ fontSize: 7 }}>⛔</div>}
+      {cd.isSabadoLetivo && <div style={{ fontSize: 7 }}>📚</div>}
     </th>
   );
 })}
 ```
 
-> **Comportamento:** Admin pode **clicar** no cabeçalho de um dia normal para marcá-lo como
-> emenda (toggle). Dias de feriado fixo e fins de semana não são clicáveis.
+---
 
-### 4b — Células de frequência por aluno
+## MUDANÇA 6 — Células de frequência por aluno (em `Faltas.tsx`)
 
-Substituir:
-```typescript
-{dias.map((status, d) => (
-  <td key={d}
-    onClick={() => toggleDia(a.id, d)}
-    ...
-  >
-    {status}
-  </td>
-))}
-```
+**Substituir** `{dias.map((status, d) => (<td key={d} onClick={() => toggleDia(a.id, d)}...>))}` por:
 
-Por:
 ```typescript
 {calDays.map(cd => {
   if (!cd.isLetivo) {
-    // Dia não letivo: cinza, sem clique
-    const bgCell = cd.isWeekend ? '#1f2937' : '#283548';
-    return (
-      <td key={cd.dia} style={{
-        width: isMobile ? 38 : 24,
-        background: bgCell,
-        borderLeft: '1px solid var(--border-light)',
-      }} />
-    );
+    const bg = cd.recesso ? '#1a2f4a' : cd.isWeekend ? '#1f2937' : '#283548';
+    return <td key={cd.dia} style={{
+      width: isMobile ? 38 : 24, background: bg,
+      borderLeft: '1px solid var(--border-light)',
+    }} />;
   }
   const status = dias[cd.schoolIdx] ?? 'P';
   return (
     <td key={cd.dia}
       onClick={() => toggleDia(a.id, cd.schoolIdx)}
-      title={`Dia ${cd.dia}: ${ST_LABEL[status]} — clique para alternar`}
+      title={`Dia ${cd.dia}: ${ST_LABEL[status]}${cd.isSabadoLetivo ? ' (Sábado Letivo)' : ''}`}
       style={{
-        width: isMobile ? 38 : 24,
-        textAlign: 'center', cursor: 'pointer',
-        background: ST_BG[status],
-        color: ST_COR[status],
-        fontWeight: 700,
-        fontSize: isMobile ? 13 : 11,
+        width: isMobile ? 38 : 24, textAlign: 'center', cursor: 'pointer',
+        background: ST_BG[status], color: ST_COR[status],
+        fontWeight: 700, fontSize: isMobile ? 13 : 11,
         padding: isMobile ? '12px 0' : '7px 0',
         borderLeft: '1px solid var(--border-light)',
-        userSelect: 'none',
-        transition: 'opacity 0.1s',
-        touchAction: 'manipulation',
+        userSelect: 'none', transition: 'opacity 0.1s', touchAction: 'manipulation',
       }}
       onMouseEnter={!isMobile ? (e => (e.currentTarget.style.opacity = '0.75')) : undefined}
       onMouseLeave={!isMobile ? (e => (e.currentTarget.style.opacity = '1')) : undefined}
@@ -259,50 +294,64 @@ Por:
 
 ---
 
-## MUDANÇA 5 — Legenda de emendas
-
-Na barra de legendas (onde está `P = Presença`, `F = Falta`...), adicionar ao final:
+## MUDANÇA 7 — Legenda (adicionar ao final da barra de legendas)
 
 ```typescript
+<span style={{ fontSize: 11, color: theme.textMuted }}>
+  · 🎉 Feriado &nbsp; 🏖️ Recesso
+</span>
 {role === 'admin' && (
-  <span style={{ fontSize: 11, color: theme.textSecondary, marginLeft: 8 }}>
-    · Admin: clique no número do dia para marcar/desmarcar emenda
+  <span style={{ fontSize: 11, color: '#f97316' }}>
+    · Admin: clique no Nº do dia para marcar/desmarcar emenda ⛔
   </span>
 )}
 ```
 
 ---
 
-## RESULTADO ESPERADO
+## RESUMO — Comportamento por tipo de dia
 
-### Grade — Maio 2026
-
-```
-# Aluno   | 1  | 2  | 3  | 4  | 5  | ... | 31 |
-          |🎉  |——  |——  | P  | P  | ... | —— |
-          |feri|sáb |dom |seg |ter |     |dom |
-Alice     | ▓▓ | ▓▓ | ▓▓ | P  | P  | ... | ▓▓ |
-João      | ▓▓ | ▓▓ | ▓▓ | P  | F  | ... | ▓▓ |
-```
-
-- Dia 1 (1º de Maio) → coluna cinza com 🎉, sem P/F/J/A
-- Dias 2–3 (fim de semana) → coluna escura com —, sem P/F/J/A
-- Dias 4+ (letivos) → P/F/J/A normais
-- "Dias Letivos: 20" calculado automaticamente (20 dias letivos em Maio 2026)
-
----
-
-## RESUMO DAS MUDANÇAS
-
-| # | O que fazer | Onde |
+| Tipo | Visual (header) | Célula do aluno |
 |---|---|---|
-| 1 | Adicionar `FERIADOS_FIXOS`, `FERIADOS_MOVEIS`, `getFeriado()` | `styles.ts` |
-| 2 | Adicionar `CalendarDay`, `buildCalendarDays()` | `Faltas.tsx` |
-| 3 | Adicionar estado `emendas` + `toggleEmenda` + `calDays` + recalcular `numDias` | `Faltas.tsx` componente |
-| 4 | Trocar colunas do cabeçalho: usar `calDays` em vez de `Array(numDias)` | `Faltas.tsx` JSX header |
-| 5 | Trocar células: dias não-letivos → cinza sem clique; letivos → P/F/J/A normal | `Faltas.tsx` JSX tbody |
-| 6 | Adicionar legenda de emenda para admin | `Faltas.tsx` JSX legenda |
+| Dia letivo normal | azul (padrão) | P/F/J/A clicável |
+| Sábado letivo 📚 | azul com 📚 | P/F/J/A clicável |
+| Final de semana | cinza escuro | bloqueada (vazia) |
+| Feriado 🎉 | cinza médio com 🎉 | bloqueada (vazia) |
+| Recesso 🏖️ | azul escuro com 🏖️ | bloqueada (vazia) |
+| Emenda manual ⛔ | cinza médio com ⛔ | bloqueada (vazia) |
 
 ---
 
-*Prompt gerado pelo CEREBRO — Branch: claude/bold-hamilton-a1Oj6*
+## CALENDÁRIO 2026 — Todos os feriados e datas especiais
+
+| Data | Dia | Descrição | Tipo |
+|---|---|---|---|
+| 01/01 | qui | Ano Novo | Nacional |
+| 16/02 | seg | Emenda Carnaval | Emenda |
+| 17/02 | ter | Carnaval | Nacional |
+| 03/04 | sex | Sexta-feira Santa | Nacional |
+| 08/04 | qua | **Aniversário de Santo André** | **Municipal** |
+| 20/04 | seg | Emenda Tiradentes | Emenda |
+| 21/04 | ter | Tiradentes | Nacional |
+| 01/05 | sex | Dia do Trabalhador | Nacional |
+| 04/06 | qui | Corpus Christi | Nacional |
+| 05/06 | sex | Emenda Corpus Christi | Emenda |
+| 27/06 | sab | **Sábado Letivo** 📚 | Especial |
+| 09/07 | qui | Revolução Constitucionalista (SP) | Estadual |
+| 10/07 | sex | Emenda Revolução Const. | Emenda |
+| 09/07–28/07 | — | **Recesso escolar (férias julho)** 🏖️ | Recesso |
+| 07/09 | seg | Independência do Brasil | Nacional |
+| 12/10 | seg | Nossa Senhora Aparecida | Nacional |
+| 13/10 | ter | Dia do Professor | Ponto facultativo |
+| 28/10 | qua | Dia do Servidor Público | Ponto facultativo |
+| 02/11 | seg | Dia de Finados | Nacional |
+| 15/11 | dom | Proclamação da República | Nacional |
+| 20/11 | sex | Dia da Consciência Negra | Nacional |
+| 12/12 | sab | **Sábado Letivo** 📚 | Especial |
+| 25/12 | sex | Natal | Nacional |
+
+---
+
+*Prompt gerado pelo CEREBRO com base no CALENDÁRIO ESCOLAR 2026 oficial.*
+*Fonte: `CALENDÁRIO ESCOLAR 2026.xlsx` da unidade.*
+*Branch: claude/bold-hamilton-a1Oj6*
