@@ -77,13 +77,13 @@ function AppContent() {
   };
 
   const innerStyle: React.CSSProperties = {
-    display: 'flex', alignItems: 'center', gap: 2,
-    maxWidth: 1200, margin: '0 auto', padding: '0 10px', minHeight: 52,
+    display: 'flex', alignItems: 'center', gap: 1,
+    maxWidth: 1200, margin: '0 auto', padding: '0 8px', minHeight: 48,
   };
 
   const linkBase: React.CSSProperties = {
-    color: '#bfdbfe', textDecoration: 'none', padding: '10px 12px',
-    borderRadius: theme.radius, fontSize: 14, fontWeight: 500,
+    color: '#bfdbfe', textDecoration: 'none', padding: '7px 8px',
+    borderRadius: theme.radius, fontSize: 13, fontWeight: 500,
     transition: 'all 0.15s ease', whiteSpace: 'nowrap',
     userSelect: 'none', WebkitUserSelect: 'none',
   };
@@ -105,8 +105,8 @@ function AppContent() {
       <div style={{ minHeight: '100vh', background: theme.bg }}>
         <nav style={navStyle}>
           <div style={innerStyle}>
-            <NavLink to="/" end style={{ color: 'white', fontWeight: 800, marginRight: 8, fontSize: 17, textDecoration: 'none', whiteSpace: 'nowrap', letterSpacing: '-0.3px' }}>
-              📚 Diário de Classe
+            <NavLink to="/" end style={{ color: 'white', fontWeight: 800, marginRight: 4, fontSize: 15, textDecoration: 'none', whiteSpace: 'nowrap', letterSpacing: '-0.3px' }}>
+              📚 Diário
             </NavLink>
 
             {/* Desktop menu */}
@@ -126,8 +126,8 @@ function AppContent() {
             </div>
 
             {/* Badge de perfil + nome do usuário */}
-            <span style={roleBadgeStyle} title={role === 'admin' ? 'Acesso completo' : 'Somente visualização'}>
-              {role === 'admin' ? '🔑' : '👁️'} {username || (role === 'admin' ? 'Admin' : 'Viewer')}
+            <span style={roleBadgeStyle} title={`${username || ''} — ${role === 'admin' ? 'Acesso completo' : 'Somente visualização'}`}>
+              {role === 'admin' ? '🔑' : '👁️'} {(username || '').split(':')[0].substring(0, 10)}
             </span>
 
             {/* Seletor de ano */}
@@ -147,7 +147,7 @@ function AppContent() {
 
             {/* Sair */}
             <button onClick={logout} title="Sair"
-              style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fca5a5', cursor: 'pointer', padding: '6px 8px', borderRadius: 6, fontSize: 13, fontWeight: 600, lineHeight: 1, whiteSpace: 'nowrap' }}>
+              style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fca5a5', cursor: 'pointer', padding: '5px 7px', borderRadius: 6, fontSize: 12, fontWeight: 600, lineHeight: 1, whiteSpace: 'nowrap' }}>
               ⬅ Sair
             </button>
 
