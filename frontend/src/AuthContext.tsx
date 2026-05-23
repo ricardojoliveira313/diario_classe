@@ -48,7 +48,7 @@ const SESSION_KEY = 'diario_auth';
 
 const AuthContext = createContext<AuthCtx>({
   role: null, username: null,
-  login: () => 'errado', logout: () => {},
+  login: () => Promise.resolve('errado' as const), logout: () => {},
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {

@@ -63,13 +63,13 @@ export default function Dashboard() {
       ) : (
         <div className="fade-in">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10, marginBottom: 20 }}>
-            <StatCard label="Total Alunos" val={total} cor={theme.primary} />
-            <StatCard label="Ativos" val={ativos} cor={theme.success} sub={`${((ativos / total) * 100).toFixed(0)}%`} />
-            <StatCard label="Remanejados" val={rema} cor={theme.orange} />
-            <StatCard label="Baixas" val={baixas} cor={theme.danger} />
-            <StatCard label="Bolsa Família" val={bolsa} cor={theme.success} sub={`${((bolsa / total) * 100).toFixed(0)}%`} />
-            <StatCard label="Deficiência" val={comDefi} cor={theme.purple} />
-            <StatCard label="⚠️ Alertas" val={alertas.length} cor={alertas.length > 0 ? theme.danger : theme.textMuted} sub="≥25% faltas" />
+            <StatCard label="Total Alunos" val={total} color={theme.primary} />
+            <StatCard label="Ativos" val={ativos} color={theme.success} sub={`${((ativos / total) * 100).toFixed(0)}%`} />
+            <StatCard label="Remanejados" val={rema} color={theme.orange} />
+            <StatCard label="Baixas" val={baixas} color={theme.danger} />
+            <StatCard label="Bolsa Família" val={bolsa} color={theme.success} sub={`${((bolsa / total) * 100).toFixed(0)}%`} />
+            <StatCard label="Deficiência" val={comDefi} color={theme.purple} />
+            <StatCard label="⚠️ Alertas" val={alertas.length} color={alertas.length > 0 ? theme.danger : theme.textMuted} sub="≥25% faltas" />
           </div>
 
           {alertas.length > 0 && (

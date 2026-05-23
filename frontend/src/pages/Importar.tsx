@@ -431,7 +431,7 @@ export default function Importar() {
                   nr['DATA MOVIMENTACAO'] ??
                   nr['DT MOVIMENTACAO'] ??
                   nr['DATA DE MOVIMENTACAO'] ??
-                  nr[Object.keys(nr).find(k => k.includes('MOVIMENTAC') || k.includes('MOVIM'))]
+                  nr[Object.keys(nr).find(k => k.includes('MOVIMENTAC') || k.includes('MOVIM')) ?? '']
                 ),
                 nis: '',
                 responsavel: '',

@@ -344,7 +344,7 @@ export default function Turmas() {
               </button>
             </div>
           </div>
-          {editando?.id === t.id && (
+          {editando?.id === t.id && editando && (
             <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
               <input
                 style={{ ...input, flex: 1, margin: 0 }}

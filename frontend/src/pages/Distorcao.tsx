@@ -240,10 +240,10 @@ export default function Distorcao() {
         <div className="fade-in">
           {/* Stats */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
-            <StatCard label="Alunos Ativos" val={totalAtivos} cor={theme.primary} />
-            <StatCard label="Com Distorção" val={comDistorcao.length} cor={comDistorcao.length > 0 ? theme.danger : theme.textMuted} />
-            <StatCard label="Percentual" val={`${pct}%`} cor={Number(pct) > 5 ? theme.danger : Number(pct) > 2 ? theme.warning : theme.success} />
-            <StatCard label="Turmas Afetadas" val={porTurma.length} cor={theme.orange} />
+            <StatCard label="Alunos Ativos" val={totalAtivos} color={theme.primary} />
+            <StatCard label="Com Distorção" val={comDistorcao.length} color={comDistorcao.length > 0 ? theme.danger : theme.textMuted} />
+            <StatCard label="Percentual" val={`${pct}%`} color={Number(pct) > 5 ? theme.danger : Number(pct) > 2 ? theme.warning : theme.success} />
+            <StatCard label="Turmas Afetadas" val={porTurma.length} color={theme.orange} />
           </div>
 
           {comDistorcao.length === 0 ? (
