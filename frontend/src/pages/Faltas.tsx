@@ -47,6 +47,7 @@ export default function Faltas() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  const isMobile = window.innerWidth < 640;
   const numDias = DIAS_LETIVOS[mes] ?? 22;
 
   useEffect(() => {
@@ -121,44 +122,252 @@ export default function Faltas() {
   const turma = turmas.find(t => t.id === turmaId);
 
   const exportarPDF = () => {
+    const turmaObj = turmas.find(t => t.id === turmaId);
+    const nomeMes = MESES[mes - 1];
+
     const linhas = alunos.map((a, i) => {
       const dias = diasAluno[a.id] ?? initDias(numDias);
       const nF = ct(dias, 'F'), nJ = ct(dias, 'J'), nA = ct(dias, 'A');
       const ausencias = nF + nJ + nA;
-      const freq = ((numDias - ausencias) / numDias * 100).toFixed(0);
-      const alerta = ausencias >= limiteAlerta ? ' ⚠️' : '';
+      const freqNum = numDias > 0 ? ((numDias - ausencias) / numDias * 100) : 100;
+      const freq = freqNum.toFixed(0);
+      const alerta = ausencias >= limiteAlerta;
       const defi = a.deficiencia ? ' ♿' : '';
       const bf = a.bolsa_familia ? ' 💚' : '';
-      return `${String(a.numero || i + 1).padStart(2)} ${(a.nome + defi + bf).padEnd(44)}  F:${nF} J:${nJ} A:${nA}   ${freq}%${alerta}`;
-    });
-    const conteudo = [
-      '══════════════════════════════════════════════════════════════',
-      `  DIÁRIO DE CLASSE — ${ano}`,
-      `  Turma: ${turma?.nome ?? ''}`,
-      `  Professora: ${turma?.professora ?? '—'}`,
-      `  Mês: ${MESES[mes - 1]}   Dias letivos: ${numDias}`,
-      '══════════════════════════════════════════════════════════════',
-      '',
-      ` Nº  Nome                                          F    J    A   Freq.`,
-      '──────────────────────────────────────────────────────────────',
-      ...linhas,
-      '──────────────────────────────────────────────────────────────',
-      `      Totais:  F: ${totalF}   J: ${totalJ}   A: ${totalA}   Freq.: ${freqGeral}%`,
-      '',
-      `  ⚠️ Alertas (<75%): ${alertas.length} aluno(s)`,
-      `  ♿ Alunos com deficiência: ${alunos.filter(a => a.deficiencia).length}`,
-      `  💚 Bolsa Família: ${alunos.filter(a => a.bolsa_familia).length}`,
-      '',
-      `  Legenda: P = Presença   F = Falta   J = Justificado   A = Atestado médico`,
-    ].join('\n');
+      const rowBg = alerta ? '#fff1f2' : i % 2 === 0 ? '#ffffff' : '#f8fafc';
+      const freqColor = alerta ? '#dc2626' : freqNum >= 90 ? '#16a34a' : '#d97706';
+      return `<tr style="background:${rowBg};">
+      <td style="border:1px solid #cbd5e1;padding:5px 6px;text-align:center;font-size:12px;font-weight:700;width:28px;">${String(a.numero || i + 1).padStart(2, '0')}</td>
+      <td style="border:1px solid #cbd5e1;padding:5px 8px;font-size:12px;${alerta ? 'font-weight:700;' : ''}">${a.nome}${defi}${bf}${alerta ? ' <span style="color:#dc2626;font-size:10px;">⚠️</span>' : ''}</td>
+      <td style="border:1px solid #cbd5e1;padding:5px 4px;text-align:center;font-size:12px;color:#dc2626;font-weight:${nF > 0 ? '700' : '400'};">${nF}</td>
+      <td style="border:1px solid #cbd5e1;padding:5px 4px;text-align:center;font-size:12px;color:#d97706;font-weight:${nJ > 0 ? '700' : '400'};">${nJ}</td>
+      <td style="border:1px solid #cbd5e1;padding:5px 4px;text-align:center;font-size:12px;color:#7c3aed;font-weight:${nA > 0 ? '700' : '400'};">${nA}</td>
+      <td style="border:1px solid #cbd5e1;padding:5px 6px;text-align:center;font-size:12px;font-weight:700;color:${freqColor};">${freq}%</td>
+    </tr>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<title>Frequência — ${turmaObj?.nome ?? ''} — ${nomeMes} ${ano}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; margin: 8mm; font-size: 12px; color: #0f172a; background: #fff; }
+  table { border-collapse: collapse; width: 100%; }
+  @media print {
+    @page { size: A4 portrait; margin: 10mm 8mm; }
+    body { margin: 0; }
+    .no-print { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div style="text-align:center; border-bottom:3px solid #1e40af; padding-bottom:8px; margin-bottom:10px;">
+  <div style="font-size:11px; color:#64748b; font-weight:600; letter-spacing:1px;">PREFEITURA MUNICIPAL DE SANTO ANDRÉ</div>
+  <div style="font-size:18px; font-weight:900; color:#1e40af; letter-spacing:1px; margin:2px 0;">EMEIEF LUIZ GONZAGA</div>
+  <div style="font-size:11px; color:#475569;">Diário de Frequência — Ano Letivo ${ano}</div>
+</div>
+
+<table style="margin-bottom:10px; border:none;">
+  <tr>
+    <td style="border:none; padding:3px 6px; font-size:12px;">
+      <span style="font-weight:700; color:#475569;">TURMA:</span>
+      <span style="font-size:14px; font-weight:900; color:#1e40af; margin-left:6px;">${turmaObj?.nome ?? '—'}</span>
+    </td>
+    <td style="border:none; padding:3px 6px; font-size:12px;">
+      <span style="font-weight:700; color:#475569;">PROFESSORA:</span>
+      <span style="font-weight:600; margin-left:6px;">${turmaObj?.professora ?? '—'}</span>
+    </td>
+    <td style="border:none; padding:3px 6px; font-size:13px; text-align:right; white-space:nowrap;">
+      <span style="font-weight:900; color:#dc2626; font-size:15px;">${nomeMes.toUpperCase()} / ${ano}</span>
+    </td>
+  </tr>
+  <tr>
+    <td style="border:none; padding:2px 6px; font-size:11px; color:#64748b;">
+      <span style="font-weight:600;">Total de alunos:</span> ${alunos.length}
+    </td>
+    <td style="border:none; padding:2px 6px; font-size:11px; color:#64748b;">
+      <span style="font-weight:600;">Dias letivos do mês:</span> ${numDias}
+    </td>
+    <td style="border:none; padding:2px 6px; font-size:11px; color:#64748b; text-align:right;">
+      <span style="font-weight:600;">Frequência geral:</span>
+      <span style="font-weight:900; color:${parseFloat(freqGeral) >= 75 ? '#16a34a' : '#dc2626'}; font-size:13px; margin-left:4px;">${freqGeral}%</span>
+    </td>
+  </tr>
+</table>
+
+<table>
+  <thead>
+    <tr style="background:#1e40af; color:#ffffff;">
+      <th style="border:1px solid #1e3a8a; padding:7px 4px; width:28px; font-size:11px; text-align:center;">Nº</th>
+      <th style="border:1px solid #1e3a8a; padding:7px 8px; font-size:11px; text-align:left;">NOME DO ALUNO</th>
+      <th style="border:1px solid #1e3a8a; padding:7px 4px; width:40px; font-size:11px; text-align:center; background:#dc2626;">F<br><span style="font-size:8px;font-weight:400;">Faltas</span></th>
+      <th style="border:1px solid #1e3a8a; padding:7px 4px; width:40px; font-size:11px; text-align:center; background:#d97706;">J<br><span style="font-size:8px;font-weight:400;">Justif.</span></th>
+      <th style="border:1px solid #1e3a8a; padding:7px 4px; width:40px; font-size:11px; text-align:center; background:#7c3aed;">A<br><span style="font-size:8px;font-weight:400;">Atestado</span></th>
+      <th style="border:1px solid #1e3a8a; padding:7px 6px; width:52px; font-size:11px; text-align:center;">FREQ.<br><span style="font-size:8px;font-weight:400;">%</span></th>
+    </tr>
+  </thead>
+  <tbody>
+    ${linhas}
+  </tbody>
+  <tfoot>
+    <tr style="background:#f1f5f9; font-weight:700;">
+      <td style="border:1px solid #cbd5e1; padding:6px 4px; text-align:center; font-size:11px;" colspan="2">TOTAIS DO MÊS</td>
+      <td style="border:1px solid #cbd5e1; padding:6px 4px; text-align:center; font-size:13px; color:#dc2626;">${totalF}</td>
+      <td style="border:1px solid #cbd5e1; padding:6px 4px; text-align:center; font-size:13px; color:#d97706;">${totalJ}</td>
+      <td style="border:1px solid #cbd5e1; padding:6px 4px; text-align:center; font-size:13px; color:#7c3aed;">${totalA}</td>
+      <td style="border:1px solid #cbd5e1; padding:6px 4px; text-align:center; font-size:13px; color:${parseFloat(freqGeral) >= 75 ? '#16a34a' : '#dc2626'};">${freqGeral}%</td>
+    </tr>
+  </tfoot>
+</table>
+
+<div style="margin-top:8px; display:flex; gap:12px; flex-wrap:wrap;">
+  ${alertas.length > 0 ? `<div style="padding:5px 10px; background:#fff1f2; border:1px solid #fca5a5; border-radius:4px; font-size:11px; color:#dc2626; font-weight:700;">⚠️ Alertas frequência &lt;75%: ${alertas.length} aluno(s)</div>` : `<div style="padding:5px 10px; background:#f0fdf4; border:1px solid #86efac; border-radius:4px; font-size:11px; color:#16a34a; font-weight:700;">✅ Nenhum aluno com frequência crítica</div>`}
+  ${alunos.filter((a: any) => a.deficiencia).length > 0 ? `<div style="padding:5px 10px; background:#f0f9ff; border:1px solid #7dd3fc; border-radius:4px; font-size:11px; color:#0369a1;">♿ Alunos com deficiência: ${alunos.filter((a: any) => a.deficiencia).length}</div>` : ''}
+  ${alunos.filter((a: any) => a.bolsa_familia).length > 0 ? `<div style="padding:5px 10px; background:#f0fdf4; border:1px solid #86efac; border-radius:4px; font-size:11px; color:#15803d;">💚 Bolsa Família: ${alunos.filter((a: any) => a.bolsa_familia).length} aluno(s)</div>` : ''}
+</div>
+
+<div style="margin-top:6px; font-size:10px; color:#64748b; padding:4px 0; border-top:1px solid #e2e8f0;">
+  <span style="font-weight:700;">Legenda:</span>
+  <span style="margin-left:8px; color:#dc2626; font-weight:700;">F = Falta</span>
+  <span style="margin-left:10px; color:#d97706; font-weight:700;">J = Justificado</span>
+  <span style="margin-left:10px; color:#7c3aed; font-weight:700;">A = Atestado médico</span>
+  <span style="margin-left:10px;">⚠️ = Frequência abaixo de 75%</span>
+  <span style="margin-left:10px;">♿ = Deficiência</span>
+  <span style="margin-left:10px;">💚 = Bolsa Família</span>
+</div>
+
+<div style="margin-top:14mm; display:flex; gap:20mm; flex-wrap:wrap; font-size:11px;">
+  <div>
+    <div style="border-top:1px solid #000; padding-top:3px; min-width:200px;">Assinatura do(a) Professor(a)</div>
+  </div>
+  <div>
+    <div style="border-top:1px solid #000; padding-top:3px; min-width:140px;">Data: _____ / _____ / _______</div>
+  </div>
+  <div>
+    <div style="border-top:1px solid #000; padding-top:3px; min-width:200px;">Assinatura da Coordenação</div>
+  </div>
+</div>
+
+<script>setTimeout(()=>window.print(),400);</script>
+</body>
+</html>`;
 
     const win = window.open('', '_blank');
-    if (!win) return;
-    win.document.write(`<html><head><title>Faltas ${turma?.nome} ${MESES[mes - 1]}</title>
-<style>body{font-family:monospace;font-size:13px;margin:24px}pre{white-space:pre-wrap}
-@media print{body{margin:8px}}</style></head>
-<body><pre>${conteudo}</pre>
-<script>setTimeout(()=>window.print(),400)</script></body></html>`);
+    if (!win) { alert('Permita pop-ups no navegador para imprimir.'); return; }
+    win.document.write(html);
+    win.document.close();
+  };
+
+  // ── Folha OCR — Grade de Dias com X (A4 paisagem, células VAZIAS) ─────
+  const exportarFolhaOCR = () => {
+    const turmaObj = turmas.find(t => t.id === turmaId);
+    const nomeMes = MESES[mes - 1];
+    const diasNoMes = new Date(ano, mes, 0).getDate();
+
+    const diasCols = Array.from({ length: diasNoMes }, (_, i) => {
+      const date = new Date(ano, mes - 1, i + 1);
+      const dw = date.getDay();
+      return { dia: i + 1, isWeekend: dw === 0 || dw === 6 };
+    });
+
+    const headerDias = diasCols.map(d =>
+      `<th style="border:1px solid #64748b;padding:0;width:22px;min-width:22px;max-width:22px;height:28px;text-align:center;vertical-align:middle;font-size:8px;font-weight:700;background:${d.isWeekend ? '#334155' : '#1e40af'};color:${d.isWeekend ? '#94a3b8' : '#ffffff'};">${d.dia}</th>`
+    ).join('');
+
+    const linhas = alunos.map((a, i) => {
+      const rowBg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
+      const celulas = diasCols.map(d =>
+        `<td style="border:1px solid ${d.isWeekend ? '#94a3b8' : '#cbd5e1'};width:22px;min-width:22px;max-width:22px;height:22px;background:${d.isWeekend ? '#f1f5f9' : rowBg};"></td>`
+      ).join('');
+      const defi = a.deficiencia ? ' ♿' : '';
+      const bf = a.bolsa_familia ? ' 💚' : '';
+      return `<tr>
+        <td style="border:1px solid #cbd5e1;padding:2px 4px;text-align:center;width:26px;font-size:11px;font-weight:700;">${String(a.numero || i + 1).padStart(2, '0')}</td>
+        <td style="border:1px solid #cbd5e1;padding:2px 6px;font-size:10px;white-space:nowrap;">${a.nome}${defi}${bf}</td>
+        ${celulas}
+      </tr>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<title>Folha OCR — ${turmaObj?.nome ?? ''} — ${nomeMes} ${ano}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; margin: 6mm; color: #000; background: #fff; }
+  table { border-collapse: collapse; }
+  @media print { @page { size: A4 landscape; margin: 7mm 6mm; } body { margin: 0; } }
+</style>
+</head>
+<body>
+
+<div style="text-align:center;border-bottom:2px solid #1e40af;padding-bottom:5px;margin-bottom:7px;">
+  <div style="font-size:9px;color:#64748b;font-weight:600;letter-spacing:0.5px;">PREFEITURA MUNICIPAL DE SANTO ANDRÉ</div>
+  <div style="font-size:15px;font-weight:900;color:#1e40af;margin:1px 0;">EMEIEF LUIZ GONZAGA</div>
+  <div style="font-size:9px;color:#475569;font-weight:600;">Folha de Frequência Diária — ${nomeMes.toUpperCase()} / ${ano}</div>
+</div>
+
+<table style="width:100%;border:none;margin-bottom:6px;">
+  <tr>
+    <td style="border:none;font-size:10px;padding:1px 0;">
+      <b style="color:#475569;">TURMA:</b>
+      <span style="font-size:12px;font-weight:900;color:#1e40af;margin-left:5px;">${turmaObj?.nome ?? '—'}</span>
+    </td>
+    <td style="border:none;font-size:10px;padding:1px 0;text-align:center;">
+      <b style="color:#475569;">PROFESSORA:</b>
+      <span style="font-weight:700;margin-left:5px;">${turmaObj?.professora ?? '—'}</span>
+    </td>
+    <td style="border:none;font-size:10px;padding:1px 0;text-align:right;">
+      <b style="color:#475569;">Alunos:</b> ${alunos.length}
+      &nbsp;&nbsp;
+      <b style="color:#475569;">Dias letivos:</b> ${numDias}
+    </td>
+  </tr>
+</table>
+
+<div style="font-size:9px;padding:3px 8px;background:#fef3c7;border:1px solid #fbbf24;border-radius:3px;margin-bottom:5px;color:#92400e;font-weight:700;">
+  ✏️ Escreva <strong>X</strong> no dia em que o aluno <strong>FALTOU</strong>. Deixe em <strong>BRANCO</strong> se veio à aula. Fins de semana (cinza escuro) não preencher.
+</div>
+
+<table style="width:100%;">
+  <thead>
+    <tr>
+      <th style="border:1px solid #64748b;padding:2px;width:26px;font-size:9px;text-align:center;background:#0f172a;color:#ffffff;">Nº</th>
+      <th style="border:1px solid #64748b;padding:2px 6px;font-size:9px;text-align:left;background:#0f172a;color:#ffffff;min-width:130px;">NOME DO ALUNO</th>
+      ${headerDias}
+    </tr>
+  </thead>
+  <tbody>
+    ${linhas}
+  </tbody>
+</table>
+
+<div style="margin-top:5mm;display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:4mm;">
+  <div style="font-size:9px;color:#475569;">
+    <b>Legenda:</b>
+    <span style="margin-left:6px;background:#fee2e2;padding:1px 6px;border-radius:2px;font-weight:900;color:#dc2626;font-size:11px;">X</span> = Falta
+    &nbsp;&nbsp;
+    <span style="background:#f1f5f9;padding:1px 10px;border-radius:2px;border:1px solid #cbd5e1;font-size:10px;">  </span> = Presente (vazio)
+    &nbsp;&nbsp;
+    <span style="background:#334155;padding:1px 8px;border-radius:2px;font-size:10px;color:#94a3b8;">■</span> = Fim de semana (não preencher)
+  </div>
+  <div style="font-size:10px;display:flex;gap:12mm;">
+    <span>Assinatura do(a) Professor(a): _________________________</span>
+    <span>Data: ___/___/______</span>
+  </div>
+</div>
+
+<script>setTimeout(()=>window.print(),400);</script>
+</body>
+</html>`;
+
+    const win = window.open('', '_blank');
+    if (!win) { alert('Permita pop-ups para abrir a folha.'); return; }
+    win.document.write(html);
     win.document.close();
   };
 
@@ -413,6 +622,7 @@ export default function Faltas() {
               <button onClick={exportarDiario} style={btn('warning', { small: true, outline: true })} title="Diário tradicional com todos os dias do mês">🖨️ Diário</button>
               <button onClick={exportarExcel} style={btn('success', { small: true, outline: true })}>📊 Excel</button>
               <button onClick={exportarPDF} style={btn('danger', { small: true, outline: true })}>📄 PDF</button>
+              <button onClick={exportarFolhaOCR} style={{ ...btn('primary', { small: true, outline: true }), color: '#64748b', borderColor: '#64748b' }}>📋 Folha OCR</button>
             </div>
           )}
         </div>
@@ -493,13 +703,13 @@ export default function Faltas() {
                     position: 'sticky', left: 0, zIndex: 2,
                     background: theme.primary,
                     padding: '10px 12px', textAlign: 'left',
-                    fontSize: 12, fontWeight: 600, minWidth: 210,
+                    fontSize: 12, fontWeight: 600, minWidth: isMobile ? 150 : 210,
                     borderRight: '2px solid rgba(255,255,255,0.25)',
                   }}>
                     # Aluno
                   </th>
                   {Array(numDias).fill(0).map((_, d) => (
-                    <th key={d} style={{ width: 24, textAlign: 'center', fontSize: 10, padding: '8px 1px', fontWeight: 600 }}>
+                    <th key={d} style={{ width: isMobile ? 38 : 24, textAlign: 'center', fontSize: isMobile ? 9 : 10, padding: '8px 1px', fontWeight: 600 }}>
                       {d + 1}
                     </th>
                   ))}
@@ -558,17 +768,20 @@ export default function Faltas() {
                               onClick={() => toggleDia(a.id, d)}
                               title={`Dia ${d + 1}: ${ST_LABEL[status]} — clique para alternar`}
                               style={{
-                                width: 24, textAlign: 'center', cursor: 'pointer',
+                                width: isMobile ? 38 : 24,
+                                textAlign: 'center', cursor: 'pointer',
                                 background: ST_BG[status],
                                 color: ST_COR[status],
-                                fontWeight: 700, fontSize: 11,
-                                padding: '7px 0',
+                                fontWeight: 700,
+                                fontSize: isMobile ? 13 : 11,
+                                padding: isMobile ? '12px 0' : '7px 0',
                                 borderLeft: '1px solid var(--border-light)',
                                 userSelect: 'none',
                                 transition: 'opacity 0.1s',
+                                touchAction: 'manipulation',
                               }}
-                              onMouseEnter={e => (e.currentTarget.style.opacity = '0.75')}
-                              onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+                              onMouseEnter={!isMobile ? (e => (e.currentTarget.style.opacity = '0.75')) : undefined}
+                              onMouseLeave={!isMobile ? (e => (e.currentTarget.style.opacity = '1')) : undefined}
                             >
                               {status}
                             </td>
@@ -613,7 +826,11 @@ export default function Faltas() {
               padding: '14px', fontSize: 17,
               background: saved ? theme.success : theme.primary,
               transition: 'all 0.2s ease',
-              borderRadius: theme.radiusMd,
+              borderRadius: isMobile ? 0 : theme.radiusMd,
+              position: isMobile ? 'sticky' : 'static',
+              bottom: isMobile ? 0 : 'auto',
+              zIndex: isMobile ? 10 : 'auto',
+              boxShadow: isMobile ? '0 -2px 10px rgba(0,0,0,0.2)' : 'none',
             }}
             onClick={salvar} disabled={saving}
           >

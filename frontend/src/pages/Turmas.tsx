@@ -12,6 +12,16 @@ const norm = (s: string) =>
     .replace(/\s+/g, ' ')
     .trim();
 
+// versão simplificada: remove PRÉ-ESCOLA, MANHA, TARDE, ANUAL
+// permite casar "1ª ETAPA A" com "1ª ETAPA PRÉ- ESCOLA A MANHA ANUAL"
+const normSimp = (s: string) =>
+  norm(s)
+    .replace(/\bPRE[\s-]*ESCOLA\b/g, '')
+    .replace(/\b(MANHA|TARDE|NOTURNO|NOITE|MATUTINO|VESPERTINO|ANUAL|INTEGRAL)\b/g, '')
+    .replace(/[-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
 export default function Turmas() {
   const [turmas, setTurmas] = useState<any[]>([]);
   const [form, setForm] = useState({ nome: '', etapa: 'EF1', numero: 1, letra: 'A', periodo: 'Manhã', professora: '' });
@@ -68,7 +78,9 @@ export default function Turmas() {
       const partes = linha.split(sep).map(p => p.trim());
       const nomeTurma = partes[0] ?? '';
       const professora = partes[1] ?? '';
-      const match = lista.find(t => norm(t.nome) === norm(nomeTurma));
+      // Tenta match exato, depois simplificado (sem PRÉ-ESCOLA/MANHA/ANUAL)
+      const match = lista.find(t => norm(t.nome) === norm(nomeTurma))
+        ?? lista.find(t => normSimp(t.nome) === normSimp(nomeTurma));
       return { turmaId: match?.id ?? '', nomeTurma, professora, encontrou: !!match };
     }).filter(Boolean) as any[];
   };

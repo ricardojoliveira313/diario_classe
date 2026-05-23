@@ -78,11 +78,51 @@ ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS responsavel           TEXT DEFAULT 
 -- Remanejamento (novas colunas)
 ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS turma_origem          TEXT DEFAULT '';
 ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS professora_origem     TEXT DEFAULT '';
+-- CPF do aluno
+ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS cpf                  TEXT DEFAULT NULL;
+-- Destino do remanejamento (pra onde o aluno REMA foi)
+ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS turma_destino       TEXT DEFAULT '';
+ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS professora_destino  TEXT DEFAULT '';
 
 ALTER TABLE "Turma" ADD COLUMN IF NOT EXISTS professora TEXT DEFAULT '';
 ALTER TABLE "Turma" ADD COLUMN IF NOT EXISTS periodo    TEXT DEFAULT '';
 
 ALTER TABLE "Falta" ADD COLUMN IF NOT EXISTS frequencia      TEXT DEFAULT '';
+
+-- ─── 2b. Tabela EDUCACENSO (dados persistentes do Censo Escolar) ──────
+CREATE TABLE IF NOT EXISTS "Educacenso" (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  nome            TEXT NOT NULL,
+  data_nascimento TEXT DEFAULT '',
+  cpf             TEXT DEFAULT '',
+  deficiencia     TEXT DEFAULT '',
+  cor_raca        TEXT DEFAULT '',
+  identificador   TEXT DEFAULT '',  -- "Identificação única" do Educacenso
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Cor/Raça no Aluno
+ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS cor_raca TEXT DEFAULT '';
+
+-- Índice único em CPF (parcial: só alunos com CPF) para upsert da Educacenso
+CREATE UNIQUE INDEX IF NOT EXISTS educacenso_cpf_uniq ON "Educacenso" (cpf) WHERE cpf <> '';
+
+-- RLS desativado na Educacenso (se não rodou antes)
+ALTER TABLE "Educacenso" DISABLE ROW LEVEL SECURITY;
+
+-- ─── 2c. Tabela USUARIO (login gerenciável pelo admin) ─────────
+CREATE TABLE IF NOT EXISTS "Usuario" (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  nome       TEXT NOT NULL UNIQUE,
+  senha      TEXT NOT NULL,
+  perfil     TEXT NOT NULL DEFAULT 'viewer',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+INSERT INTO "Usuario" (nome, senha, perfil) VALUES
+  ('gestao', 'gestao2026', 'admin'),
+  ('escola', 'escola2026', 'viewer')
+ON CONFLICT (nome) DO NOTHING;
 
 -- ─── 3. Desativa RLS (Row Level Security) nas tabelas ─────────
 
@@ -90,6 +130,8 @@ ALTER TABLE "Turma"    DISABLE ROW LEVEL SECURITY;
 ALTER TABLE "Aluno"    DISABLE ROW LEVEL SECURITY;
 ALTER TABLE "Falta"    DISABLE ROW LEVEL SECURITY;
 ALTER TABLE "Pendente" DISABLE ROW LEVEL SECURITY;
+ALTER TABLE "Usuario"    DISABLE ROW LEVEL SECURITY;
+ALTER TABLE "Educacenso" DISABLE ROW LEVEL SECURITY;
 
 -- ─── 4. Recarrega o cache do PostgREST ───────────────────────
 -- (resolve o erro "Could not find the table in the schema cache")

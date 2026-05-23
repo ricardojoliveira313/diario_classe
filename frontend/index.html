@@ -95,6 +95,26 @@
         color: var(--text);
         line-height: 1.5;
         -webkit-font-smoothing: antialiased;
+        transition: background-color 0.15s ease, color 0.15s ease;
+      }
+      html { transition: background-color 0.15s ease; }
+      /* Garante que inputs e selects herdam a cor do tema (fix dark mode) */
+      input, select, textarea {
+        color: var(--text);
+        background-color: var(--input-bg);
+        font-family: var(--font);
+      }
+      input::placeholder, textarea::placeholder {
+        color: var(--text-muted);
+      }
+      /* Garante que inputs e selects herdam a cor do tema (fix dark mode) */
+      input, select, textarea {
+        color: var(--text);
+        background-color: var(--input-bg);
+        font-family: var(--font);
+      }
+      input::placeholder, textarea::placeholder {
+        color: var(--text-muted);
       }
       /* Garante que inputs e selects herdam a cor do tema (fix dark mode) */
       input, select, textarea {
