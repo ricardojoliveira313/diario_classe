@@ -10,10 +10,12 @@ import OCR from './pages/OCR';
 import Professor from './pages/Professor';
 import Pendentes from './pages/Pendentes';
 import Distorcao from './pages/Distorcao';
+import Login from './pages/Login';
 import { api } from './api';
 import { theme } from './styles';
 import { ThemeProvider, useTheme } from './ThemeContext';
 import { AnoProvider, useAno } from './AnoContext';
+import { AuthProvider, useAuth } from './AuthContext';
 
 const NAV_ITEMS = [
   { to: '/', label: '📊 Dashboard', end: true },
@@ -34,18 +36,39 @@ function AppContent() {
   const [scrolled, setScrolled] = useState(false);
   const { theme: themeMode, toggle: toggleTheme } = useTheme();
   const { ano, setAno } = useAno();
+  const { user, loading, signOut } = useAuth();
 
   useEffect(() => {
+    if (!user) return;
     api.contarPendentes().then(setNPendentes).catch(() => {});
     const id = setInterval(() => api.contarPendentes().then(setNPendentes).catch(() => {}), 60_000);
     return () => clearInterval(id);
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 10);
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
+
+  // ── Guard de autenticação ──
+  // Enquanto verifica sessão: spinner centralizado
+  if (loading) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        background: `linear-gradient(135deg, ${theme.primary} 0%, #1e3a5f 100%)`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexDirection: 'column', gap: 16,
+      }}>
+        <div style={{ fontSize: 48 }}>📚</div>
+        <p style={{ color: 'white', fontSize: 15, fontWeight: 600 }}>Carregando...</p>
+      </div>
+    );
+  }
+
+  // Não autenticado → tela de login
+  if (!user) return <Login />;
 
   const navStyle: React.CSSProperties = {
     position: 'sticky',
@@ -161,6 +184,33 @@ function AppContent() {
               {themeMode === 'light' ? '🌙' : '☀️'}
             </button>
 
+            {/* Botão Sair (Administrador) */}
+            <button
+              onClick={() => {
+                if (confirm('Deseja sair do sistema?')) signOut();
+              }}
+              title={`Administrador: ${user.email}\nClique para sair`}
+              style={{
+                background: 'rgba(255,255,255,0.1)',
+                border: '1px solid rgba(255,255,255,0.2)',
+                color: 'white',
+                cursor: 'pointer',
+                padding: '5px 10px',
+                borderRadius: 6,
+                fontSize: 12,
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                whiteSpace: 'nowrap',
+                transition: 'background 0.15s',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.3)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.1)')}
+            >
+              🔑 <span className="admin-label">Admin</span>
+            </button>
+
             {/* Mobile hamburger */}
             <button
               onClick={() => setMenuAberto(!menuAberto)}
@@ -212,6 +262,13 @@ function AppContent() {
                   {item.badge && nPendentes > 0 ? `${item.label} (${nPendentes})` : item.label}
                 </NavLink>
               ))}
+              {/* Sair no menu mobile */}
+              <button
+                onClick={() => { setMenuAberto(false); if (confirm('Deseja sair do sistema?')) signOut(); }}
+                style={{ ...linkBase, background: 'rgba(239,68,68,0.2)', color: '#fca5a5', border: 'none', cursor: 'pointer', textAlign: 'left', marginTop: 4, padding: '10px 12px', borderRadius: theme.radius }}
+              >
+                🔓 Sair do sistema
+              </button>
             </div>
           )}
         </nav>
@@ -238,7 +295,9 @@ function App() {
   return (
     <ThemeProvider>
       <AnoProvider>
-        <AppContent />
+        <AuthProvider>
+          <AppContent />
+        </AuthProvider>
       </AnoProvider>
     </ThemeProvider>
   );
