@@ -1,8 +1,9 @@
 import { useEffect, useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
-import { api } from '../api';
+import { api, supabase } from '../api';
 import { theme, btn, input, label, SITUACAO_COR, SITUACAO_LABEL, SITUACOES, card as cardStyle, row } from '../styles';
 import { Loading, EmptyState, StatCard, Spinner } from '../components';
+import { useAuth } from '../AuthContext';
 
 function labelDocente(nome: string): string {
   if (!nome) return 'Professora';
@@ -12,6 +13,22 @@ function labelDocente(nome: string): string {
     'miguel', 'samuel', 'israel', 'ezequiel', 'manoel', 'manuel', 'ismael'];
   if (masculinos.includes(n)) return 'Professor';
   return 'Professora';
+}
+
+function normalizeNome(s: string): string {
+  return s.toUpperCase().trim()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[-]/g, ' ').replace(/[.]/g, '')
+    .replace(/[\u2018\u2019\u0060\u00b4']/g, ' ')
+    .replace(/[\u00aa\u00ba\u00b0]/g, '')
+    .replace(/\s+/g, ' ').trim();
+}
+
+function matchScore(a: string, b: string): number {
+  const na = normalizeNome(a).split(' ');
+  const nb = normalizeNome(b).split(' ');
+  const intersect = na.filter(w => nb.includes(w)).length;
+  return intersect / Math.max(na.length, nb.length);
 }
 
 export default function Alunos() {
@@ -34,6 +51,55 @@ export default function Alunos() {
   const [copiado, setCopiado] = useState('');
   const [loading, setLoading] = useState(true);
   const [detalhesAbertos, setDetalhesAbertos] = useState<Set<string>>(new Set());
+  const [enriquecendo, setEnriquecendo] = useState(false);
+  const [msgEnriquecimento, setMsgEnriquecimento] = useState('');
+  const { role } = useAuth();
+
+  const enriquecerEducacenso = async () => {
+    setEnriquecendo(true);
+    setMsgEnriquecimento('');
+    try {
+      const { data: educ } = await supabase
+        .from('Educacenso')
+        .select('nome, data_nascimento, cpf, deficiencia, cor_raca');
+      if (!educ || educ.length === 0) {
+        setMsgEnriquecimento('Tabela Educacenso vazia — importe o arquivo primeiro.');
+        setEnriquecendo(false);
+        return;
+      }
+      let nAtualizados = 0;
+      for (const a of alunos) {
+        if (a.cpf && a.deficiencia && a.cor_raca) continue;
+        let bestScore = 0;
+        let bestEntry = null;
+        for (const e of educ) {
+          if (!e.nome || a.data_nascimento !== e.data_nascimento) continue;
+          const score = matchScore(a.nome, e.nome);
+          if (score > bestScore) { bestScore = score; bestEntry = e; }
+        }
+        if (bestEntry && bestScore >= 0.85) {
+          const updates: any = {};
+          if (!a.cpf && bestEntry.cpf) updates.cpf = bestEntry.cpf;
+          if (!a.deficiencia && bestEntry.deficiencia) updates.deficiencia = bestEntry.deficiencia;
+          if (!a.cor_raca && bestEntry.cor_raca) updates.cor_raca = bestEntry.cor_raca;
+          if (Object.keys(updates).length > 0) {
+            await api.updateAluno(a.id, updates);
+            nAtualizados++;
+          }
+        }
+      }
+      if (nAtualizados > 0) {
+        setMsgEnriquecimento(`✅ ${nAtualizados} alunos enriquecidos com CPF/Cor/Raça do Educacenso`);
+        const p = turmaId === '__all__' ? api.getAllAlunos() : api.getAlunos(turmaId);
+        p.then(setAlunos).catch(() => {});
+      } else {
+        setMsgEnriquecimento('Nenhum aluno correspondido.');
+      }
+    } catch (e: any) {
+      setMsgEnriquecimento('Erro: ' + (e.message ?? e));
+    }
+    setEnriquecendo(false);
+  };
 
   useEffect(() => { api.getTurmas().then(setTurmas); }, []);
 
@@ -200,6 +266,21 @@ export default function Alunos() {
           <div style={{ display: 'flex', gap: 6 }}>
             <button onClick={exportarExcel} style={btn('success', { small: true, outline: true })}>📊 Excel</button>
             <button onClick={exportarPDF} style={btn('danger', { small: true, outline: true })}>📄 PDF</button>
+            {role === 'admin' && (
+              <button onClick={enriquecerEducacenso} disabled={enriquecendo}
+                style={btn('warning', { small: true, outline: true })}>
+                {enriquecendo ? <Spinner size={14} /> : '🔗'} Educacenso
+              </button>
+            )}
+          </div>
+        )}
+        {msgEnriquecimento && (
+          <div style={{
+            marginTop: 4, padding: '6px 14px', borderRadius: 6,
+            background: msgEnriquecimento.startsWith('✅') ? 'var(--success-light)' : msgEnriquecimento.startsWith('Erro') ? 'var(--danger-light)' : 'var(--warning-light)',
+            color: theme.text, fontSize: 13,
+          }}>
+            {msgEnriquecimento}
           </div>
         )}
       </div>
@@ -365,11 +446,11 @@ export default function Alunos() {
                     <span style={{ textAlign: 'center', fontSize: 15 }}>{a.bolsa_familia ? '✅' : '—'}</span>
                     <span style={{ fontSize: 12, color: theme.textSecondary }}>{a.professora || t?.professora || ''}</span>
                     <span style={{ fontSize: 12, color: theme.textSecondary }}>{t?.nome || ''}</span>
-                    <span style={{ fontSize: 12, textAlign: 'center', color: a.cpf ? theme.text : theme.textMuted, fontFamily: 'monospace', cursor: a.cpf ? 'pointer' : 'default' }} onClick={() => a.cpf && copiar(a.cpf, 'cpf')} title={a.cpf ? 'Clique para copiar CPF' : ''}>
-                      {copiado === 'cpf' ? '✅' : (formataCPF(a.cpf) || '—')}
+                    <span style={{ fontSize: 12, textAlign: 'center', color: a.cpf ? theme.text : theme.textMuted, fontFamily: 'monospace', cursor: a.cpf ? 'pointer' : 'default' }} onClick={() => { if (a.cpf) copiar(a.cpf, 'cpf'); else { if (!aberto) toggleDetalhes(a.id); setEditandoCpf(a.id); } }} title={a.cpf ? 'Clique para copiar CPF' : 'Clique para adicionar CPF'}>
+                      {a.cpf ? (copiado === 'cpf' ? '✅' : formataCPF(a.cpf)) : <span style={{ color: '#3b82f6', cursor: 'pointer' }}>+ cpf</span>}
                     </span>
-                    <span style={{ fontSize: 12, textAlign: 'center', color: a.cor_raca ? theme.text : theme.textMuted }}>
-                      {a.cor_raca || '—'}
+                    <span style={{ fontSize: 12, textAlign: 'center', color: a.cor_raca ? theme.text : theme.textMuted, cursor: a.cor_raca ? 'default' : 'pointer' }} onClick={() => { if (!a.cor_raca) { if (!aberto) toggleDetalhes(a.id); setEditandoCor(a.id); } }} title={a.cor_raca ? '' : 'Clique para adicionar Cor/Raça'}>
+                      {a.cor_raca || <span style={{ color: '#3b82f6', cursor: 'pointer' }}>+ raça</span>}
                     </span>
                   </div>
 
