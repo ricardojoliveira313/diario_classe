@@ -1148,18 +1148,24 @@ export default function Importar() {
       // ─── PASSO 2: Alunos — upsert por RA (preserva UUIDs → preserva faltas) ───
       setStatus('Atualizando cadastro de alunos...');
       const { data: existentes } = await supabase
-        .from('Aluno').select('id, ra, nome');
+        .from('Aluno').select('id, ra, nome, situacao');
       const raToExistingId = new Map<string, string>();
       const nomeToExistingId = new Map<string, string>();
+      const remaToId = new Map<string, string>(); // RA → ID do registro REMA
       for (const e of (existentes ?? [])) {
-        if (e.ra) raToExistingId.set(String(e.ra), e.id);
+        if (e.ra) {
+          if (e.situacao === 'REMA') remaToId.set(String(e.ra), e.id);
+          else raToExistingId.set(String(e.ra), e.id);
+        }
         nomeToExistingId.set(normalizeStr(e.nome), e.id);
       }
 
       const alunosParaUpsert = alunos.map(a => {
         const isRema = a.situacao === 'REMA';
-        const existingId = isRema ? undefined
-          : (raToExistingId.get(String(a.ra ?? '')) ?? nomeToExistingId.get(a.nomeNorm));
+        const raKey = String(a.ra ?? '');
+        const existingId = isRema
+          ? remaToId.get(raKey)
+          : (raToExistingId.get(raKey) ?? nomeToExistingId.get(a.nomeNorm));
         return {
           id: existingId ?? crypto.randomUUID(),
           nome: a.nome,
