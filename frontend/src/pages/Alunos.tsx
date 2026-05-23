@@ -29,6 +29,9 @@ export default function Alunos() {
   const [dataInicioEdit, setDataInicioEdit] = useState('');
   const [dataFimEdit, setDataFimEdit] = useState('');
   const [salvando, setSalvando] = useState(false);
+  const [editandoCpf, setEditandoCpf] = useState('');
+  const [editandoCor, setEditandoCor] = useState('');
+  const [copiado, setCopiado] = useState('');
   const [loading, setLoading] = useState(true);
   const [detalhesAbertos, setDetalhesAbertos] = useState<Set<string>>(new Set());
 
@@ -51,6 +54,13 @@ export default function Alunos() {
     if (filtroProfessora && turmaMap.get(a.turmaId)?.professora !== filtroProfessora) return false;
     if (filtroDefi && a.deficiencia !== filtroDefi) return false;
     return true;
+  }).sort((a, b) => {
+    // Alfabético por nome; mesmo nome → REMA antes do ATIVO (ficam juntos)
+    const nomeA = (a.nome ?? '').toLowerCase();
+    const nomeB = (b.nome ?? '').toLowerCase();
+    if (nomeA !== nomeB) return nomeA.localeCompare(nomeB, 'pt-BR');
+    const ordemSit: Record<string, number> = { REMA: 0, ATIVO: 1, TRAN: 2, BXTR: 3, 'N COM': 4, ABAN: 5 };
+    return (ordemSit[a.situacao] ?? 9) - (ordemSit[b.situacao] ?? 9);
   });
 
   const totalAtivos = alunos.filter(a => a.situacao === 'ATIVO').length;
@@ -151,7 +161,11 @@ export default function Alunos() {
     win.document.close();
   };
 
-  const COLUNAS = '44px 1fr 110px 85px 100px 40px 110px 130px';
+  const COLUNAS = '44px 1fr 110px 85px 100px 40px 110px 130px 125px 90px';
+  const formataCPF = (cpf: string) => cpf ? cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : '';
+  const copiar = async (texto: string, label: string) => {
+    try { await navigator.clipboard.writeText(texto); setCopiado(label); setTimeout(() => setCopiado(''), 1500); } catch {}
+  };
 
   return (
     <div style={{ marginTop: 16, animation: 'fadeIn 0.25s ease both' }}>
@@ -225,10 +239,10 @@ export default function Alunos() {
 
       {loading ? <Loading /> : alunos.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10, marginBottom: 14 }}>
-          <StatCard label="Total" val={alunos.length} cor={theme.primary} />
-          <StatCard label="Ativos" val={totalAtivos} cor={theme.success} sub={alunos.length > 0 ? `${((totalAtivos / alunos.length) * 100).toFixed(0)}%` : undefined} />
-          <StatCard label="Bolsa Família" val={totalBolsa} cor={theme.orange} />
-          <StatCard label="Deficiência" val={totalDefi} cor={theme.purple} />
+          <StatCard label="Total" val={alunos.length} color={theme.primary} />
+          <StatCard label="Ativos" val={totalAtivos} color={theme.success} sub={alunos.length > 0 ? `${((totalAtivos / alunos.length) * 100).toFixed(0)}%` : undefined} />
+          <StatCard label="Bolsa Família" val={totalBolsa} color={theme.orange} />
+          <StatCard label="Deficiência" val={totalDefi} color={theme.purple} />
         </div>
       )}
 
@@ -255,6 +269,8 @@ export default function Alunos() {
             <span style={{ textAlign: 'center' }}>Situação</span><span style={{ textAlign: 'center' }}>Deficiência</span>
             <span style={{ textAlign: 'center' }}>BF</span>
             <span>Docente</span><span>Turma</span>
+            <span style={{ textAlign: 'center' }}>CPF</span>
+            <span style={{ textAlign: 'center' }}>Cor/Raça</span>
           </div>
 
           {alunosFiltrados.map((a, i) => {
@@ -304,6 +320,12 @@ export default function Alunos() {
                   <span style={{ textAlign: 'center', fontSize: 15 }}>{a.bolsa_familia ? '✅' : '—'}</span>
                   <span style={{ fontSize: 12, color: theme.textSecondary }}>{a.professora || t?.professora || ''}</span>
                   <span style={{ fontSize: 12, color: theme.textSecondary }}>{t?.nome || ''}</span>
+                  <span style={{ fontSize: 12, textAlign: 'center', color: a.cpf ? theme.text : theme.textMuted, fontFamily: 'monospace', cursor: a.cpf ? 'pointer' : 'default' }} onClick={() => a.cpf && copiar(a.cpf, 'cpf')} title={a.cpf ? 'Clique para copiar CPF' : ''}>
+                    {copiado === 'cpf' ? '✅' : (formataCPF(a.cpf) || '—')}
+                  </span>
+                  <span style={{ fontSize: 12, textAlign: 'center', color: a.cor_raca ? theme.text : theme.textMuted }}>
+                    {a.cor_raca || '—'}
+                  </span>
                 </div>
 
                 {/* Detalhes expandidos */}
@@ -387,8 +409,62 @@ export default function Alunos() {
                       {a.data_movimentacao && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Movimentação:</span> {a.data_movimentacao}</div>}
                       {t?.professora && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>{labelDocente(t.professora)}:</span> {t.professora}</div>}
                       {t?.nome && turmaId !== '__all__' && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Turma:</span> {t.nome}</div>}
+                      {a.turma_origem && a.situacao === 'ATIVO' && (
+                        <div><span style={{ fontWeight: 600, color: theme.orange }}>⬅ Veio de:</span> {a.turma_origem}{a.professora_origem ? ` (${a.professora_origem})` : ''}</div>
+                      )}
                       {a.nis && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>NIS:</span> {a.nis}</div>}
                       {a.responsavel && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Responsável:</span> {a.responsavel}</div>}
+                      {/* CPF editável */}
+                      <div>
+                        <span style={{ fontWeight: 600, color: theme.textSecondary }}>CPF:</span>
+                        {editandoCpf === a.id ? (
+                          <span>
+                            <input value={a.cpf || ''} onChange={e => {
+                              const v = e.target.value.replace(/\D/g, '').slice(0, 11);
+                              setAlunos(prev => prev.map(x => x.id === a.id ? { ...x, cpf: v } : x));
+                            }} style={{ ...input, width: 140, marginLeft: 6 }} placeholder="00000000000" maxLength={11} />
+                            <button onClick={async () => {
+                              await api.updateAluno(a.id, { cpf: a.cpf || null });
+                              setEditandoCpf('');
+                            }} style={{ ...btn('success', { small: true }), marginLeft: 4 }}>💾</button>
+                            <button onClick={() => setEditandoCpf('')} style={{ ...btn('ghost', { small: true }) }}>✕</button>
+                          </span>
+                        ) : (
+                          <span>
+                            {a.cpf ? a.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : <span style={{ color: theme.textMuted, fontStyle: 'italic', cursor: 'pointer' }} onClick={() => { setEditandoCpf(a.id); setEditandoCor(''); }}>+ adicionar CPF</span>}
+                            {a.cpf && <button onClick={() => setEditandoCpf(a.id)} style={{ ...btn('ghost', { small: true }), marginLeft: 4, fontSize: 11 }}>✏️</button>}
+                          </span>
+                        )}
+                      </div>
+                      {/* Cor/Raça editável */}
+                      <div>
+                        <span style={{ fontWeight: 600, color: theme.textSecondary }}>Cor/Raça:</span>
+                        {editandoCor === a.id ? (
+                          <span>
+                            <select value={a.cor_raca || ''} onChange={e => {
+                              setAlunos(prev => prev.map(x => x.id === a.id ? { ...x, cor_raca: e.target.value } : x));
+                            }} style={{ ...input, width: 140, marginLeft: 6 }}>
+                              <option value="">--</option>
+                              <option value="Branca">Branca</option>
+                              <option value="Preta">Preta</option>
+                              <option value="Parda">Parda</option>
+                              <option value="Amarela">Amarela</option>
+                              <option value="Indígena">Indígena</option>
+                              <option value="Não declarado">Não declarado</option>
+                            </select>
+                            <button onClick={async () => {
+                              await api.updateAluno(a.id, { cor_raca: a.cor_raca || null });
+                              setEditandoCor('');
+                            }} style={{ ...btn('success', { small: true }), marginLeft: 4 }}>💾</button>
+                            <button onClick={() => setEditandoCor('')} style={{ ...btn('ghost', { small: true }) }}>✕</button>
+                          </span>
+                        ) : (
+                          <span>
+                            {a.cor_raca || <span style={{ color: theme.textMuted, fontStyle: 'italic', cursor: 'pointer' }} onClick={() => { setEditandoCor(a.id); setEditandoCpf(''); }}>+ adicionar</span>}
+                            {a.cor_raca && <button onClick={() => setEditandoCor(a.id)} style={{ ...btn('ghost', { small: true }), marginLeft: 4, fontSize: 11 }}>✏️</button>}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
