@@ -38,12 +38,13 @@ Em vez de "N dias letivos anônimos", mostrar **todos os dias do mês (1–31)**
 
 ## MUDANÇA 1 — Dias letivos por mês (atualizar `styles.ts`)
 
-Localizar `DIAS_LETIVOS_ANO` e **atualizar o ano 2026** com os valores do calendário oficial:
+Localizar `DIAS_LETIVOS_ANO` e **substituir os valores de 2026** pelos do calendário oficial.
+O código atual tem valores errados em Janeiro (4→0), Setembro (22→21), Outubro (18→19) e Novembro (20→19).
 
 ```typescript
 export const DIAS_LETIVOS_ANO: Record<number, Record<number, number>> = {
   2026: {
-    1: 0,   // Janeiro — sem aulas (ano letivo começa 06/02)
+    1: 0,   // Janeiro — sem aulas (ano letivo começa 06/02) ← era 4, CORRIGIR
     2: 13,  // Fevereiro (início: 06/02)
     3: 22,  // Março
     4: 18,  // Abril
@@ -51,9 +52,9 @@ export const DIAS_LETIVOS_ANO: Record<number, Record<number, number>> = {
     6: 21,  // Junho
     7: 9,   // Julho (6 DL até 08/07 + 3 DL a partir de 29/07)
     8: 21,  // Agosto
-    9: 21,  // Setembro
-    10: 19, // Outubro
-    11: 19, // Novembro
+    9: 21,  // Setembro ← era 22, CORRIGIR
+    10: 19, // Outubro  ← era 18, CORRIGIR
+    11: 19, // Novembro ← era 20, CORRIGIR
     12: 17, // Dezembro (último dia letivo: 22/12)
     // Total 1º semestre: 100 DL | 2º semestre: 100 DL | Ano: 200 DL
   },
@@ -184,7 +185,22 @@ function buildCalendarDays(ano: number, mes: number, emendas: string[]): Calenda
 
 ---
 
-## MUDANÇA 4 — Estado no componente (em `Faltas.tsx`)
+## MUDANÇA 4 — Import de `useAuth` + estado no componente (em `Faltas.tsx`)
+
+> ⚠️ **ATENÇÃO:** `Faltas.tsx` não importa `useAuth` atualmente. O `role` é necessário
+> para controlar quem pode marcar emendas. Adicionar **obrigatoriamente**.
+
+**Adicionar** no bloco de imports no topo de `Faltas.tsx`:
+```typescript
+import { useAuth } from '../AuthContext';
+```
+
+**Adicionar** dentro do componente, junto com os outros hooks (useTheme, useAno...):
+```typescript
+const { role } = useAuth();
+```
+
+---
 
 **Substituir** a linha `const numDias = DIAS_LETIVOS[mes] ?? 22;` por:
 
@@ -306,6 +322,26 @@ const numDias = useMemo(() => calDays.filter(d => d.isLetivo).length, [calDays])
   </span>
 )}
 ```
+
+---
+
+## NOTA SOBRE AS FUNÇÕES DE EXPORT (PDF, Excel, Folha OCR, Grade)
+
+As funções de export **não precisam ser alteradas**. Elas já usam:
+```typescript
+const diasNoMes = new Date(ano, mes, 0).getDate(); // total de dias do mês
+const diasCols = Array.from({ length: diasNoMes }, (_, i) => { ... });
+```
+Ou seja, já trabalham com todos os dias do mês — não dependem de `numDias`.
+
+O `numDias` dinâmico calculado pelo `calDays` afeta apenas:
+- O cabeçalho interativo da grade (substituído pelo `calDays.map`)
+- Os totais exibidos (Dias Letivos: N) — agora calculados corretamente
+- O tamanho dos arrays `dias[]` para alunos novos (`initDias(numDias)`)
+
+> **Alunos com dados existentes no banco:** o `decodeDias(frequencia, numDias)` pode ter
+> diferença de 1 dia nos meses onde o DL foi corrigido (Set, Out, Nov). Isso é aceitável
+> como correção de dado — não há perda de informação, apenas ajuste de tamanho do array.
 
 ---
 
