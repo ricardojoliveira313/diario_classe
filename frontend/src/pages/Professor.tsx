@@ -1,12 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { api } from '../api';
 import { useAno } from '../AnoContext';
-
-const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-const DIAS_LETIVOS: Record<number, number> = {
-  1: 4, 2: 13, 3: 22, 4: 18, 5: 20, 6: 21,
-  7: 9, 8: 21, 9: 22, 10: 18, 11: 20, 12: 17,
-};
+import { MESES, getDiasLetivos, sortTurmasPedagogico } from '../styles';
 
 interface AlunoExtrato { numero: number; nome: string; faltas: number; }
 interface EntradaCruzada extends AlunoExtrato {
@@ -105,10 +100,10 @@ export default function Professor() {
   const [erro, setErro] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { api.getTurmas().then(t => { setTurmas(t); if (t.length) setTurmaId(t[0].id); }); }, []);
+  useEffect(() => { api.getTurmas().then(t => { const s = sortTurmasPedagogico(t); setTurmas(s); if (s.length) setTurmaId(s[0].id); }); }, []);
 
   const turma = turmas.find(t => t.id === turmaId);
-  const dl = DIAS_LETIVOS[mes] ?? 22;
+  const dl = getDiasLetivos(mes, ano);
 
   const handleImg = (file: File) => {
     const r = new FileReader();

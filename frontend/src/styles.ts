@@ -212,8 +212,9 @@ export function ordemTurma(nome: string): string {
   else if (/\b3\b.*ANO/.test(n))  grupo = '05';
   else if (/\b4\b.*ANO/.test(n))  grupo = '06';
   else if (/\b5\b.*ANO/.test(n))  grupo = '07';
+  // PÓS-ALFABETIZAÇÃO deve vir ANTES de EJA — o nome pode conter ambos
+  else if (/POS.{0,5}ALFABET/.test(n)) grupo = '09';
   else if (/\bEJA\b/.test(n))     grupo = '08';
-  else if (/POS.{0,3}ALFABET/.test(n)) grupo = '09';
 
   const periodo = n.includes('MANHA') ? '1'
     : n.includes('TARDE')    ? '2'

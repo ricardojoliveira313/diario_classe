@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
-import { theme, MESES_ABR, MESES, DIAS_LETIVOS, getDiasLetivos, input, row } from '../styles';
+import { theme, MESES_ABR, MESES, DIAS_LETIVOS, getDiasLetivos, input, row, sortTurmasPedagogico } from '../styles';
 import { Loading, EmptyState, StatCard } from '../components';
 import { useAno } from '../AnoContext';
 
@@ -15,7 +15,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     Promise.all([api.getTurmas(), api.getAllAlunos()])
-      .then(([t, a]) => { setTurmas(t); setAlunos(a); setLoading(false); });
+      .then(([t, a]) => { setTurmas(sortTurmasPedagogico(t)); setAlunos(a); setLoading(false); });
   }, []);
 
   useEffect(() => {
