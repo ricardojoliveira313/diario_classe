@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { api } from '../api';
-import { theme, btn, input, label, MESES, DIAS_LETIVOS, SITUACAO_COR, SITUACAO_LABEL } from '../styles';
+import { theme, btn, input, label, MESES, SITUACAO_COR, SITUACAO_LABEL, getFeriado, isRecesso, isSabadoLetivo } from '../styles';
 import { Loading, EmptyState, StatCard, Spinner } from '../components';
 import { useTheme } from '../ThemeContext';
 import { useAno } from '../AnoContext';
+import { useAuth } from '../AuthContext';
 
 type Status = 'P' | 'F' | 'J' | 'A';
 const CICLO: Status[] = ['P', 'F', 'J', 'A'];
@@ -30,12 +31,46 @@ const decodeDias = (freq: string, n: number): Status[] => {
 };
 const ct = (dias: Status[], tipo: Status) => dias.filter(d => d === tipo).length;
 
+interface CalendarDay {
+  dia: number;
+  isWeekend: boolean;
+  isSabadoLetivo: boolean;
+  feriado: string | null;
+  recesso: string | null;
+  isEmenda: boolean;
+  isLetivo: boolean;
+  schoolIdx: number;
+}
+
+function buildCalendarDays(ano: number, mes: number, emendas: string[]): CalendarDay[] {
+  const totalDias = new Date(ano, mes, 0).getDate();
+  const result: CalendarDay[] = [];
+  let schoolIdx = 0;
+  for (let d = 1; d <= totalDias; d++) {
+    const dw = new Date(ano, mes - 1, d).getDay();
+    const weekend = dw === 0 || dw === 6;
+    const sabLetivo = isSabadoLetivo(ano, mes, d);
+    const feriado = getFeriado(ano, mes, d);
+    const recesso = isRecesso(ano, mes, d);
+    const dataStr = `${ano}-${String(mes).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const emenda = emendas.includes(dataStr);
+    const letivo = !feriado && !recesso && !emenda && (!weekend || sabLetivo);
+    result.push({
+      dia: d, isWeekend: weekend, isSabadoLetivo: sabLetivo,
+      feriado, recesso, isEmenda: emenda, isLetivo: letivo,
+      schoolIdx: letivo ? schoolIdx++ : -1,
+    });
+  }
+  return result;
+}
+
 export default function Faltas() {
   const { theme: themeMode } = useTheme();
   const isDark = themeMode === 'dark';
   const ST_BG = isDark ? ST_BG_DARK : ST_BG_LIGHT;
   const ST_COR = isDark ? ST_COR_DARK : ST_COR_LIGHT;
   const { ano } = useAno();
+  const { role } = useAuth();
 
   const [turmas, setTurmas] = useState<any[]>([]);
   const [turmaId, setTurmaId] = useState('');
@@ -48,7 +83,25 @@ export default function Faltas() {
   const [loading, setLoading] = useState(true);
 
   const isMobile = window.innerWidth < 640;
-  const numDias = DIAS_LETIVOS[mes] ?? 22;
+
+  const EMENDAS_KEY = `emendas-${ano}`;
+  const [emendas, setEmendas] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem(EMENDAS_KEY) || '[]'); }
+    catch { return []; }
+  });
+  const toggleEmenda = (dataStr: string) => {
+    if (role !== 'admin') return;
+    setEmendas(prev => {
+      const next = prev.includes(dataStr)
+        ? prev.filter(d => d !== dataStr)
+        : [...prev, dataStr];
+      localStorage.setItem(EMENDAS_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const calDays = useMemo(() => buildCalendarDays(ano, mes, emendas), [ano, mes, emendas]);
+  const numDias = useMemo(() => calDays.filter(d => d.isLetivo).length, [calDays]);
 
   useEffect(() => {
     api.getTurmas().then(t => { setTurmas(t); if (t.length) setTurmaId(t[0].id); });
@@ -715,11 +768,40 @@ export default function Faltas() {
                   }}>
                     # Aluno
                   </th>
-                  {Array(numDias).fill(0).map((_, d) => (
-                    <th key={d} style={{ width: isMobile ? 38 : 24, textAlign: 'center', fontSize: isMobile ? 9 : 10, padding: '8px 1px', fontWeight: 600 }}>
-                      {d + 1}
-                    </th>
-                  ))}
+                  {calDays.map(cd => {
+                    const dataStr = `${ano}-${String(mes).padStart(2, '0')}-${String(cd.dia).padStart(2, '0')}`;
+                    const naoLetivo = !cd.isLetivo;
+                    const bg = cd.isWeekend && !cd.isSabadoLetivo ? '#374151'
+                             : cd.recesso ? '#1e3a5f'
+                             : naoLetivo ? '#4b5563'
+                             : undefined;
+                    const tooltip =
+                      cd.feriado ?? (cd.isEmenda ? '⛔ Emenda marcada' : null) ??
+                      cd.recesso ?? (cd.isSabadoLetivo ? '📚 Sábado Letivo' : null) ??
+                      (cd.isWeekend ? 'Final de semana' : `Dia ${cd.dia}`);
+                    return (
+                      <th key={cd.dia} title={tooltip}
+                        onClick={
+                          role === 'admin' && !cd.isWeekend && !cd.feriado && !cd.recesso
+                            ? () => toggleEmenda(dataStr) : undefined
+                        }
+                        style={{
+                          width: isMobile ? 38 : 24, textAlign: 'center',
+                          fontSize: isMobile ? 9 : 10, padding: '6px 1px',
+                          fontWeight: 600, background: bg, lineHeight: 1.2,
+                          opacity: naoLetivo ? 0.55 : 1,
+                          cursor: role === 'admin' && !cd.isWeekend && !cd.feriado && !cd.recesso
+                            ? 'pointer' : 'default',
+                        }}
+                      >
+                        <div>{cd.dia}</div>
+                        {cd.feriado && <div style={{ fontSize: 7 }}>🎉</div>}
+                        {!cd.feriado && cd.recesso && <div style={{ fontSize: 7 }}>🏖️</div>}
+                        {cd.isEmenda && <div style={{ fontSize: 7 }}>⛔</div>}
+                        {cd.isSabadoLetivo && <div style={{ fontSize: 7 }}>📚</div>}
+                      </th>
+                    );
+                  })}
                   <th style={{ width: 30, textAlign: 'center', fontSize: 11, color: '#bbf7d0', padding: '8px 2px', borderLeft: '2px solid rgba(255,255,255,0.25)' }}>P</th>
                   <th style={{ width: 30, textAlign: 'center', fontSize: 11, color: '#fca5a5', padding: '8px 2px' }}>F</th>
                   <th style={{ width: 30, textAlign: 'center', fontSize: 11, color: '#fdba74', padding: '8px 2px' }}>J</th>
@@ -765,34 +847,39 @@ export default function Faltas() {
                         </div>
                       </td>
                       {statusTxt ? (
-                        <td colSpan={numDias + 5} style={{ textAlign: 'center', color: '#7c3aed', fontStyle: 'italic', fontSize: 12, padding: 8 }}>
+                        <td colSpan={calDays.length + 5} style={{ textAlign: 'center', color: '#7c3aed', fontStyle: 'italic', fontSize: 12, padding: 8 }}>
                           {statusTxt}
                         </td>
                       ) : (
                         <>
-                          {dias.map((status, d) => (
-                            <td key={d}
-                              onClick={() => toggleDia(a.id, d)}
-                              title={`Dia ${d + 1}: ${ST_LABEL[status]} — clique para alternar`}
-                              style={{
-                                width: isMobile ? 38 : 24,
-                                textAlign: 'center', cursor: 'pointer',
-                                background: ST_BG[status],
-                                color: ST_COR[status],
-                                fontWeight: 700,
-                                fontSize: isMobile ? 13 : 11,
-                                padding: isMobile ? '12px 0' : '7px 0',
+                          {calDays.map(cd => {
+                            if (!cd.isLetivo) {
+                              const bg = cd.recesso ? '#1a2f4a' : cd.isWeekend ? '#1f2937' : '#283548';
+                              return <td key={cd.dia} style={{
+                                width: isMobile ? 38 : 24, background: bg,
                                 borderLeft: '1px solid var(--border-light)',
-                                userSelect: 'none',
-                                transition: 'opacity 0.1s',
-                                touchAction: 'manipulation',
-                              }}
-                              onMouseEnter={!isMobile ? (e => (e.currentTarget.style.opacity = '0.75')) : undefined}
-                              onMouseLeave={!isMobile ? (e => (e.currentTarget.style.opacity = '1')) : undefined}
-                            >
-                              {status}
-                            </td>
-                          ))}
+                              }} />;
+                            }
+                            const status = dias[cd.schoolIdx] ?? 'P';
+                            return (
+                              <td key={cd.dia}
+                                onClick={() => toggleDia(a.id, cd.schoolIdx)}
+                                title={`Dia ${cd.dia}: ${ST_LABEL[status]}${cd.isSabadoLetivo ? ' (Sábado Letivo)' : ''}`}
+                                style={{
+                                  width: isMobile ? 38 : 24, textAlign: 'center', cursor: 'pointer',
+                                  background: ST_BG[status], color: ST_COR[status],
+                                  fontWeight: 700, fontSize: isMobile ? 13 : 11,
+                                  padding: isMobile ? '12px 0' : '7px 0',
+                                  borderLeft: '1px solid var(--border-light)',
+                                  userSelect: 'none', transition: 'opacity 0.1s', touchAction: 'manipulation',
+                                }}
+                                onMouseEnter={!isMobile ? (e => (e.currentTarget.style.opacity = '0.75')) : undefined}
+                                onMouseLeave={!isMobile ? (e => (e.currentTarget.style.opacity = '1')) : undefined}
+                              >
+                                {status}
+                              </td>
+                            );
+                          })}
                           <td style={{ textAlign: 'center', color: ST_COR.P, fontWeight: 700, fontSize: 13, padding: '0 2px', borderLeft: '2px solid var(--border-light)' }}>{nP}</td>
                           <td style={{ textAlign: 'center', color: nF > 0 ? ST_COR.F : theme.textMuted, fontWeight: 700, fontSize: 13, padding: '0 2px' }}>{nF > 0 ? nF : '—'}</td>
                           <td style={{ textAlign: 'center', color: nJ > 0 ? ST_COR.J : theme.textMuted, fontWeight: 700, fontSize: 13, padding: '0 2px' }}>{nJ > 0 ? nJ : '—'}</td>
@@ -816,7 +903,7 @@ export default function Faltas() {
                   }}>
                     Totais
                   </td>
-                  <td colSpan={numDias} />
+                  <td colSpan={calDays.length} />
                   <td style={{ textAlign: 'center', color: ST_COR.P, fontWeight: 700, fontSize: 13, borderLeft: '2px solid var(--border-light)' }}>{totalP}</td>
                   <td style={{ textAlign: 'center', color: totalF > 0 ? ST_COR.F : theme.textMuted, fontWeight: 700, fontSize: 13 }}>{totalF > 0 ? totalF : '—'}</td>
                   <td style={{ textAlign: 'center', color: totalJ > 0 ? ST_COR.J : theme.textMuted, fontWeight: 700, fontSize: 13 }}>{totalJ > 0 ? totalJ : '—'}</td>
@@ -825,6 +912,21 @@ export default function Faltas() {
                 </tr>
               </tbody>
             </table>
+          </div>
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 12, marginTop: 10, marginBottom: 12, alignItems: 'center' }}>
+            <span style={{ color: ST_COR.P, fontWeight: 700 }}>🟢 P=Presença</span>
+            <span style={{ color: ST_COR.F, fontWeight: 700 }}>🔴 F=Falta</span>
+            <span style={{ color: ST_COR.J, fontWeight: 700 }}>🟠 J=Justificado</span>
+            <span style={{ color: ST_COR.A, fontWeight: 700 }}>🟣 A=Atestado</span>
+            <span style={{ fontSize: 11, color: theme.textMuted }}>
+              · 🎉 Feriado &nbsp; 🏖️ Recesso
+            </span>
+            {role === 'admin' && (
+              <span style={{ fontSize: 11, color: '#f97316' }}>
+                · Admin: clique no Nº do dia para marcar/desmarcar emenda ⛔
+              </span>
+            )}
           </div>
 
           <button

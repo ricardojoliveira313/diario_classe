@@ -119,10 +119,73 @@ export const SITUACOES = ['ATIVO', 'REMA', 'BXTR', 'TRAN', 'N COM', 'ABAN'];
 export const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 export const MESES_ABR = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 
+// ── Calendário Escolar 2026 — EMEIEF Luiz Gonzaga — Santo André/SP ────────
+
+/** Feriados fixos que se repetem todo ano (chave: 'MM-DD') */
+export const FERIADOS_FIXOS: Record<string, string> = {
+  '01-01': 'Ano Novo',
+  '04-08': 'Aniversário de Santo André',
+  '04-21': 'Tiradentes',
+  '05-01': 'Dia do Trabalhador',
+  '07-09': 'Revolução Constitucionalista (SP)',
+  '09-07': 'Independência do Brasil',
+  '10-12': 'Nossa Senhora Aparecida',
+  '10-13': 'Dia do Professor',
+  '10-28': 'Dia do Servidor Público',
+  '11-02': 'Dia de Finados',
+  '11-20': 'Dia da Consciência Negra',
+  '12-25': 'Natal',
+};
+
+/** Feriados e emendas móveis por ano (chave: 'MM-DD') */
+export const FERIADOS_MOVEIS: Record<number, Record<string, string>> = {
+  2026: {
+    '02-16': 'Emenda Carnaval',
+    '02-17': 'Carnaval',
+    '04-03': 'Sexta-feira Santa',
+    '04-20': 'Emenda Tiradentes',
+    '06-04': 'Corpus Christi',
+    '06-05': 'Emenda Corpus Christi',
+    '07-10': 'Emenda Revolução Constitucionalista',
+  },
+};
+
+/** Sábados que são dias letivos (compensação) */
+export const SABADOS_LETIVOS: Record<number, string[]> = {
+  2026: ['2026-06-27', '2026-12-12'],
+};
+
+/** Períodos de recesso/férias sem aulas para alunos */
+export const RECESSO_ESCOLAR: Record<number, Array<{ inicio: string; fim: string; descricao: string }>> = {
+  2026: [
+    { inicio: '2026-01-01', fim: '2026-02-05', descricao: 'Férias de verão' },
+    { inicio: '2026-07-09', fim: '2026-07-28', descricao: 'Recesso escolar — julho' },
+    { inicio: '2026-12-23', fim: '2026-12-31', descricao: 'Recesso de final de ano' },
+  ],
+};
+
+export function getFeriado(ano: number, mes: number, dia: number): string | null {
+  const mmdd = String(mes).padStart(2, '0') + '-' + String(dia).padStart(2, '0');
+  return FERIADOS_FIXOS[mmdd] ?? FERIADOS_MOVEIS[ano]?.[mmdd] ?? null;
+}
+
+export function isRecesso(ano: number, mes: number, dia: number): string | null {
+  const data = new Date(ano, mes - 1, dia);
+  for (const r of (RECESSO_ESCOLAR[ano] ?? [])) {
+    if (data >= new Date(r.inicio) && data <= new Date(r.fim)) return r.descricao;
+  }
+  return null;
+}
+
+export function isSabadoLetivo(ano: number, mes: number, dia: number): boolean {
+  const s = `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+  return (SABADOS_LETIVOS[ano] ?? []).includes(s);
+}
+
 // Calendário letivo por ano e mês — atualize anualmente
 export const DIAS_LETIVOS_ANO: Record<number, Record<number, number>> = {
   2025: { 1: 0, 2: 19, 3: 21, 4: 19, 5: 21, 6: 20, 7: 10, 8: 21, 9: 22, 10: 19, 11: 20, 12: 15 },
-  2026: { 1: 4, 2: 13, 3: 22, 4: 18, 5: 20, 6: 21, 7: 9, 8: 21, 9: 22, 10: 18, 11: 20, 12: 17 },
+  2026: { 1: 0, 2: 13, 3: 22, 4: 18, 5: 20, 6: 21, 7: 9, 8: 21, 9: 21, 10: 19, 11: 19, 12: 17 },
   2027: { 1: 0, 2: 20, 3: 23, 4: 18, 5: 21, 6: 20, 7: 10, 8: 22, 9: 22, 10: 20, 11: 20, 12: 14 },
 };
 
