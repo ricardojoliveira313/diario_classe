@@ -42,6 +42,13 @@ export default function Alunos() {
     if (filtroProfessora && turmaMap.get(a.turmaId)?.professora !== filtroProfessora) return false;
     if (filtroDefi && a.deficiencia !== filtroDefi) return false;
     return true;
+  }).sort((a, b) => {
+    // Alfabético por nome; mesmo nome → REMA antes do ATIVO (ficam juntos)
+    const nomeA = (a.nome ?? '').toLowerCase();
+    const nomeB = (b.nome ?? '').toLowerCase();
+    if (nomeA !== nomeB) return nomeA.localeCompare(nomeB, 'pt-BR');
+    const ordemSit: Record<string, number> = { REMA: 0, ATIVO: 1, TRAN: 2, BXTR: 3, 'N COM': 4, ABAN: 5 };
+    return (ordemSit[a.situacao] ?? 9) - (ordemSit[b.situacao] ?? 9);
   });
 
   const totalAtivos = alunos.filter(a => a.situacao === 'ATIVO').length;
