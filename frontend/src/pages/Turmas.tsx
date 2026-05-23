@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { api } from '../api';
-import { theme, btn, input, label, card as cardStyle } from '../styles';
+import { theme, btn, input, label, card as cardStyle, sortTurmasPedagogico } from '../styles';
 import { Loading, EmptyState, Spinner } from '../components';
 
 // normaliza para comparação: maiúsculas, sem acento, sem ordinais, espaços simples
@@ -40,7 +40,7 @@ export default function Turmas() {
   const [resultImport, setResultImport] = useState<{ ok: number; nao: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const load = () => api.getTurmas().then(setTurmas).finally(() => setLoading(false));
+  const load = () => api.getTurmas().then(d => setTurmas(sortTurmasPedagogico(d || []))).finally(() => setLoading(false));
   useEffect(() => { load(); }, []);
 
   const save = async () => {
