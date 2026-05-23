@@ -42,16 +42,13 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function AppContent() {
+function AppShell() {
   const [menuAberto, setMenuAberto] = useState(false);
   const [nPendentes, setNPendentes] = useState(0);
   const [scrolled, setScrolled] = useState(false);
   const { theme: themeMode, toggle: toggleTheme } = useTheme();
   const { ano, setAno } = useAno();
   const { role, username, logout } = useAuth();
-
-  // Se não estiver logado, mostra tela de login
-  if (!role) return <Login />;
 
   useEffect(() => {
     api.contarPendentes().then(setNPendentes).catch(() => {});
@@ -204,6 +201,13 @@ function AppContent() {
       </div>
     </BrowserRouter>
   );
+}
+
+// ─── Controle de autenticação ─────────────────────────────────────────────────
+function AppContent() {
+  const { role } = useAuth();
+  if (!role) return <Login />;
+  return <AppShell />;
 }
 
 function App() {
