@@ -378,15 +378,43 @@ export default function Importar() {
 
               if (alunosMap.has(key)) {
                 const e = alunosMap.get(key)!;
-                if (mes > 0 && faltasQtd >= 0) {
-                  e.faltas[mes] = { faltas: faltasQtd, frequencia: freqTexto };
+                const seriesDiferentes = serie && e.serie && normalizeStr(serie) !== normalizeStr(e.serie);
+
+                if (seriesDiferentes) {
+                  const sufKey = `${key}|${normalizeStr(serie)}`;
+                  if (alunosMap.has(sufKey)) {
+                    const e2 = alunosMap.get(sufKey)!;
+                    if (mes > 0 && faltasQtd >= 0) e2.faltas[mes] = { faltas: faltasQtd, frequencia: freqTexto };
+                    if (situacao !== 'ATIVO') e2.situacao = situacao;
+                    if (professora) e2.professora = professora;
+                    if (dataInicioMatricula) e2.dataInicioMatricula = dataInicioMatricula;
+                    if (dataFimMatricula) e2.dataFimMatricula = dataFimMatricula;
+                    if (dataMovimentacao) e2.dataMovimentacao = dataMovimentacao;
+                    if (deficiencia) e2.deficiencia = deficiencia;
+                  } else {
+                    alunosMap.set(sufKey, {
+                      nome, nomeNorm: normalizeNome(nome),
+                      ra, nascimento: nasc,
+                      serie, professora,
+                      situacao, deficiencia,
+                      bolsaFamilia,
+                      dataInicioMatricula, dataFimMatricula, dataMovimentacao,
+                      nis: '', responsavel: '',
+                      cpf: String(nr['CPF'] ?? '').replace(/\D/g, '') || '',
+                      corRaca: '',
+                      turmaOrigem: '', professoraOrigem: '', turmaDestino: '', professoraDestino: '',
+                      faltas: mes > 0 && faltasQtd >= 0 ? { [mes]: { faltas: faltasQtd, frequencia: freqTexto } } : {},
+                    });
+                  }
+                } else {
+                  if (mes > 0 && faltasQtd >= 0) e.faltas[mes] = { faltas: faltasQtd, frequencia: freqTexto };
+                  if (situacao !== 'ATIVO') e.situacao = situacao;
+                  if (professora) e.professora = professora;
+                  if (dataInicioMatricula) e.dataInicioMatricula = dataInicioMatricula;
+                  if (dataFimMatricula) e.dataFimMatricula = dataFimMatricula;
+                  if (dataMovimentacao) e.dataMovimentacao = dataMovimentacao;
+                  if (deficiencia) e.deficiencia = deficiencia;
                 }
-                if (situacao !== 'ATIVO') e.situacao = situacao;
-                if (professora) e.professora = professora;
-                if (dataInicioMatricula) e.dataInicioMatricula = dataInicioMatricula;
-                if (dataFimMatricula) e.dataFimMatricula = dataFimMatricula;
-                if (dataMovimentacao) e.dataMovimentacao = dataMovimentacao;
-                if (deficiencia) e.deficiencia = deficiencia;
                 continue;
               }
 
@@ -395,46 +423,9 @@ export default function Importar() {
                 ra, nascimento: nasc,
                 serie, professora,
                 situacao, deficiencia,
-                bolsaFamilia: parseBool(nr['BOLSA FAMILIA'] ?? nr['BOLSA FAMLIA']),
-                dataInicioMatricula: fmtDate(
-                  nr['DATA INICIO MATRICULA'] ??
-                  nr['DATA DE INICIO DA MATRICULA'] ??
-                  nr['DT INICIO MATRICULA'] ??
-                  nr['INICIO DA MATRICULA'] ??
-                  nr['INICIO MATRICULA'] ??
-                  nr['DATA DA MATRICULA'] ??
-                  nr['DT INICIO'] ??
-                  nr[Object.keys(nr).find(k =>
-                    k.replace(/[ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜ]/gi, c =>
-                      'AAAAAAAEEEEIIIIOOOOOOUUUU'['ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜ'.indexOf(c)]
-                    ).includes('INICIO') &&
-                    k.replace(/[ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜ]/gi, c =>
-                      'AAAAAAAEEEEIIIIOOOOOOUUUU'['ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜ'.indexOf(c)]
-                    ).includes('MATRICULA')
-                  ) ?? '']
-                ),
-                dataFimMatricula: fmtDate(
-                  nr['DATA FIM MATRICULA'] ??
-                  nr['DT FIM MATRICULA'] ??
-                  nr['FIM MATRICULA'] ??
-                  nr['DATA FIM'] ??
-                  nr[Object.keys(nr).find(k =>
-                    k.replace(/[ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜ]/gi, c =>
-                      'AAAAAAAEEEEIIIIOOOOOOUUUU'['ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜ'.indexOf(c)]
-                    ).includes('FIM') &&
-                    k.replace(/[ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜ]/gi, c =>
-                      'AAAAAAAEEEEIIIIOOOOOOUUUU'['ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜ'.indexOf(c)]
-                    ).includes('MATRICULA')
-                  ) ?? '']
-                ),
-                dataMovimentacao: fmtDate(
-                  nr['DATA MOVIMENTACAO'] ??
-                  nr['DT MOVIMENTACAO'] ??
-                  nr['DATA DE MOVIMENTACAO'] ??
-                  nr[Object.keys(nr).find(k => k.includes('MOVIMENTAC') || k.includes('MOVIM')) ?? '']
-                ),
-                nis: '',
-                responsavel: '',
+                bolsaFamilia,
+                dataInicioMatricula, dataFimMatricula, dataMovimentacao,
+                nis: '', responsavel: '',
                 cpf: String(nr['CPF'] ?? '').replace(/\D/g, '') || '',
                 corRaca: '',
                 turmaOrigem: '', professoraOrigem: '', turmaDestino: '', professoraDestino: '',
