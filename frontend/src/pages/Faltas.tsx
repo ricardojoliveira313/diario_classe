@@ -624,10 +624,10 @@ export default function Faltas() {
           {alunos.length > 0 && (
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               <button onClick={exportarFolhaOCR} style={btn('primary', { small: true, outline: true })} title="Folha simples (A4 retrato) para professor preencher número de faltas — fácil de fotografar">📋 Folha</button>
+              <button onClick={exportarGradeDias} style={btn('primary', { small: true, outline: true })} title="Grade com X por dia (A4 paisagem) para fotografar e ler com OCR">📅 Grade OCR</button>
               <button onClick={exportarDiario} style={btn('warning', { small: true, outline: true })} title="Diário tradicional com todos os dias do mês">🖨️ Diário</button>
               <button onClick={exportarExcel} style={btn('success', { small: true, outline: true })}>📊 Excel</button>
               <button onClick={exportarPDF} style={btn('danger', { small: true, outline: true })}>📄 PDF</button>
-              <button onClick={exportarFolhaOCR} style={{ ...btn('primary', { small: true, outline: true }), color: '#64748b', borderColor: '#64748b' }}>📋 Folha OCR</button>
             </div>
           )}
         </div>
