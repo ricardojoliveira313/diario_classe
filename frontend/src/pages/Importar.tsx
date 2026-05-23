@@ -277,7 +277,8 @@ export default function Importar() {
 
         const ra = parseInt(String(nr['RA'] ?? '')) || null;
         const nasc = fmtDate(nr['DATA DE NASCIMENTO'] ?? nr['DATA NASCIMENTO']);
-        const key = `${normalizeStr(nome)}|${ra}|${nasc}`;
+        // Chave RA-first: igual ao mkKey() do merge — garante cruzamento correto entre arquivos
+        const key = ra ? `RA:${ra}` : `${normalizeStr(nome)}|${nasc}`;
         const mes = getMes(sheetName, nr);
 
         let faltasQtd = 0;
@@ -294,17 +295,32 @@ export default function Importar() {
         const deficiencia = String(nr['DEFICIENCIA'] ?? '').trim();
         const professora = String(nr['PROFESSORA'] ?? '').trim();
         const bolsaFamilia = parseBool(nr['BOLSA FAMILIA'] ?? nr['BOLSA FAMLIA']);
-        const _inicioKey = Object.keys(nr).find(k => k.includes('INICIO') && k.includes('MATRICULA'));
+        // Lookup dinâmico — suporta "Data Início Matrícula", "Dt Início Matrícula", "DT INICIO MATRICULA" etc.
+        const _inicioKey = Object.keys(nr).find(k =>
+          (k.includes('INICIO') || k.includes('DT ') || k.includes('DATA ')) && k.includes('MATRICULA')
+          && !k.includes('FIM') && !k.includes('TERMINO')
+        );
         const _inicioVal = _inicioKey ? nr[_inicioKey] : undefined;
         const dataInicioMatricula = fmtDate(
           nr['DATA INICIO MATRICULA'] ??
+          nr['DT INICIO MATRICULA'] ??
           nr['DATA DE INICIO DA MATRICULA'] ??
           nr['INICIO DA MATRICULA'] ??
           nr['INICIO MATRICULA'] ??
           nr['DATA DA MATRICULA'] ??
+          nr['DATA MATRICULA'] ??
           _inicioVal
         );
-        const dataFimMatricula = fmtDate(nr['DATA FIM MATRICULA']);
+        // Lookup dinâmico para fim de matrícula — suporta "Data Fim Matrícula", "Dt Fim Matrícula" etc.
+        const _fimKey = Object.keys(nr).find(k =>
+          k.includes('MATRICULA') && (k.includes('FIM') || k.includes('TERMINO'))
+        );
+        const _fimVal = _fimKey ? nr[_fimKey] : undefined;
+        const dataFimMatricula = fmtDate(
+          nr['DATA FIM MATRICULA'] ??
+          nr['DT FIM MATRICULA'] ??
+          _fimVal
+        );
         const dataMovimentacao = fmtDate(nr['DATA MOVIMENTACAO']);
 
               if (alunosMap.has(key)) {
