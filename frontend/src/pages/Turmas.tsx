@@ -98,15 +98,26 @@ export default function Turmas() {
     reader.onload = ev => {
       const wb = XLSX.read(ev.target?.result, { type: 'binary' });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' });
-      if (!rows.length) return;
-      const keys = Object.keys(rows[0]);
-      const turmaKey = keys.find(k => norm(k).includes('TURMA') || norm(k).includes('CLASSE'));
-      const profKey = keys.find(k => norm(k).includes('PROFESSOR') || norm(k).includes('PROF') || norm(k).includes('DOCENTE'));
-      if (!turmaKey || !profKey) {
-        alert('A planilha precisa ter colunas com "TURMA" e "PROFESSOR" (ou PROFESSORA / DOCENTE).');
+      // Lê todas as linhas brutas para encontrar a linha de cabeçalho real
+      // (ignora linhas de título como "EMEIEF LUIZ GONZAGA" na linha 1)
+      const rawRows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1 }) as any[][];
+      let headerIdx = -1;
+      for (let i = 0; i < Math.min(rawRows.length, 10); i++) {
+        const row = rawRows[i] ?? [];
+        const vals = row.map((v: any) => norm(String(v ?? '')));
+        if (vals.some(v => v.includes('TURMA') || v.includes('CLASSE')) &&
+            vals.some(v => v.includes('PROFESSOR') || v.includes('PROF') || v.includes('DOCENTE'))) {
+          headerIdx = i; break;
+        }
+      }
+      if (headerIdx < 0) {
+        alert('Não encontrei colunas com "TURMA" e "PROFESSOR" nas primeiras 10 linhas da planilha.');
         return;
       }
+      const headers = rawRows[headerIdx].map((v: any) => String(v ?? '').trim());
+      const turmaKey = headers.findIndex(h => norm(h).includes('TURMA') || norm(h).includes('CLASSE'));
+      const profKey  = headers.findIndex(h => norm(h).includes('PROFESSOR') || norm(h).includes('PROF') || norm(h).includes('DOCENTE'));
+      const rows = rawRows.slice(headerIdx + 1);
       const texto = rows
         .filter(r => r[turmaKey] && r[profKey])
         .map(r => `${r[turmaKey]} | ${r[profKey]}`)
