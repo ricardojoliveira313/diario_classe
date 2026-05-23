@@ -44,6 +44,22 @@ function normalizeStr(s: string): string {
 
 const ARTIGOS = new Set(['DE', 'DA', 'DO', 'DOS', 'DAS', 'E', 'NO', 'NA']);
 
+/** Normalização COMPLETA para nomes de alunos — fecha o cerco do cruzamento.
+ *  Garante match mesmo com: hífen, apóstrofe, pontos, espaços duplos, acentos.
+ *  Ex: "MARIA-CLARA" = "MARIA CLARA" | "D'AVILA" = "DAVILA" | "JR." = "JR"
+ */
+function normalizeNome(s: string): string {
+  return s
+    .toUpperCase().trim()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[-]/g, ' ')
+    .replace(/[.]/g, '')
+    .replace(/[\u2018\u2019\u0060\u00b4']/g, ' ')
+    .replace(/[\u00aa\u00ba\u00b0]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function nomeSignificativo(nome: string): string {
   return nome.split(' ').filter(p => p.length >= 2 && !ARTIGOS.has(p)).join(' ');
 }
@@ -209,7 +225,7 @@ export default function Importar() {
           // o merge com Excel preencherá nascimento, situação e deficiência via RA.
           if (!serieAluno) continue; // sem turma identificada, descarta
           alunos.push({
-            nome, nomeNorm: normalizeStr(nome),
+            nome, nomeNorm: normalizeNome(nome),
             ra: parseInt(raStr) || null,
             nascimento: '',
             serie: serieAluno,
@@ -238,7 +254,7 @@ export default function Importar() {
         const isAtivo = situacao === 'ATIVO';
 
         alunos.push({
-          nome, nomeNorm: normalizeStr(nome),
+          nome, nomeNorm: normalizeNome(nome),
           ra: parseInt(raStr) || null,
           nascimento,
           serie: serieAluno,
@@ -303,7 +319,7 @@ export default function Importar() {
 
         const ra = parseInt(String(nr['RA'] ?? '')) || null;
         const nasc = fmtDate(nr['DATA DE NASCIMENTO'] ?? nr['DATA NASCIMENTO']);
-        const key = `${normalizeStr(nome)}|${ra}|${nasc}`;
+        const key = ra ? `RA:${ra}` : `${normalizeNome(nome)}|${nasc}`; // RA-first: alinha com mkKey do merge
         const mes = getMes(sheetName, nr);
 
         let faltasQtd = 0;
@@ -361,7 +377,7 @@ export default function Importar() {
               }
 
               alunosMap.set(key, {
-                nome, nomeNorm: normalizeStr(nome),
+                nome, nomeNorm: normalizeNome(nome),
                 ra, nascimento: nasc,
                 serie, professora,
                 situacao, deficiencia,
@@ -518,11 +534,11 @@ export default function Importar() {
                 else if (v.length > 2 && !/^\d/.test(v) && !nasc) defi = v;
               }
               const ra = parseInt(raStr) || null;
-              const key = normalizeStr(nome) + '|' + (ra || '') + '|' + nasc;
+              const key = ra ? `RA:${ra}` : `${normalizeNome(nome)}|${nasc}`;
               if (processados.has(key)) continue;
               processados.add(key);
               alunos.push({
-                nome, nomeNorm: normalizeStr(nome),
+                nome, nomeNorm: normalizeNome(nome),
                 ra, nascimento: nasc, serie,
                 professora: '', situacao: situ, deficiencia: defi,
                 bolsaFamilia: false,
@@ -587,7 +603,7 @@ export default function Importar() {
         if (lastNomeIdx < 0) continue;
         const afterNome = lookback.substring(lastNomeIdx + 5).trimStart();
         const nameStop = afterNome.search(/Dt\.\s*Nasc\.|NIS:|S[eé]rie:|Respons/);
-        const nome = normalizeStr((nameStop > 0 ? afterNome.substring(0, nameStop) : afterNome).trim());
+        const nome = normalizeNome((nameStop > 0 ? afterNome.substring(0, nameStop) : afterNome).trim());
 
         const nascMatches = [...lookback.matchAll(/Dt\.\s*Nasc\.:\s*(\d{2}\/\d{2}\/\d{4})/g)];
         const nasc = nascMatches.length > 0 ? nascMatches[nascMatches.length - 1][1] : '';
@@ -604,7 +620,7 @@ export default function Importar() {
           const nascM = bloco.match(/Dt\.\s*Nasc\.:\s*(\d{2}\/\d{2}\/\d{4})/);
           const nisM = bloco.match(/\bNIS:\s*(\d{11})/);
           if (nomeM?.[1] && nisM?.[1]) {
-            indexar(normalizeStr(nomeM[1].trim()), nascM?.[1] ?? '', nisM[1], '');
+            indexar(normalizeNome(nomeM[1].trim()), nascM?.[1] ?? '', nisM[1], '');
           }
         }
       }
@@ -640,7 +656,7 @@ export default function Importar() {
         const l = linha.trim();
         const nomeM = l.match(/^Nome:\s*(.+)/i);
         if (nomeM) {
-          currentNome = normalizeStr(nomeM[1].trim());
+          currentNome = normalizeNome(nomeM[1].trim());
           currentNasc = '';
           currentResp = '';
           continue;
@@ -1206,7 +1222,7 @@ export default function Importar() {
       const nomeToId = new Map<string, string>();
       for (const a of (alunosDb ?? [])) {
         if (a.ra) raToId.set(String(a.ra), a.id);
-        nomeToId.set(normalizeStr(a.nome), a.id);
+        nomeToId.set(normalizeNome(a.nome), a.id);
       }
 
       // ─── PASSO 4: EDUCACENSO — salva na tabela independente ───

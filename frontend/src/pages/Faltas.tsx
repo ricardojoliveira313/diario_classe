@@ -262,7 +262,7 @@ export default function Faltas() {
   };
 
   // ── Folha OCR — Grade de Dias com X (A4 paisagem, células VAZIAS) ─────
-  const exportarFolhaOCR = () => {
+  const exportarGradeDias = () => {
     const turmaObj = turmas.find(t => t.id === turmaId);
     const nomeMes = MESES[mes - 1];
     const diasNoMes = new Date(ano, mes, 0).getDate();

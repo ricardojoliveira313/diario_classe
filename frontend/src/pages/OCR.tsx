@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { createWorker } from 'tesseract.js';
 import { api } from '../api';
+import { useAno } from '../AnoContext';
 
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
@@ -119,6 +120,7 @@ function parseOCRFolhaFallback(line: string): AlunoFolhaDia | null {
 }
 
 export default function OCR() {
+  const { ano } = useAno();
   const [turmas, setTurmas] = useState<any[]>([]);
   const [turmaId, setTurmaId] = useState('');
   const [mes, setMes] = useState(new Date().getMonth() + 1);
@@ -219,7 +221,7 @@ export default function OCR() {
           });
         }
         if (!aluno) continue;
-        registros.push({ alunoId: aluno.id, turmaId, mes, ano: 2026, faltas: e.faltas, frequencia: '' });
+        registros.push({ alunoId: aluno.id, turmaId, mes, ano, faltas: e.faltas, frequencia: '' });
       }
       if (registros.length === 0) throw new Error('Não foi possível cruzar os nomes. Verifique se a turma selecionada está correta.');
       await api.upsertFaltasBatch(registros);
@@ -260,7 +262,7 @@ export default function OCR() {
           alunoId: aluno.id,
           turmaId,
           mes,
-          ano: 2026,
+          ano,
           faltas: diasStr.filter(d => d === 'F').length,
           frequencia: 'DIAS:' + diasStr.join(''),
         });
@@ -346,7 +348,7 @@ export default function OCR() {
         <div style={{ background: '#f0fdf4', border: '2px solid #16a34a', borderRadius: 12, padding: 28, textAlign: 'center' }}>
           <div style={{ fontSize: 48 }}>✅</div>
           <p style={{ fontWeight: 700, color: '#16a34a', marginTop: 8, fontSize: 16 }}>Faltas salvas com sucesso!</p>
-          <p style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>{turma?.nome} — {MESES[mes - 1]} 2026</p>
+          <p style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>{turma?.nome} — {MESES[mes - 1]} {ano}</p>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 16 }}>
             <button onClick={reiniciar}
               style={{ padding: '10px 20px', borderRadius: 8, background: '#1e40af', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 700 }}>
