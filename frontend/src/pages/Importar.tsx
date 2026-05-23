@@ -922,6 +922,7 @@ export default function Importar() {
           existente.professora = existente.professora || a.professora;
           existente.situacao = a.situacao !== 'ATIVO' ? a.situacao : existente.situacao;
           existente.deficiencia = existente.deficiencia || a.deficiencia;
+          if (a.numero) existente.numero = a.numero;
           if (a.serie && a.serie.length > (existente.serie?.length ?? 0)) {
             existente.serie = a.serie;
           }
