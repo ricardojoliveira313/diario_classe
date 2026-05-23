@@ -54,7 +54,13 @@ export default function Alunos() {
     if (filtroProfessora && turmaMap.get(a.turmaId)?.professora !== filtroProfessora) return false;
     if (filtroDefi && a.deficiencia !== filtroDefi) return false;
     return true;
-  }).sort((a, b) => (a.numero || 9999) - (b.numero || 9999));
+  }).sort((a, b) => {
+    const normDate = (d: string) => d ? d.split('/').reverse().join('-') : '9999-99-99';
+    const da = normDate(a.data_inicio_matricula);
+    const db = normDate(b.data_inicio_matricula);
+    if (da !== db) return da.localeCompare(db);
+    return (a.nome || '').localeCompare(b.nome || '');
+  });
 
   const totalAtivos = alunos.filter(a => a.situacao === 'ATIVO').length;
   const totalBolsa = alunos.filter(a => a.bolsa_familia).length;
@@ -117,7 +123,7 @@ export default function Alunos() {
     const dados = alunosFiltrados.map((a, i) => {
       const t = turmaMap.get(a.turmaId);
       return {
-        'Nº': a.numero || i + 1,
+        'Nº': i + 1,
         'Nome do Aluno': a.nome,
         'RA': a.ra ?? '',
         'Dig. RA': a.dig_ra ?? '',
@@ -150,7 +156,7 @@ export default function Alunos() {
       const ra = String(a.ra ?? '').padEnd(12);
       const sit = (SITUACAO_LABEL[a.situacao] ?? a.situacao ?? '').padEnd(14);
       const defi = (a.deficiencia ?? '').substring(0, 22).padEnd(22);
-      return `${String(a.numero || i + 1).padStart(2)} ${nome} ${ra} ${sit} ${defi}`;
+      return `${String(i + 1).padStart(2)} ${nome} ${ra} ${sit} ${defi}`;
     });
     const titulo = `RELAÇÃO DE ALUNOS — ${turmaSel?.nome ?? 'Todas as Turmas'}`;
     const conteudo = [
@@ -315,8 +321,8 @@ export default function Alunos() {
                     }}
                     onMouseEnter={e => { if (editandoId !== a.id) e.currentTarget.style.background = 'var(--ghost-bg)'; }}
                     onMouseLeave={e => { if (editandoId !== a.id) e.currentTarget.style.background = ''; }}>
-                    <span style={{ fontSize: 13, color: theme.textMuted }}>{a.numero || i + 1}</span>
-                    <div>
+<span style={{ fontSize: 13, color: theme.textMuted }}>{i + 1}</span>
+                  <div>
                       <div style={{ fontSize: 15, fontWeight: 600, color: theme.text }}>{a.nome}</div>
                       <div style={{ fontSize: 12, color: theme.textMuted, marginTop: 2 }}>
                         {a.data_nascimento || ''}
