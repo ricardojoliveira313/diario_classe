@@ -125,12 +125,12 @@ export default function Faltas() {
       const rowBg = alerta ? '#fff1f2' : i % 2 === 0 ? '#ffffff' : '#f8fafc';
       const freqColor = alerta ? '#dc2626' : freqNum >= 90 ? '#16a34a' : '#d97706';
       return `<tr style="background:${rowBg};">
-      <td style="border:1px solid #cbd5e1;padding:5px 6px;text-align:center;font-size:12px;font-weight:700;width:28px;">${String(a.numero || i + 1).padStart(2, '0')}</td>
-      <td style="border:1px solid #cbd5e1;padding:5px 8px;font-size:12px;${alerta ? 'font-weight:700;' : ''}">${a.nome}${defi}${bf}${alerta ? ' <span style="color:#dc2626;font-size:10px;">⚠️</span>' : ''}</td>
-      <td style="border:1px solid #cbd5e1;padding:5px 4px;text-align:center;font-size:12px;color:#dc2626;font-weight:${nF > 0 ? '700' : '400'};">${nF}</td>
-      <td style="border:1px solid #cbd5e1;padding:5px 4px;text-align:center;font-size:12px;color:#d97706;font-weight:${nJ > 0 ? '700' : '400'};">${nJ}</td>
-      <td style="border:1px solid #cbd5e1;padding:5px 4px;text-align:center;font-size:12px;color:#7c3aed;font-weight:${nA > 0 ? '700' : '400'};">${nA}</td>
-      <td style="border:1px solid #cbd5e1;padding:5px 6px;text-align:center;font-size:12px;font-weight:700;color:${freqColor};">${freq}%</td>
+      <td style="border:1px solid #333;padding:5px 6px;text-align:center;font-size:12px;font-weight:700;width:28px;">${String(a.numero || i + 1).padStart(2, '0')}</td>
+      <td style="border:1px solid #333;padding:5px 8px;font-size:12px;${alerta ? 'font-weight:700;' : ''}">${a.nome}${defi}${bf}${alerta ? ' <span style="color:#dc2626;font-size:10px;">⚠️</span>' : ''}</td>
+      <td style="border:1px solid #333;padding:5px 4px;text-align:center;font-size:12px;color:#dc2626;font-weight:${nF > 0 ? '700' : '400'};">${nF}</td>
+      <td style="border:1px solid #333;padding:5px 4px;text-align:center;font-size:12px;color:#d97706;font-weight:${nJ > 0 ? '700' : '400'};">${nJ}</td>
+      <td style="border:1px solid #333;padding:5px 4px;text-align:center;font-size:12px;color:#7c3aed;font-weight:${nA > 0 ? '700' : '400'};">${nA}</td>
+      <td style="border:1px solid #333;padding:5px 6px;text-align:center;font-size:12px;font-weight:700;color:${freqColor};">${freq}%</td>
     </tr>`;
     }).join('');
 
@@ -147,6 +147,7 @@ export default function Faltas() {
     @page { size: A4 portrait; margin: 10mm 8mm; }
     body { margin: 0; }
     .no-print { display: none; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
   }
 </style>
 </head>
@@ -202,11 +203,11 @@ export default function Faltas() {
   </tbody>
   <tfoot>
     <tr style="background:#f1f5f9; font-weight:700;">
-      <td style="border:1px solid #cbd5e1; padding:6px 4px; text-align:center; font-size:11px;" colspan="2">TOTAIS DO MÊS</td>
-      <td style="border:1px solid #cbd5e1; padding:6px 4px; text-align:center; font-size:13px; color:#dc2626;">${totalF}</td>
-      <td style="border:1px solid #cbd5e1; padding:6px 4px; text-align:center; font-size:13px; color:#d97706;">${totalJ}</td>
-      <td style="border:1px solid #cbd5e1; padding:6px 4px; text-align:center; font-size:13px; color:#7c3aed;">${totalA}</td>
-      <td style="border:1px solid #cbd5e1; padding:6px 4px; text-align:center; font-size:13px; color:${parseFloat(freqGeral) >= 75 ? '#16a34a' : '#dc2626'};">${freqGeral}%</td>
+      <td style="border:1px solid #333; padding:6px 4px; text-align:center; font-size:11px;" colspan="2">TOTAIS DO MÊS</td>
+      <td style="border:1px solid #333; padding:6px 4px; text-align:center; font-size:13px; color:#dc2626;">${totalF}</td>
+      <td style="border:1px solid #333; padding:6px 4px; text-align:center; font-size:13px; color:#d97706;">${totalJ}</td>
+      <td style="border:1px solid #333; padding:6px 4px; text-align:center; font-size:13px; color:#7c3aed;">${totalA}</td>
+      <td style="border:1px solid #333; padding:6px 4px; text-align:center; font-size:13px; color:${parseFloat(freqGeral) >= 75 ? '#16a34a' : '#dc2626'};">${freqGeral}%</td>
     </tr>
   </tfoot>
 </table>
@@ -262,19 +263,19 @@ export default function Faltas() {
     });
 
     const headerDias = diasCols.map(d =>
-      `<th style="border:1px solid #64748b;padding:0;width:22px;min-width:22px;max-width:22px;height:28px;text-align:center;vertical-align:middle;font-size:8px;font-weight:700;background:${d.isWeekend ? '#334155' : '#1e40af'};color:${d.isWeekend ? '#94a3b8' : '#ffffff'};">${d.dia}</th>`
+      `<th style="border:1px solid #333;padding:0;width:22px;min-width:22px;max-width:22px;height:28px;text-align:center;vertical-align:middle;font-size:8px;font-weight:700;background:${d.isWeekend ? '#555555' : '#1e40af'};color:#ffffff;">${d.dia}</th>`
     ).join('');
 
     const linhas = alunos.map((a, i) => {
-      const rowBg = i % 2 === 0 ? '#ffffff' : '#f8fafc';
+      const rowBg = i % 2 === 0 ? '#ffffff' : '#eeeeee';
       const celulas = diasCols.map(d =>
-        `<td style="border:1px solid ${d.isWeekend ? '#94a3b8' : '#cbd5e1'};width:22px;min-width:22px;max-width:22px;height:22px;background:${d.isWeekend ? '#f1f5f9' : rowBg};"></td>`
+        `<td style="border:1px solid #333;width:22px;min-width:22px;max-width:22px;height:22px;background:${d.isWeekend ? '#aaaaaa' : rowBg};"></td>`
       ).join('');
       const defi = a.deficiencia ? ' ♿' : '';
       const bf = a.bolsa_familia ? ' 💚' : '';
       return `<tr>
-        <td style="border:1px solid #cbd5e1;padding:2px 4px;text-align:center;width:26px;font-size:11px;font-weight:700;">${String(a.numero || i + 1).padStart(2, '0')}</td>
-        <td style="border:1px solid #cbd5e1;padding:2px 6px;font-size:10px;white-space:nowrap;">${a.nome}${defi}${bf}</td>
+        <td style="border:1px solid #333;padding:2px 4px;text-align:center;width:26px;font-size:11px;font-weight:700;">${String(a.numero || i + 1).padStart(2, '0')}</td>
+        <td style="border:1px solid #333;padding:2px 6px;font-size:10px;white-space:nowrap;">${a.nome}${defi}${bf}</td>
         ${celulas}
       </tr>`;
     }).join('');
@@ -288,7 +289,11 @@ export default function Faltas() {
   * { box-sizing: border-box; }
   body { font-family: Arial, Helvetica, sans-serif; margin: 6mm; color: #000; background: #fff; }
   table { border-collapse: collapse; }
-  @media print { @page { size: A4 landscape; margin: 7mm 6mm; } body { margin: 0; } }
+  @media print {
+    @page { size: A4 landscape; margin: 7mm 6mm; }
+    body { margin: 0; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  }
 </style>
 </head>
 <body>
@@ -324,8 +329,8 @@ export default function Faltas() {
 <table style="width:100%;">
   <thead>
     <tr>
-      <th style="border:1px solid #64748b;padding:2px;width:26px;font-size:9px;text-align:center;background:#0f172a;color:#ffffff;">Nº</th>
-      <th style="border:1px solid #64748b;padding:2px 6px;font-size:9px;text-align:left;background:#0f172a;color:#ffffff;min-width:130px;">NOME DO ALUNO</th>
+      <th style="border:1px solid #333;padding:2px;width:26px;font-size:9px;text-align:center;background:#0f172a;color:#ffffff;">Nº</th>
+      <th style="border:1px solid #333;padding:2px 6px;font-size:9px;text-align:left;background:#0f172a;color:#ffffff;min-width:130px;">NOME DO ALUNO</th>
       ${headerDias}
     </tr>
   </thead>
