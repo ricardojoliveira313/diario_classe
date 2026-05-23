@@ -1157,10 +1157,22 @@ export default function Importar() {
         nomeToExistingId.set(normalizeStr(e.nome), e.id);
       }
 
-      const alunosParaUpsert = alunos.map(a => {
-        const isRema = a.situacao === 'REMA';
-        const existingId = isRema ? undefined
-          : (raToExistingId.get(String(a.ra ?? '')) ?? nomeToExistingId.get(a.nomeNorm));
+      // RAs que aparecem como ATIVO nesta importação:
+      // alunos REMA com mesmo RA → remanejamento interno → NÃO gerar registro duplicado
+      // (o registro ATIVO já carrega turmaOrigem/professoraOrigem)
+      const ativoRAs = new Set(
+        alunos.filter(a => a.situacao === 'ATIVO' && a.ra).map(a => String(a.ra))
+      );
+
+      const alunosParaUpsert = alunos
+        .filter(a => {
+          // Descarta REMA interno (mesmo RA tem ATIVO): evita acúmulo em re-importações
+          if (a.situacao === 'REMA' && a.ra && ativoRAs.has(String(a.ra))) return false;
+          return true;
+        })
+        .map(a => {
+        // Todos os alunos (inclusive REMA externos) buscam ID existente pelo RA/nome
+        const existingId = raToExistingId.get(String(a.ra ?? '')) ?? nomeToExistingId.get(a.nomeNorm);
         return {
           id: existingId ?? crypto.randomUUID(),
           nome: a.nome,
