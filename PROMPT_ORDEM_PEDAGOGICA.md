@@ -83,16 +83,17 @@ Grupo 07 — 5º ANO
   5º ANO C · Prof. Alessandra    (Tarde)
   5º ANO D · Prof. Raquel        (Tarde)
 
-Grupo 08 — EJA / Pós-Alfabetização (Noturno)
-  EJA I              · Prof. Maria dos Anjos (Noturno)
-  Pós-Alfabetização  · Prof. Elaine          (Noturno)
+Grupo 08 — EJA Noturno
+  EJA I = Alfabetização    · Prof. Maria dos Anjos Ferreira do Carmo         (Noturno)
+  Pós-Alfabetização        · Prof. Elaine Aparecida da Silva Figueiredo      (Noturno)
 ```
 
-> ⚠️ **ATENÇÃO:** A turma **Pós-Alfabetização** (Prof. Elaine) **não existe no sistema ainda**.
-> Precisa ser cadastrada em **Turmas → Nova turma**:
-> - Nome: `PÓS-ALFABETIZAÇÃO` (confirmar nome exato com a escola)
-> - Professora: `Elaine`
-> Após cadastrada, aparecerá automaticamente após EJA I.
+> ⚠️ **ATENÇÃO:** A turma **Pós-Alfabetização** **não existe no sistema ainda**.
+> Cadastrar em **Turmas → Nova turma**:
+> - **Nome:** `PÓS-ALFABETIZAÇÃO`
+> - **Professora:** `Elaine Aparecida da Silva Figueiredo`
+>
+> O EJA I já existe com a Prof. Maria dos Anjos — ele equivale à fase de Alfabetização.
 
 ---
 
