@@ -111,7 +111,10 @@ export default function Faltas() {
   const totalA = alunos.reduce((s, a) => s + ct(diasAluno[a.id] ?? [], 'A'), 0);
   const totalP = alunos.reduce((s, a) => s + ct(diasAluno[a.id] ?? [], 'P'), 0);
   const totalAusencias = totalF + totalJ + totalA;
-  const limiteAlerta = Math.ceil(numDias * 0.25);
+  const turma = turmas.find(t => t.id === turmaId);
+  const isInfantil = turma?.etapa === 'EI';
+  const thresholdPct = isInfantil ? 0.4 : 0.25;
+  const limiteAlerta = Math.ceil(numDias * thresholdPct);
   const freqGeral = alunos.length > 0
     ? ((numDias * alunos.length - totalAusencias) / (numDias * alunos.length) * 100).toFixed(1)
     : '0.0';
@@ -119,7 +122,6 @@ export default function Faltas() {
     const dias = diasAluno[a.id] ?? [];
     return ct(dias, 'F') + ct(dias, 'J') + ct(dias, 'A') >= limiteAlerta;
   });
-  const turma = turmas.find(t => t.id === turmaId);
 
   const exportarPDF = () => {
     const turmaObj = turmas.find(t => t.id === turmaId);
@@ -690,7 +692,7 @@ export default function Faltas() {
           </div>
 
           <div style={{ fontSize: 12, color: theme.textMuted, marginBottom: 10, textAlign: 'right' }}>
-            ⚠️ Alerta: ≥ {limiteAlerta} ausências (&lt;75% frequência)
+            ⚠️ Alerta: ≥ {limiteAlerta} ausências (&lt;{isInfantil ? 60 : 75}% frequência{isInfantil ? ' — Infantil' : ''})
           </div>
 
           {/* Grid de frequência */}

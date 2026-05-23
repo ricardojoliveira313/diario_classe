@@ -32,10 +32,14 @@ export default function Dashboard() {
   const bolsa = alunos.filter(a => a.bolsa_familia).length;
   const comDefi = alunos.filter(a => a.deficiencia).length;
   const dl = getDiasLetivos(mes, ano);
-  const limiteAlerta = Math.ceil(dl * 0.25);
+  const turmaMap = new Map(turmas.map(t => [t.id, t]));
 
   const faltasMap = new Map<string, number>(faltas.map(f => [f.alunoId, f.faltas ?? 0]));
-  const alertas = alunos.filter(a => (faltasMap.get(a.id) ?? 0) >= limiteAlerta && a.situacao === 'ATIVO');
+  const alertas = alunos.filter(a => {
+    const t = turmaMap.get(a.turmaId);
+    const threshold = t?.etapa === 'EI' ? 0.4 : 0.25;
+    return (faltasMap.get(a.id) ?? 0) >= Math.ceil(dl * threshold) && a.situacao === 'ATIVO';
+  });
 
   const statsPorTurma = turmas.map(t => {
     const alunosTurma = alunos.filter(a => a.turmaId === t.id);
@@ -69,21 +73,22 @@ export default function Dashboard() {
             <StatCard label="Baixas" val={baixas} color={theme.danger} />
             <StatCard label="Bolsa Família" val={bolsa} color={theme.success} sub={`${((bolsa / total) * 100).toFixed(0)}%`} />
             <StatCard label="Deficiência" val={comDefi} color={theme.purple} />
-            <StatCard label="⚠️ Alertas" val={alertas.length} color={alertas.length > 0 ? theme.danger : theme.textMuted} sub="≥25% faltas" />
+            <StatCard label="⚠️ Alertas" val={alertas.length} color={alertas.length > 0 ? theme.danger : theme.textMuted} sub="Inf: <60% · Fund: <75%" />
           </div>
 
           {alertas.length > 0 && (
             <div style={{ background: theme.dangerLight, border: `1px solid ${theme.danger}`, borderRadius: theme.radiusMd, padding: 16, marginBottom: 20 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                 <h2 style={{ fontSize: 16, fontWeight: 700, color: theme.danger }}>
-                  ⚠️ Frequência abaixo de 75% — {MESES[mes - 1]} ({alertas.length} alunos)
+                  ⚠️ Alunos com frequência baixa — {MESES[mes - 1]} ({alertas.length} alunos)
                 </h2>
-                <span style={{ fontSize: 12, color: theme.textSecondary }}>≥{limiteAlerta} faltas</span>
+                <span style={{ fontSize: 11, color: theme.textSecondary }}>Infantil &lt;60% · Fundamental &lt;75%</span>
               </div>
               <div style={{ display: 'grid', gap: 6 }}>
-                {alertas.slice(0, 25).map(a => {
+                  {alertas.slice(0, 25).map(a => {
                   const f = faltasMap.get(a.id) ?? 0;
                   const turma = turmas.find(t => t.id === a.turmaId);
+                  const freqMin = turma?.etapa === 'EI' ? 60 : 75;
                   const freq = ((dl - f) / dl * 100).toFixed(0);
                   return (
                     <div key={a.id} style={{
@@ -94,7 +99,7 @@ export default function Dashboard() {
                       <div>
                         <span style={{ fontWeight: 600 }}>{a.nome}</span>
                         {a.bolsa_familia && <span style={{ marginLeft: 6, fontSize: 12, color: theme.success, fontWeight: 700 }}>BF</span>}
-                        <div style={{ fontSize: 12, color: theme.textMuted }}>{turma?.nome} · {turma?.professora || '—'}</div>
+                        <div style={{ fontSize: 12, color: theme.textMuted }}>{turma?.nome} · {turma?.professora || '—'}{turma?.etapa ? ` · ${turma.etapa}` : ''}</div>
                       </div>
                       <div style={{ display: 'flex', gap: 18, alignItems: 'center', textAlign: 'right' }}>
                         <div>
@@ -102,7 +107,7 @@ export default function Dashboard() {
                           <div style={{ fontSize: 11, color: theme.textMuted }}>faltas</div>
                         </div>
                         <div>
-                          <div style={{ fontWeight: 700, fontSize: 17, color: Number(freq) < 75 ? theme.danger : theme.orange }}>{freq}%</div>
+                          <div style={{ fontWeight: 700, fontSize: 17, color: Number(freq) < freqMin ? theme.danger : theme.orange }}>{freq}%</div>
                           <div style={{ fontSize: 11, color: theme.textMuted }}>freq.</div>
                         </div>
                       </div>
