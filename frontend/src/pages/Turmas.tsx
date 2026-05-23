@@ -3,6 +3,51 @@ import * as XLSX from 'xlsx';
 import { api } from '../api';
 import { theme, btn, input, label, card as cardStyle } from '../styles';
 import { Loading, EmptyState, Spinner } from '../components';
+import { useAuth } from '../AuthContext';
+
+// ── Lista oficial: TODAS as turmas com professora e período ──────────────────
+// Fonte: TURMAPROFESSORESPERIODO.xlsx — EMEIEF Luiz Gonzaga
+const TURMAS_OFICIAIS: { turma: string; professora: string; periodo: string }[] = [
+  { turma: '1ª ETAPA A', professora: 'Maria Lucia',      periodo: 'Manhã' },
+  { turma: '1ª ETAPA B', professora: 'Denise',           periodo: 'Manhã' },
+  { turma: '1ª ETAPA C', professora: 'Fernanda',         periodo: 'Manhã' },
+  { turma: '1ª ETAPA D', professora: 'Celina',           periodo: 'Manhã' },
+  { turma: '1ª ETAPA E', professora: 'Debora',           periodo: 'Tarde' },
+  { turma: '1ª ETAPA F', professora: 'Andressa',         periodo: 'Tarde' },
+  { turma: '1ª ETAPA G', professora: 'Rosangela',        periodo: 'Tarde' },
+  { turma: '1ª ETAPA H', professora: 'Adriana Zenoides', periodo: 'Tarde' },
+  { turma: '2ª ETAPA A', professora: 'Liliane',          periodo: 'Manhã' },
+  { turma: '2ª ETAPA B', professora: 'Silvana',          periodo: 'Manhã' },
+  { turma: '2ª ETAPA C', professora: 'Michele',          periodo: 'Manhã' },
+  { turma: '2ª ETAPA D', professora: 'Solange',          periodo: 'Manhã' },
+  { turma: '2ª ETAPA E', professora: 'Sabrina',          periodo: 'Tarde' },
+  { turma: '2ª ETAPA F', professora: 'Angelita',         periodo: 'Tarde' },
+  { turma: '2ª ETAPA G', professora: 'Kamila',           periodo: 'Tarde' },
+  { turma: '2ª ETAPA H', professora: 'Danielle',         periodo: 'Tarde' },
+  { turma: '1º ANO A',   professora: 'Roseli Pereira',   periodo: 'Manhã' },
+  { turma: '1º ANO B',   professora: 'Bruna',            periodo: 'Manhã' },
+  { turma: '1º ANO C',   professora: 'Luciany',          periodo: 'Tarde' },
+  { turma: '1º ANO D',   professora: 'Silene',           periodo: 'Tarde' },
+  { turma: '1º ANO E',   professora: 'Bianca',           periodo: 'Tarde' },
+  { turma: '2º ANO A',   professora: 'Ione',             periodo: 'Manhã' },
+  { turma: '2º ANO B',   professora: 'Sandra',           periodo: 'Manhã' },
+  { turma: '2º ANO C',   professora: 'Gilmara',          periodo: 'Manhã' },
+  { turma: '2º ANO D',   professora: 'Paula',            periodo: 'Tarde' },
+  { turma: '2º ANO E',   professora: 'Marta',            periodo: 'Tarde' },
+  { turma: '3º ANO A',   professora: 'Magnus',           periodo: 'Manhã' },
+  { turma: '3º ANO B',   professora: 'Thabata',          periodo: 'Manhã' },
+  { turma: '3º ANO C',   professora: 'Cátia',            periodo: 'Tarde' },
+  { turma: '3º ANO D',   professora: 'Adriana Caetano',  periodo: 'Tarde' },
+  { turma: '4º ANO A',   professora: 'Juliana',          periodo: 'Manhã' },
+  { turma: '4º ANO B',   professora: 'Camila P',         periodo: 'Manhã' },
+  { turma: '4º ANO C',   professora: 'Cida Drigo',       periodo: 'Tarde' },
+  { turma: '4º ANO D',   professora: 'Karine',           periodo: 'Tarde' },
+  { turma: '5º ANO A',   professora: 'Roseli Zamana',    periodo: 'Manhã' },
+  { turma: '5º ANO B',   professora: 'Jessica',          periodo: 'Manhã' },
+  { turma: '5º ANO C',   professora: 'Alessandra',       periodo: 'Tarde' },
+  { turma: '5º ANO D',   professora: 'Raquel',           periodo: 'Tarde' },
+  { turma: 'EJA I',      professora: 'Maria dos Anjos',  periodo: 'Noite' },
+];
 
 // normaliza para comparação: maiúsculas, sem acento, sem ordinais, espaços simples
 const norm = (s: string) =>
@@ -23,6 +68,7 @@ const normSimp = (s: string) =>
     .trim();
 
 export default function Turmas() {
+  const { role } = useAuth();
   const [turmas, setTurmas] = useState<any[]>([]);
   const [form, setForm] = useState({ nome: '', etapa: 'EF1', numero: 1, letra: 'A', periodo: 'Manhã', professora: '' });
   const [adding, setAdding] = useState(false);
@@ -31,6 +77,8 @@ export default function Turmas() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [editando, setEditando] = useState<{ id: string; professora: string } | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [sincronizando, setSincronizando] = useState(false);
+  const [resultSync, setResultSync] = useState<{ ok: number; nao: string[] } | null>(null);
 
   // --- importação em lote ---
   const [importando, setImportando] = useState(false);
@@ -41,6 +89,30 @@ export default function Turmas() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = () => api.getTurmas().then(setTurmas).finally(() => setLoading(false));
+
+  // ── Sincroniza TODAS as turmas com a lista oficial ───────────────────────
+  const sincronizarProfessores = async () => {
+    setSincronizando(true);
+    setResultSync(null);
+    const lista = await api.getTurmas();
+    let ok = 0;
+    const nao: string[] = [];
+    for (const oficial of TURMAS_OFICIAIS) {
+      const match = lista.find((t: any) => normSimp(t.nome) === normSimp(oficial.turma))
+        ?? lista.find((t: any) => norm(t.nome) === norm(oficial.turma));
+      if (match) {
+        try {
+          await api.updateTurma(match.id, { professora: oficial.professora, periodo: oficial.periodo });
+          ok++;
+        } catch { nao.push(oficial.turma); }
+      } else {
+        nao.push(oficial.turma + ' (não encontrada)');
+      }
+    }
+    await load();
+    setResultSync({ ok, nao });
+    setSincronizando(false);
+  };
   useEffect(() => { load(); }, []);
 
   const save = async () => {
@@ -163,7 +235,17 @@ export default function Turmas() {
             </div>
           )}
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {role === 'admin' && (
+            <button
+              style={{ ...btn('warning'), fontWeight: 700 }}
+              onClick={sincronizarProfessores}
+              disabled={sincronizando}
+              title="Aplica a lista oficial de professoras em todas as turmas de uma vez"
+            >
+              {sincronizando ? <Spinner size={14} /> : '🔄'} Sincronizar Professoras
+            </button>
+          )}
           <button style={btn('success', { outline: true })} onClick={() => { setImportando(!importando); setAdding(false); }}>
             {importando ? 'Fechar importação' : '📥 Importar Professoras'}
           </button>
@@ -172,6 +254,22 @@ export default function Turmas() {
           </button>
         </div>
       </div>
+
+      {/* Resultado da sincronização */}
+      {resultSync && (
+        <div style={{
+          background: resultSync.nao.length === 0 ? theme.successLight : theme.warningLight,
+          border: `1px solid ${resultSync.nao.length === 0 ? theme.success : theme.warning}`,
+          borderRadius: theme.radiusMd, padding: '12px 16px', marginBottom: 16, fontSize: 14,
+        }}>
+          <strong>✅ {resultSync.ok} turmas atualizadas</strong>
+          {resultSync.nao.length > 0 && (
+            <div style={{ marginTop: 6, color: theme.orange }}>
+              ⚠️ Não encontradas: {resultSync.nao.join(', ')}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Painel de importação em lote */}
       {importando && (
