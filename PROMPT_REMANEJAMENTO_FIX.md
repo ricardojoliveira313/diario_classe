@@ -200,15 +200,84 @@ O cabeçalho da coluna exibe "Professora". Para ser neutro (já que há professo
 
 ## CAMPOS DO BANCO (tabela `Aluno` no Supabase)
 
-Verificar se os campos existem. Se não existirem, executar no SQL Editor:
+### OBRIGATÓRIO — Executar no SQL Editor do Supabase ANTES de qualquer alteração no frontend:
 
 ```sql
 ALTER TABLE "Aluno"
-  ADD COLUMN IF NOT EXISTS turma_origem text,
+  ADD COLUMN IF NOT EXISTS turma_origem      text,
   ADD COLUMN IF NOT EXISTS professora_origem text,
-  ADD COLUMN IF NOT EXISTS turma_destino text,
-  ADD COLUMN IF NOT EXISTS professora_destino text;
+  ADD COLUMN IF NOT EXISTS turma_destino     text,
+  ADD COLUMN IF NOT EXISTS professora_destino text,
+  ADD COLUMN IF NOT EXISTS data_inicio_destino text;
 ```
+
+> **Por que `data_inicio_destino`?**
+> Um aluno remanejado tem **dois vínculos de matrícula**:
+>
+> | Período | Campo início | Campo fim |
+> |---|---|---|
+> | Origem (turma que saiu) | `data_inicio_matricula` | `data_fim_matricula` (= data do remanejamento) |
+> | Destino (turma que entrou) | `data_inicio_destino` | — (ainda ativo) |
+>
+> O campo `data_inicio_matricula` já existente representa o início na **turma de origem**.
+> O novo campo `data_inicio_destino` representa o início na **turma de destino**.
+> Isso espelha exatamente o que a Secretaria Escolar Digital (SED) registra.
+
+---
+
+## PROBLEMA 5 — Painel deve mostrar os dois períodos de matrícula para REMA
+
+### No bloco de remanejamento (PROBLEMA 1), adicionar também as datas do destino:
+
+```typescript
+{/* DATA INÍCIO NA TURMA DE DESTINO */}
+{a.data_inicio_destino && (
+  <div>
+    <span style={{ color: theme.textMuted, fontSize: 12 }}>Início na destino: </span>
+    <span style={{ fontWeight: 600, color: theme.success }}>{a.data_inicio_destino}</span>
+  </div>
+)}
+```
+
+### No formulário de edição de situação (✏️ Situação), adicionar campo para `data_inicio_destino`:
+
+Quando `novaSituacao === 'REMA'`, exibir campo extra:
+```typescript
+{novaSituacao === 'REMA' && (
+  <div style={{ flex: 1, minWidth: 140 }}>
+    <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 4, fontWeight: 600 }}>
+      Início na turma destino
+    </div>
+    <input
+      type="date"
+      value={dataInicioDestinoEdit}
+      onChange={e => setDataInicioDestinoEdit(e.target.value)}
+      style={{ padding: '8px 12px', borderRadius: theme.radius, border: `1.5px solid ${theme.border}`, width: '100%', fontSize: 14 }}
+    />
+  </div>
+)}
+```
+
+E incluir no `updates` ao salvar:
+```typescript
+if (novaSituacao === 'REMA' && dataInicioDestinoEdit.trim()) {
+  updates.data_inicio_destino = dataInicioDestinoEdit.trim();
+}
+```
+
+---
+
+## RESUMO COMPLETO DAS MUDANÇAS
+
+| # | O que fazer | Onde |
+|---|---|---|
+| 0 | **SQL**: adicionar 5 colunas no banco | Supabase SQL Editor |
+| 1 | Criar função `labelDocente(nome)` | Antes do export default |
+| 2 | Bloco de remanejamento origem/destino + datas no painel expandido | Dentro de `{expandido === a.id && ...}` |
+| 3 | Trocar "Professora:" → `{labelDocente(...)}:` no painel expandido | Painel do aluno |
+| 4 | Trocar "Professora" → "Docente" no cabeçalho da tabela | Cabeçalho da grid |
+| 5 | Mensagem especial de início matrícula para REMA | Painel do aluno |
+| 6 | Campo `data_inicio_destino` no formulário de edição de situação | Bloco de edição inline |
 
 ---
 
