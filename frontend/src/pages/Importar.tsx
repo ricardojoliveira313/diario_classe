@@ -1178,12 +1178,16 @@ export default function Importar() {
             }
           }
         }
-        // Se já existe, preserva nome e professora originais (não sobrescreve com SED)
+        // Se já existe, preserva nome e professora do banco (não sobrescreve com SED)
         if (id && matchName) {
           const existente = turmasExistentes.find((x: any) => x.id === id);
-          return { id, nome: matchName, professora: (t.professora || existente?.professora || '') };
+          return { id, nome: matchName, professora: existente?.professora || t.professora || '' };
         }
-        return { ...(id ? { id } : {}), nome: t.nome, professora: t.professora };
+        if (id) {
+          const existente = turmasExistentes.find((x: any) => x.id === id);
+          return { id, nome: t.nome, professora: existente?.professora || t.professora || '' };
+        }
+        return { nome: t.nome, professora: t.professora };
       });
       for (let i = 0; i < turmasParaUpsert.length; i += 80) {
         const { data: chunk } = await supabase
