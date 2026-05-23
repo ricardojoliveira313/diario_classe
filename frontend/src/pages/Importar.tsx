@@ -82,6 +82,7 @@ interface AlunoUnificado {
   nome: string;
   nomeNorm: string;
   ra: number | null;
+  numero: number;
   nascimento: string;
   serie: string;
   professora: string;
@@ -203,6 +204,8 @@ export default function Importar() {
         const before = allText.substring(Math.max(0, raPos - 160), raPos);
         const nomeMatch = before.match(/([A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ][A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ\s'-]{3,})$/);
         if (!nomeMatch) continue;
+        const numMatch = nomeMatch[1].match(/^(\d{1,2})\s+/);
+        const numero = numMatch ? parseInt(numMatch[1]) : 0;
         // Remove prefixo "X X " (série + nº do aluno) se presente
         const nome = nomeMatch[1].replace(/^\d{1,2}\s+\d{1,3}\s+/, '').trim();
         if (!nome || nome.length < 4) continue;
@@ -227,6 +230,7 @@ export default function Importar() {
           alunos.push({
             nome, nomeNorm: normalizeNome(nome),
             ra: parseInt(raStr) || null,
+            numero,
             nascimento: '',
             serie: serieAluno,
             professora: profAluno || getProfessora(raPos),
@@ -256,6 +260,7 @@ export default function Importar() {
         alunos.push({
           nome, nomeNorm: normalizeNome(nome),
           ra: parseInt(raStr) || null,
+          numero,
           nascimento,
           serie: serieAluno,
           professora: profAluno || getProfessora(raPos),
@@ -314,6 +319,7 @@ export default function Importar() {
               const isDiario = 'FREQUENCIA DOS ALUNOS(A)' in nr;
 
               const nome = String(nr['NOME DO ALUNO'] ?? nr['NOME'] ?? '').trim();
+              const numero = parseInt(String(nr['Nº'] ?? nr['N°'] ?? nr['NR'] ?? nr['NUMERO'] ?? nr['CHAMADA'] ?? '')) || 0;
               const serie = String(nr['SERIE'] ?? nr['TURMA'] ?? '').trim();
               if (!nome) continue;
 
@@ -394,7 +400,8 @@ export default function Importar() {
                   } else {
                     alunosMap.set(sufKey, {
                       nome, nomeNorm: normalizeNome(nome),
-                      ra, nascimento: nasc,
+                      ra, numero,
+                      nascimento: nasc,
                       serie, professora,
                       situacao, deficiencia,
                       bolsaFamilia,
@@ -420,7 +427,8 @@ export default function Importar() {
 
               alunosMap.set(key, {
                 nome, nomeNorm: normalizeNome(nome),
-                ra, nascimento: nasc,
+                ra, numero,
+                nascimento: nasc,
                 serie, professora,
                 situacao, deficiencia,
                 bolsaFamilia,
@@ -561,7 +569,8 @@ export default function Importar() {
               processados.add(key);
               alunos.push({
                 nome, nomeNorm: normalizeNome(nome),
-                ra, nascimento: nasc, serie,
+                ra, numero: 0,
+                nascimento: nasc, serie,
                 professora: '', situacao: situ, deficiencia: defi,
                 bolsaFamilia: false,
                 dataInicioMatricula: '', dataFimMatricula: '', dataMovimentacao: '',
@@ -1236,7 +1245,7 @@ export default function Importar() {
           nome: a.nome,
           turmaId: resolveIdAtualizado(a.serie, a.professora),
           ra: a.ra,
-          numero: 0,
+          numero: a.numero,
           data_nascimento: a.nascimento,
           data_inicio_matricula: a.dataInicioMatricula || null,
           data_fim_matricula: a.dataFimMatricula || null,

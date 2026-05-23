@@ -39,7 +39,7 @@ export const api = {
     return data ?? [];
   },
   getAllAlunos: async () => {
-    const { data, error } = await supabase.from('Aluno').select('*').order('nome');
+    const { data, error } = await supabase.from('Aluno').select('*').order('numero').order('nome');
     if (error) throw error;
     return data ?? [];
   },
