@@ -4,6 +4,16 @@ import { api } from '../api';
 import { theme, btn, input, label, SITUACAO_COR, SITUACAO_LABEL, SITUACOES, card as cardStyle, row } from '../styles';
 import { Loading, EmptyState, StatCard, Spinner } from '../components';
 
+function labelDocente(nome: string): string {
+  if (!nome) return 'Professora';
+  const n = nome.trim().split(' ')[0].toLowerCase();
+  if (/o$|os$|us$|el$|on$|an$|ar$|or$|er$|ir$|ur$/.test(n)) return 'Professor';
+  const masculinos = ['magnus', 'andre', 'felipe', 'gabriel', 'rafael', 'daniel',
+    'miguel', 'samuel', 'israel', 'ezequiel', 'manoel', 'manuel', 'ismael'];
+  if (masculinos.includes(n)) return 'Professor';
+  return 'Professora';
+}
+
 export default function Alunos() {
   const [turmas, setTurmas] = useState<any[]>([]);
   const [turmaId, setTurmaId] = useState('__all__');
@@ -244,7 +254,7 @@ export default function Alunos() {
             <span>#</span><span>Nome</span><span>RA</span>
             <span style={{ textAlign: 'center' }}>Situação</span><span style={{ textAlign: 'center' }}>Deficiência</span>
             <span style={{ textAlign: 'center' }}>BF</span>
-            <span>Professora</span><span>Turma</span>
+            <span>Docente</span><span>Turma</span>
           </div>
 
           {alunosFiltrados.map((a, i) => {
@@ -298,33 +308,88 @@ export default function Alunos() {
 
                 {/* Detalhes expandidos */}
                 {aberto && (
-                  <div className="slide-down" style={{
-                    padding: '12px 16px',
-                    background: 'var(--bg-card)',
-                    borderBottom: `1px solid ${theme.borderLight}`,
-                    borderLeft: `3px solid ${theme.sky}`,
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-                    gap: 8,
-                    fontSize: 13,
-                  }}>
-                    <div>
-                      <span style={{ fontWeight: 600, color: theme.textSecondary }}>Início Matrícula: </span>
-                      {a.data_inicio_matricula
-                        ? <span style={{ color: theme.text }}>{a.data_inicio_matricula}</span>
-                        : <span style={{ color: theme.orange, fontSize: 12, fontWeight: 600 }}>⚠️ não informado — clique em ✏️ Situação para preencher</span>}
+                  <div>
+                    {/* Bloco de remanejamento */}
+                    {a.situacao === 'REMA' && (
+                      <div className="slide-down" style={{
+                        background: 'rgba(249,115,22,0.08)',
+                        border: '1px solid rgba(249,115,22,0.3)',
+                        borderRadius: 8,
+                        padding: '10px 14px',
+                        margin: '0 16px 8px',
+                        fontSize: 13,
+                      }}>
+                        <div style={{ fontWeight: 700, color: theme.orange, marginBottom: 6 }}>
+                          🔄 Remanejamento
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 24px' }}>
+                          {(a.turma_origem || a.professora_origem) && (
+                            <div>
+                              <span style={{ color: theme.textMuted, fontSize: 12 }}>Turma origem: </span>
+                              <span style={{ fontWeight: 600 }}>{a.turma_origem || '—'}</span>
+                              {a.professora_origem && (
+                                <span style={{ color: theme.textSecondary }}>
+                                  {' '}· {labelDocente(a.professora_origem)} {a.professora_origem}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {(a.turma_destino || a.professora_destino) && (
+                            <div>
+                              <span style={{ color: theme.textMuted, fontSize: 12 }}>Turma destino: </span>
+                              <span style={{ fontWeight: 600 }}>{a.turma_destino || '—'}</span>
+                              {a.professora_destino && (
+                                <span style={{ color: theme.textSecondary }}>
+                                  {' '}· {labelDocente(a.professora_destino)} {a.professora_destino}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {a.data_inicio_matricula && (
+                            <div>
+                              <span style={{ color: theme.textMuted, fontSize: 12 }}>Início na origem: </span>
+                              <span>{a.data_inicio_matricula}</span>
+                            </div>
+                          )}
+                          {a.data_movimentacao && (
+                            <div>
+                              <span style={{ color: theme.textMuted, fontSize: 12 }}>Data remanejamento: </span>
+                              <span style={{ fontWeight: 600, color: theme.orange }}>{a.data_movimentacao}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    <div className="slide-down" style={{
+                      padding: '12px 16px',
+                      background: 'var(--bg-card)',
+                      borderBottom: `1px solid ${theme.borderLight}`,
+                      borderLeft: `3px solid ${theme.sky}`,
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                      gap: 8,
+                      fontSize: 13,
+                    }}>
+                      <div>
+                        <span style={{ fontWeight: 600, color: theme.textSecondary }}>Início Matrícula: </span>
+                        {a.data_inicio_matricula
+                          ? <span style={{ color: theme.text }}>{a.data_inicio_matricula}</span>
+                          : a.situacao === 'REMA'
+                            ? <span style={{ color: theme.textMuted, fontSize: 12 }}>— ver turma origem</span>
+                            : <span style={{ color: theme.orange, fontSize: 12, fontWeight: 600 }}>⚠️ não informado — clique em ✏️ Situação para preencher</span>}
+                      </div>
+                      <div>
+                        <span style={{ fontWeight: 600, color: theme.textSecondary }}>Fim Matrícula: </span>
+                        {a.data_fim_matricula
+                          ? <span style={{ color: theme.text }}>{a.data_fim_matricula}</span>
+                          : <span style={{ color: theme.orange, fontSize: 12, fontWeight: 600 }}>⚠️ não informado</span>}
+                      </div>
+                      {a.data_movimentacao && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Movimentação:</span> {a.data_movimentacao}</div>}
+                      {t?.professora && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>{labelDocente(t.professora)}:</span> {t.professora}</div>}
+                      {t?.nome && turmaId !== '__all__' && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Turma:</span> {t.nome}</div>}
+                      {a.nis && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>NIS:</span> {a.nis}</div>}
+                      {a.responsavel && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Responsável:</span> {a.responsavel}</div>}
                     </div>
-                    <div>
-                      <span style={{ fontWeight: 600, color: theme.textSecondary }}>Fim Matrícula: </span>
-                      {a.data_fim_matricula
-                        ? <span style={{ color: theme.text }}>{a.data_fim_matricula}</span>
-                        : <span style={{ color: theme.orange, fontSize: 12, fontWeight: 600 }}>⚠️ não informado</span>}
-                    </div>
-                    {a.data_movimentacao && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Movimentação:</span> {a.data_movimentacao}</div>}
-                    {t?.professora && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Professora:</span> {t.professora}</div>}
-                    {t?.nome && turmaId !== '__all__' && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Turma:</span> {t.nome}</div>}
-                    {a.nis && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>NIS:</span> {a.nis}</div>}
-                    {a.responsavel && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Responsável:</span> {a.responsavel}</div>}
                   </div>
                 )}
 
