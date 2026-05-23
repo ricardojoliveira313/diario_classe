@@ -23,12 +23,12 @@ export default function Dashboard() {
 
   if (loading) return <Loading />;
 
-  const total = alunos.length;
   const ativos = alunos.filter(a => a.situacao === 'ATIVO').length;
-  const baixas = alunos.filter(a => ['BXTR', 'TRAN', 'N COM'].includes(a.situacao)).length;
-  const rema = alunos.filter(a => a.situacao === 'REMA').length;
-  const bolsa = alunos.filter(a => a.bolsa_familia).length;
-  const comDefi = alunos.filter(a => a.deficiencia).length;
+  const rema   = alunos.filter(a => a.situacao === 'REMA').length;
+  const baixas = alunos.filter(a => ['BXTR', 'TRAN', 'N COM', 'ABAN'].includes(a.situacao)).length;
+  const movimentacoes = rema + baixas;
+  const bolsa  = alunos.filter(a => a.bolsa_familia && a.situacao === 'ATIVO').length;
+  const comDefi = alunos.filter(a => a.deficiencia && a.situacao === 'ATIVO').length;
   const dl = DIAS_LETIVOS[mes] ?? 22;
   const limiteAlerta = Math.ceil(dl * 0.25);
 
@@ -55,18 +55,18 @@ export default function Dashboard() {
         </select>
       </div>
 
-      {total === 0 ? (
+      {ativos === 0 ? (
         <EmptyState icon="📥" message="Nenhum dado importado ainda."
           action={{ label: 'Importar planilha da SED', href: '/importar' }} />
       ) : (
         <div className="fade-in">
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10, marginBottom: 20 }}>
-            <StatCard label="Total Alunos" val={total} cor={theme.primary} />
-            <StatCard label="Ativos" val={ativos} cor={theme.success} sub={`${((ativos / total) * 100).toFixed(0)}%`} />
-            <StatCard label="Remanejados" val={rema} cor={theme.orange} />
-            <StatCard label="Baixas" val={baixas} cor={theme.danger} />
-            <StatCard label="Bolsa Família" val={bolsa} cor={theme.success} sub={`${((bolsa / total) * 100).toFixed(0)}%`} />
-            <StatCard label="Deficiência" val={comDefi} cor={theme.purple} />
+          {/* Totalizadores: ATIVOS (real na escola) separado de movimentações */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10, marginBottom: 20 }}>
+            <StatCard label="✅ Ativos (na escola)" val={ativos} cor={theme.success} />
+            <StatCard label="🔄 Movimentações" val={movimentacoes} cor={theme.orange}
+              sub={`${rema} rema · ${baixas} baixas`} />
+            <StatCard label="Bolsa Família" val={bolsa} cor={theme.primary} sub="ativos BF" />
+            <StatCard label="Deficiência" val={comDefi} cor={theme.purple} sub="ativos c/ def." />
             <StatCard label="⚠️ Alertas" val={alertas.length} cor={alertas.length > 0 ? theme.danger : theme.textMuted} sub="≥25% faltas" />
           </div>
 
@@ -148,7 +148,11 @@ export default function Dashboard() {
             )}
             <div style={{ padding: '10px 16px', background: 'var(--ghost-bg)', fontSize: 13, color: theme.textSecondary, display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${theme.borderLight}` }}>
               <span>{statsPorTurma.length} turmas</span>
-              <span>{total} alunos · {faltas.reduce((s, f) => s + (f.faltas ?? 0), 0)} faltas em {MESES[mes - 1]}</span>
+              <span>
+                <strong>{ativos} ativos</strong>
+                {movimentacoes > 0 && <span style={{ color: theme.orange }}> · {movimentacoes} movimentações</span>}
+                {' '}· {faltas.reduce((s, f) => s + (f.faltas ?? 0), 0)} faltas em {MESES[mes - 1]}
+              </span>
             </div>
           </div>
         </div>
