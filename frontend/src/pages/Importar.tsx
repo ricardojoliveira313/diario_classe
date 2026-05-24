@@ -320,7 +320,9 @@ export default function Importar() {
               const isDiario = 'FREQUENCIA DOS ALUNOS(A)' in nr;
 
               const nome = String(nr['NOME DO ALUNO'] ?? nr['NOME'] ?? '').trim();
-              const numero = parseInt(String(nr['Nº'] ?? nr['N°'] ?? nr['NR'] ?? nr['NUMERO'] ?? nr['CHAMADA'] ?? '')) || 0;
+              // Planilha de diário mensal numera apenas ativos (pula BXTR/REMA) — não é o Nr real da SED.
+              // Só usa o Nº de fontes que contenham a lista completa (ex: exportação SED).
+              const numero = isDiario ? 0 : (parseInt(String(nr['Nº'] ?? nr['N°'] ?? nr['NR'] ?? nr['NUMERO'] ?? nr['CHAMADA'] ?? '')) || 0);
               const serie = String(nr['SERIE'] ?? nr['TURMA'] ?? '').trim();
               if (!nome) continue;
 
