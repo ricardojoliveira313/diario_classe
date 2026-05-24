@@ -120,13 +120,7 @@ export default function Alunos() {
     if (filtroProfessora && turmaMap.get(a.turmaId)?.professora !== filtroProfessora) return false;
     if (filtroDefi && a.deficiencia !== filtroDefi) return false;
     return true;
-  }).sort((a, b) => {
-    const nA = a.numero || 9999;
-    const nB = b.numero || 9999;
-    if (nA !== nB) return nA - nB;
-    const ordemSit: Record<string, number> = { REMA: 0, ATIVO: 1, TRAN: 2, BXTR: 3, 'N COM': 4, ABAN: 5 };
-    return (ordemSit[a.situacao] ?? 9) - (ordemSit[b.situacao] ?? 9);
-  });
+  }).sort((a, b) => (a.numero || 9999) - (b.numero || 9999));
 
   const totalAtivos = alunos.filter(a => a.situacao === 'ATIVO').length;
   const totalBolsa = alunos.filter(a => a.bolsa_familia).length;
@@ -148,13 +142,7 @@ export default function Alunos() {
     );
     for (const [tid, arr] of gruposOrdenados) {
       const t = turmaMap.get(tid);
-      arr.sort((a, b) => {
-        const nA = a.numero || 9999;
-        const nB = b.numero || 9999;
-        if (nA !== nB) return nA - nB;
-        const ordemSit: Record<string, number> = { REMA: 0, ATIVO: 1, TRAN: 2, BXTR: 3, 'N COM': 4, ABAN: 5 };
-        return (ordemSit[a.situacao] ?? 9) - (ordemSit[b.situacao] ?? 9);
-      });
+      arr.sort((a, b) => (a.numero || 9999) - (b.numero || 9999));
       linhas.push({ tipo: 'header', nome: t ? `📚 ${t.nome} — ${labelDocente(t.professora || '')} ${t.professora || ''}` : 'Sem turma', key: tid, total: arr.length });
       arr.forEach((a, idx) => linhas.push({ tipo: 'aluno', a, idx }));
     }

@@ -204,10 +204,11 @@ export default function Importar() {
         const before = allText.substring(Math.max(0, raPos - 160), raPos);
         const nomeMatch = before.match(/([A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ][A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ\s'-]{3,})$/);
         if (!nomeMatch) continue;
-        const numMatch = nomeMatch[1].match(/^(\d{1,2})\s+/);
-        const numero = numMatch ? parseInt(numMatch[1]) : 0;
-        // Remove prefixo "X X " (série + nº do aluno) se presente
-        const nome = nomeMatch[1].replace(/^\d{1,2}\s+\d{1,3}\s+/, '').trim();
+        // Nr está no texto antes do nome: "... [série] [nr] [NOME]" — extrai o último número antes do nome
+        const preNome = before.substring(0, nomeMatch.index);
+        const nrMatch = preNome.trimEnd().match(/(\d{1,3})\s*$/);
+        const numero = nrMatch ? parseInt(nrMatch[1]) : 0;
+        const nome = nomeMatch[1].trim();
         if (!nome || nome.length < 4) continue;
 
         // ── Campos após o RA: [dig_ra] [UF] [nasc] [situação] [data_movim?] [deficiência] ──

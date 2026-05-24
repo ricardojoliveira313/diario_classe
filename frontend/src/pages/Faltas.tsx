@@ -111,7 +111,7 @@ export default function Faltas() {
     if (!turmaId) { setLoading(false); return; }
     setLoading(true);
     Promise.all([api.getAlunos(turmaId), api.getFaltas(turmaId, mes, ano)]).then(([al, fa]) => {
-      setAlunos(al);
+      setAlunos([...al].sort((a: any, b: any) => (a.numero || 9999) - (b.numero || 9999)));
       const mapDias: Record<string, Status[]> = {};
       const mapTextos: Record<string, string> = {};
       fa.forEach((f: any) => {
@@ -192,7 +192,7 @@ export default function Faltas() {
       const rowBg = alerta ? '#fff1f2' : i % 2 === 0 ? '#ffffff' : '#f8fafc';
       const freqColor = alerta ? '#dc2626' : freqNum >= 90 ? '#16a34a' : '#d97706';
       return `<tr style="background:${rowBg};">
-      <td style="border:1px solid #333;padding:5px 6px;text-align:center;font-size:12px;font-weight:700;width:28px;">${String(i + 1).padStart(2, '0')}</td>
+      <td style="border:1px solid #333;padding:5px 6px;text-align:center;font-size:12px;font-weight:700;width:28px;">${String(a.numero || (i + 1)).padStart(2, '0')}</td>
       <td style="border:1px solid #333;padding:5px 8px;font-size:12px;${alerta ? 'font-weight:700;' : ''}">${a.nome}${defi}${bf}${alerta ? ' <span style="color:#dc2626;font-size:10px;">⚠️</span>' : ''}</td>
       <td style="border:1px solid #333;padding:5px 4px;text-align:center;font-size:12px;color:#dc2626;font-weight:${nF > 0 ? '700' : '400'};">${nF}</td>
       <td style="border:1px solid #333;padding:5px 4px;text-align:center;font-size:12px;color:#d97706;font-weight:${nJ > 0 ? '700' : '400'};">${nJ}</td>
@@ -341,7 +341,7 @@ export default function Faltas() {
       const defi = a.deficiencia ? ' ♿' : '';
       const bf = a.bolsa_familia ? ' 💚' : '';
       return `<tr>
-        <td style="border:1px solid #333;padding:2px 4px;text-align:center;width:26px;font-size:11px;font-weight:700;">${String(i + 1).padStart(2, '0')}</td>
+        <td style="border:1px solid #333;padding:2px 4px;text-align:center;width:26px;font-size:11px;font-weight:700;">${String(a.numero || (i + 1)).padStart(2, '0')}</td>
         <td style="border:1px solid #333;padding:2px 6px;font-size:10px;white-space:nowrap;">${a.nome}${defi}${bf}</td>
         ${celulas}
       </tr>`;
@@ -441,7 +441,7 @@ export default function Faltas() {
       const bf = a.bolsa_familia ? ' 💚' : '';
       return `
       <tr>
-        <td style="border:1px solid #555;padding:5px 6px;font-size:13px;text-align:center;width:30px;font-weight:700;">${String(i + 1).padStart(2, '0')}</td>
+        <td style="border:1px solid #555;padding:5px 6px;font-size:13px;text-align:center;width:30px;font-weight:700;">${String(a.numero || (i + 1)).padStart(2, '0')}</td>
         <td style="border:1px solid #555;padding:5px 8px;font-size:13px;">${a.nome}${defi}${bf}</td>
         <td style="border:2px solid #1e40af;padding:5px 4px;text-align:center;width:54px;font-size:22px;font-weight:900;"></td>
         <td style="border:2px solid #f59e0b;padding:5px 4px;text-align:center;width:54px;font-size:22px;font-weight:900;"></td>
@@ -564,7 +564,7 @@ export default function Faltas() {
       ).join('');
       const badges = (a.deficiencia ? ' ♿' : '') + (a.bolsa_familia ? ' 💚' : '');
       return `<tr>
-        <td style="border:1px solid #aaa;padding:1px 3px;font-size:9px;text-align:center;width:26px;">${String(i + 1).padStart(2, '0')}</td>
+        <td style="border:1px solid #aaa;padding:1px 3px;font-size:9px;text-align:center;width:26px;">${String(a.numero || (i + 1)).padStart(2, '0')}</td>
         <td style="border:1px solid #aaa;padding:1px 5px;font-size:9px;white-space:nowrap;min-width:145px;">${a.nome}${badges}</td>
         ${cells}
         <td style="${tdExtra('#ffcdd2')}"></td>
@@ -647,7 +647,7 @@ export default function Faltas() {
       const dias = diasAluno[a.id] ?? initDias(numDias);
       const nP = ct(dias, 'P'), nF = ct(dias, 'F'), nJ = ct(dias, 'J'), nA = ct(dias, 'A');
       const row: any = {
-        'Nº': i + 1,
+        'Nº': a.numero || (i + 1),
         'Nome do Aluno': a.nome,
         'RA': a.ra ?? '',
         'Situação': a.situacao ?? 'ATIVO',
@@ -827,7 +827,7 @@ export default function Faltas() {
                         borderRight: '2px solid var(--border-light)',
                       }}>
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
-                          <span style={{ fontSize: 11, color: theme.textMuted, paddingTop: 2, minWidth: 18 }}>{i + 1}</span>
+                          <span style={{ fontSize: 11, color: theme.textMuted, paddingTop: 2, minWidth: 18 }}>{a.numero || (i + 1)}</span>
                           <div>
                             <div style={{ fontSize: 13, fontWeight: 600, color: theme.text, display: 'flex', alignItems: 'center', gap: 4 }}>
                               {emAlerta && <span title="Frequência abaixo de 75%">⚠️</span>}
