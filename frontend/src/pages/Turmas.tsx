@@ -342,7 +342,7 @@ export default function Turmas() {
             <div style={{ flex: 1 }}>
               <strong style={{ fontSize: 16, color: theme.text }}>{t.nome || `${t.numero}º ${t.letra} - ${t.periodo}`}</strong>
               <div style={{ fontSize: 14, color: theme.textSecondary, marginTop: 2 }}>
-                {t.etapa} · {t.periodo}
+                {t.periodo}
                 {t.professora
                   ? <span style={{ color: theme.primaryText, fontWeight: 600 }}> · Prof. {t.professora}</span>
                   : <span style={{ color: '#ea580c', fontWeight: 500 }}> · ⚠️ sem professora</span>}

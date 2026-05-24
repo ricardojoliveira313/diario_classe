@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
-import { theme, MESES_ABR, MESES, DIAS_LETIVOS, getDiasLetivos, input, row, sortTurmasPedagogico } from '../styles';
+import { theme, MESES_ABR, MESES, DIAS_LETIVOS, getDiasLetivos, input, row, sortTurmasPedagogico, isInfantilTurma } from '../styles';
 import { Loading, EmptyState, StatCard } from '../components';
 import { useAno } from '../AnoContext';
 
@@ -37,7 +37,7 @@ export default function Dashboard() {
   const faltasMap = new Map<string, number>(faltas.map(f => [f.alunoId, f.faltas ?? 0]));
   const alertas = alunos.filter(a => {
     const t = turmaMap.get(a.turmaId);
-    const threshold = t?.etapa === 'EI' ? 0.4 : 0.25;
+    const threshold = isInfantilTurma(t?.nome) ? 0.4 : 0.25;
     return (faltasMap.get(a.id) ?? 0) >= Math.ceil(dl * threshold) && a.situacao === 'ATIVO';
   });
 
@@ -88,7 +88,7 @@ export default function Dashboard() {
                   {alertas.slice(0, 25).map(a => {
                   const f = faltasMap.get(a.id) ?? 0;
                   const turma = turmas.find(t => t.id === a.turmaId);
-                  const freqMin = turma?.etapa === 'EI' ? 60 : 75;
+                  const freqMin = isInfantilTurma(turma?.nome) ? 60 : 75;
                   const freq = ((dl - f) / dl * 100).toFixed(0);
                   return (
                     <div key={a.id} style={{
@@ -99,7 +99,7 @@ export default function Dashboard() {
                       <div>
                         <span style={{ fontWeight: 600 }}>{a.nome}</span>
                         {a.bolsa_familia && <span style={{ marginLeft: 6, fontSize: 12, color: theme.success, fontWeight: 700 }}>BF</span>}
-                        <div style={{ fontSize: 12, color: theme.textMuted }}>{turma?.nome} · {turma?.professora || '—'}{turma?.etapa ? ` · ${turma.etapa}` : ''}</div>
+                        <div style={{ fontSize: 12, color: theme.textMuted }}>{turma?.nome} · {turma?.professora || '—'}</div>
                       </div>
                       <div style={{ display: 'flex', gap: 18, alignItems: 'center', textAlign: 'right' }}>
                         <div>

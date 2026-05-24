@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { api } from '../api';
-import { theme, btn, input, label, MESES, SITUACAO_COR, SITUACAO_LABEL, getFeriado, isRecesso, isSabadoLetivo, sortTurmasPedagogico } from '../styles';
+import { theme, btn, input, label, MESES, SITUACAO_COR, SITUACAO_LABEL, getFeriado, isRecesso, isSabadoLetivo, sortTurmasPedagogico, isInfantilTurma } from '../styles';
 import { Loading, EmptyState, StatCard, Spinner } from '../components';
 import { useTheme } from '../ThemeContext';
 import { useAno } from '../AnoContext';
@@ -165,7 +165,7 @@ export default function Faltas() {
   const totalP = alunos.reduce((s, a) => s + ct(diasAluno[a.id] ?? [], 'P'), 0);
   const totalAusencias = totalF + totalJ + totalA;
   const turma = turmas.find(t => t.id === turmaId);
-  const isInfantil = turma?.etapa === 'EI';
+  const isInfantil = isInfantilTurma(turma?.nome);
   const thresholdPct = isInfantil ? 0.4 : 0.25;
   const limiteAlerta = Math.ceil(numDias * thresholdPct);
   const freqGeral = alunos.length > 0

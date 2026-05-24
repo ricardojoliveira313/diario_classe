@@ -228,3 +228,9 @@ export function ordemTurma(nome: string): string {
 export function sortTurmasPedagogico<T extends { nome: string }>(turmas: T[]): T[] {
   return [...turmas].sort((a, b) => ordemTurma(a.nome).localeCompare(ordemTurma(b.nome)));
 }
+
+export function isInfantilTurma(nome?: string): boolean {
+  if (!nome) return false;
+  const g = ordemTurma(nome).slice(0, 2);
+  return g === '01' || g === '02';
+}
