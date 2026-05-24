@@ -69,6 +69,7 @@ INSERT INTO "ProfessorMapping" (turma_nome, professor, periodo) VALUES
 
 -- EJA
 ('EJA I A',               'ELAINE APARECIDA DA SILVA FIGUEIREDO', 'Noturno'),
-('EJA I B',               'MARIA DOS ANJOS FERREIRA DO CARMO',    'Noturno');
+('EJA I B',               'MARIA DOS ANJOS FERREIRA DO CARMO',    'Noturno'),
+('EJA I - PÓS-ALFABETIZAÇÃO', 'ELAINE APARECIDA DA SILVA FIGUEIREDO', 'Noturno');
 
 SELECT * FROM "ProfessorMapping" ORDER BY id;
