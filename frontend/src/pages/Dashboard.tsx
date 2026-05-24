@@ -49,7 +49,7 @@ export default function Dashboard() {
     const dlTotal = dl * ativosTurma;
     const freq = dlTotal > 0 ? (dlTotal - totalF) / dlTotal * 100 : 100;
     return { id: t.id, nome: t.nome, professora: t.professora, total: alunosTurma.length, ativos: ativosTurma, faltas: totalF, freq };
-  }).filter(t => t.total > 0).sort((a, b) => a.nome.localeCompare(b.nome));
+  }).sort((a, b) => a.nome.localeCompare(b.nome));
 
   return (
     <div style={{ marginTop: 16, animation: 'fadeIn 0.25s ease both' }}>
