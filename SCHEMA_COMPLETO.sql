@@ -1,5 +1,5 @@
 -- ============================================================
--- DIÁRIO DE CLASSE + DIÁRIO SERVIDOR
+-- DIÁRIO DE CLASSE + CONTROLE DE FALTAS — SERVIDORES
 -- SCHEMA COMPLETO DO BANCO DE DADOS — EMEIEF LUIZ GONZAGA
 -- Supabase Project: hxmwpleyhagwcukuhzxg
 -- Atualizado: Maio 2026
@@ -128,7 +128,7 @@ ON CONFLICT (nome) DO NOTHING;
 
 
 -- ══════════════════════════════════════════════════════════════
--- ▶ MÓDULO 2: DIÁRIO SERVIDOR (tabelas novas)
+-- ▶ MÓDULO 2: CONTROLE DE FALTAS — SERVIDORES (tabelas novas)
 -- ══════════════════════════════════════════════════════════════
 
 -- ─── Escola ──────────────────────────────────────────────────
