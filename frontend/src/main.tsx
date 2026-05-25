@@ -29,7 +29,7 @@ const NAV_ITEMS: { to: string; label: string; end?: boolean; badge?: boolean; ad
   { to: '/faltas',    label: '📋 Faltas' },
   { to: '/distorcao', label: '📐 Distorção' },
   { to: '/ocr',       label: '📷 OCR',       adminOnly: true },
-  { to: '/pendentes', label: '⏳ Pendentes', badge: true },
+  { to: '/pendentes', label: '📋 Ata de Resultados', badge: true },
   { to: '/usuarios',  label: '👥 Usuários', adminOnly: true },
 ];
 
