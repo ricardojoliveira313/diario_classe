@@ -12,7 +12,7 @@ import Pendentes from './pages/Pendentes';
 import Distorcao from './pages/Distorcao';
 import Usuarios from './pages/Usuarios';
 import Login from './pages/Login';
-import { api } from './api';
+import { api, supabase } from './api';
 import { theme } from './styles';
 import { ThemeProvider, useTheme } from './ThemeContext';
 import { AnoProvider, useAno } from './AnoContext';
@@ -58,6 +58,7 @@ function AppShell() {
   const [menuAberto, setMenuAberto] = useState(false);
   const [nPendentes, setNPendentes] = useState(0);
   const [scrolled, setScrolled] = useState(false);
+  const [atualizando, setAtualizando] = useState(false);
   const { theme: themeMode, toggle: toggleTheme } = useTheme();
   const { ano, setAno } = useAno();
   const { role, username, logout, permissoes } = useAuth();
@@ -67,6 +68,25 @@ function AppShell() {
     const id = setInterval(() => api.contarPendentes().then(setNPendentes).catch(() => {}), 60_000);
     return () => clearInterval(id);
   }, []);
+
+  // ── Realtime: recebe sinal de atualização de outros usuários ──────────────
+  useEffect(() => {
+    const ch = supabase.channel('app-reload')
+      .on('broadcast', { event: 'reload' }, () => {
+        // pequeno delay para não recarregar junto com quem enviou
+        setTimeout(() => window.location.reload(), 800);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, []);
+
+  const forcarAtualizacao = async () => {
+    setAtualizando(true);
+    await supabase.channel('app-reload').send({
+      type: 'broadcast', event: 'reload', payload: { by: username },
+    });
+    setTimeout(() => window.location.reload(), 300);
+  };
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 10);
@@ -153,6 +173,17 @@ function AppShell() {
             >
               {ANOS_DISPONIVEIS.map(a => <option key={a} value={a} style={{ background: theme.primary, color: 'white' }}>{a}</option>)}
             </select>
+
+            {/* Botão atualizar todos (só admin) */}
+            {role === 'admin' && (
+              <button
+                onClick={forcarAtualizacao}
+                disabled={atualizando}
+                title="Atualizar dados para todos os usuários conectados"
+                style={{ flexShrink: 0, background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.4)', color: '#6ee7b7', cursor: 'pointer', padding: '5px 8px', borderRadius: 6, fontSize: 13, fontWeight: 600, lineHeight: 1, whiteSpace: 'nowrap' }}>
+                {atualizando ? '⏳' : '🔄'}
+              </button>
+            )}
 
             {/* Theme toggle */}
             <button onClick={toggleTheme} title={themeMode === 'light' ? 'Modo escuro' : 'Modo claro'}
