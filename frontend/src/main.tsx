@@ -45,6 +45,15 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// ─── Guarda de rota: redireciona viewers sem permissão para / ─────────────────
+function ViewerRoute({ children, pageKey }: { children: React.ReactNode; pageKey: PageKey }) {
+  const { role, permissoes } = useAuth();
+  if (role === 'admin') return <>{children}</>;          // admin: acesso total
+  if (permissoes === null) return <>{children}</>;       // null = todas liberadas
+  if (!permissoes.includes(pageKey)) return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
+
 function AppShell() {
   const [menuAberto, setMenuAberto] = useState(false);
   const [nPendentes, setNPendentes] = useState(0);
@@ -195,15 +204,15 @@ function AppShell() {
 
         <div style={{ padding: 20, maxWidth: 1200, margin: '0 auto' }}>
           <Routes>
-            <Route path="/" element={<Dashboard />} />
+            <Route path="/" element={<ViewerRoute pageKey="dashboard"><Dashboard /></ViewerRoute>} />
             <Route path="/importar" element={<AdminRoute><Importar /></AdminRoute>} />
-            <Route path="/turmas" element={<Turmas />} />
-            <Route path="/alunos" element={<Alunos />} />
-            <Route path="/faltas" element={<Faltas />} />
-            <Route path="/distorcao" element={<Distorcao />} />
+            <Route path="/turmas" element={<ViewerRoute pageKey="turmas"><Turmas /></ViewerRoute>} />
+            <Route path="/alunos" element={<ViewerRoute pageKey="alunos"><Alunos /></ViewerRoute>} />
+            <Route path="/faltas" element={<ViewerRoute pageKey="faltas"><Faltas /></ViewerRoute>} />
+            <Route path="/distorcao" element={<ViewerRoute pageKey="distorcao"><Distorcao /></ViewerRoute>} />
             <Route path="/ocr" element={<AdminRoute><OCR /></AdminRoute>} />
             <Route path="/professor" element={<Professor />} />
-            <Route path="/pendentes" element={<Pendentes />} />
+            <Route path="/pendentes" element={<ViewerRoute pageKey="pendentes"><Pendentes /></ViewerRoute>} />
             <Route path="/usuarios" element={<AdminRoute><Usuarios /></AdminRoute>} />
           </Routes>
         </div>

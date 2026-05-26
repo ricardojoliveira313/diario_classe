@@ -94,6 +94,13 @@ export default function Pendentes() {
       const alunos = todosAlunos ?? [];
       const alunoIds = alunos.map(a => a.id);
 
+      // P2 fix: guard against empty alunoIds causing Supabase IN error
+      if (alunoIds.length === 0) {
+        setAlunosCiclo([]);
+        setMsgCiclo('Nenhum aluno ativo encontrado nas turmas de 3º e 5º Ano.');
+        return;
+      }
+
       // Carrega faltas acumuladas no ano
       const { data: todasFaltas } = await supabase
         .from('Falta')

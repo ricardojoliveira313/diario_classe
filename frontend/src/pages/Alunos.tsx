@@ -421,18 +421,30 @@ export default function Alunos() {
                     <span style={{ fontSize: 13, color: theme.textSecondary, fontFamily: 'monospace' }}>
                       {a.ra}{a.dig_ra ? `-${a.dig_ra}` : ''}
                     </span>
-                    <button onClick={e => { e.stopPropagation(); abrirEdicao(a); }} style={{
-                      fontSize: 11, fontWeight: 700, textAlign: 'center',
-                      color: SITUACAO_COR[a.situacao] ?? theme.textSecondary,
-                      background: `${SITUACAO_COR[a.situacao] ?? theme.textSecondary}18`,
-                      border: `1px solid ${SITUACAO_COR[a.situacao] ?? theme.border}50`,
-                      borderRadius: 4, padding: '4px 8px', cursor: 'pointer', width: '100%',
-                      transition: 'opacity 0.15s ease',
-                    }}
-                      onMouseEnter={e => { e.currentTarget.style.opacity = '0.8'; }}
-                      onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}>
-                      {SITUACAO_LABEL[a.situacao] ?? a.situacao}
-                    </button>
+                    {role === 'admin' ? (
+                      <button onClick={e => { e.stopPropagation(); abrirEdicao(a); }} style={{
+                        fontSize: 11, fontWeight: 700, textAlign: 'center',
+                        color: SITUACAO_COR[a.situacao] ?? theme.textSecondary,
+                        background: `${SITUACAO_COR[a.situacao] ?? theme.textSecondary}18`,
+                        border: `1px solid ${SITUACAO_COR[a.situacao] ?? theme.border}50`,
+                        borderRadius: 4, padding: '4px 8px', cursor: 'pointer', width: '100%',
+                        transition: 'opacity 0.15s ease',
+                      }}
+                        onMouseEnter={e => { e.currentTarget.style.opacity = '0.8'; }}
+                        onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}>
+                        {SITUACAO_LABEL[a.situacao] ?? a.situacao}
+                      </button>
+                    ) : (
+                      <span style={{
+                        display: 'block', fontSize: 11, fontWeight: 700, textAlign: 'center',
+                        color: SITUACAO_COR[a.situacao] ?? theme.textSecondary,
+                        background: `${SITUACAO_COR[a.situacao] ?? theme.textSecondary}18`,
+                        border: `1px solid ${SITUACAO_COR[a.situacao] ?? theme.border}50`,
+                        borderRadius: 4, padding: '4px 8px',
+                      }}>
+                        {SITUACAO_LABEL[a.situacao] ?? a.situacao}
+                      </span>
+                    )}
                     <span style={{ fontSize: 11, textAlign: 'center', color: a.deficiencia ? theme.purple : theme.textMuted }}>
                       {a.deficiencia ? '🟣' : '—'}
                     </span>
@@ -656,7 +668,7 @@ export default function Alunos() {
 
           <div style={{ padding: '10px 16px', background: 'var(--footer-row)', fontSize: 13, color: theme.textSecondary, borderTop: `1px solid ${theme.borderLight}`, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
             <span><span style={{ fontWeight: 600 }}>{alunosFiltrados.length}</span> de <span style={{ fontWeight: 600 }}>{alunos.length}</span> aluno(s)</span>
-            <span>Clique na linha para detalhes · Clique na situação para alterar</span>
+            <span>Clique na linha para detalhes{role === 'admin' ? ' · Clique na situação para alterar' : ' · somente visualização'}</span>
           </div>
         </div>
         </div>
