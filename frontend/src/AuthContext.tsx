@@ -40,6 +40,8 @@ interface AuthCtx {
   username: string | null;
   /** null = todas as páginas liberadas; array = apenas essas páginas */
   permissoes: PageKey[] | null;
+  /** null = sem turma restrita; UUID = professor restrito a essa turma */
+  turmaId: string | null;
   login: (usuario: string, senha: string) => Promise<'admin' | 'viewer' | 'errado'>;
   logout: () => void;
 }
@@ -69,10 +71,11 @@ interface SessionState {
   role: Role;
   username: string;
   permissoes: PageKey[] | null;
+  turmaId: string | null;
 }
 
 const AuthContext = createContext<AuthCtx>({
-  role: null, username: null, permissoes: null,
+  role: null, username: null, permissoes: null, turmaId: null,
   login: () => Promise.resolve('errado' as const), logout: () => {},
 });
 
@@ -93,7 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       u => u.usuario === usuario.trim().toLowerCase() && u.senha === senha
     );
     if (envUser) {
-      const s: SessionState = { role: envUser.role, username: usuario.trim(), permissoes: null };
+      const s: SessionState = { role: envUser.role, username: usuario.trim(), permissoes: null, turmaId: null };
       setState(s);
       sessionStorage.setItem(SESSION_KEY, JSON.stringify(s));
       return envUser.role;
@@ -102,7 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { data } = await supabase
         .from('Usuario')
-        .select('nome, senha, perfil, permissoes')
+        .select('nome, senha, perfil, permissoes, turma_id')
         .eq('nome', usuario.trim())
         .maybeSingle();
       if (data && data.senha === senha) {
@@ -110,7 +113,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Admin ignora permissoes; viewer usa o campo (null = tudo liberado)
         const permissoes: PageKey[] | null =
           role === 'admin' ? null : (Array.isArray(data.permissoes) ? data.permissoes : null);
-        const s: SessionState = { role, username: usuario.trim(), permissoes };
+        const turmaId: string | null = role === 'admin' ? null : (data.turma_id ?? null);
+        const s: SessionState = { role, username: usuario.trim(), permissoes, turmaId };
         setState(s);
         sessionStorage.setItem(SESSION_KEY, JSON.stringify(s));
         return role;
@@ -129,6 +133,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       role: state?.role ?? null,
       username: state?.username ?? null,
       permissoes: state?.permissoes ?? null,
+      turmaId: state?.turmaId ?? null,
       login,
       logout,
     }}>

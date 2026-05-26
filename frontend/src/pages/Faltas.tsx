@@ -70,7 +70,8 @@ export default function Faltas() {
   const ST_BG = isDark ? ST_BG_DARK : ST_BG_LIGHT;
   const ST_COR = isDark ? ST_COR_DARK : ST_COR_LIGHT;
   const { ano } = useAno();
-  const { role } = useAuth();
+  const { role, turmaId: minhaTurmaId } = useAuth();
+  const podeEditar = role === 'admin' || !!minhaTurmaId;
 
   const [turmas, setTurmas] = useState<any[]>([]);
   const [turmaId, setTurmaId] = useState('');
@@ -104,7 +105,17 @@ export default function Faltas() {
   const numDias = useMemo(() => calDays.filter(d => d.isLetivo).length, [calDays]);
 
   useEffect(() => {
-    api.getTurmas().then(t => { const s = sortTurmasPedagogico(t || []); setTurmas(s); if (s.length) setTurmaId(s[0].id); });
+    api.getTurmas().then(t => {
+      const s = sortTurmasPedagogico(t || []);
+      if (minhaTurmaId) {
+        const minhas = s.filter(x => x.id === minhaTurmaId);
+        setTurmas(minhas);
+        setTurmaId(minhaTurmaId);
+      } else {
+        setTurmas(s);
+        if (s.length) setTurmaId(s[0].id);
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -132,6 +143,7 @@ export default function Faltas() {
   }, [turmaId, mes]);
 
   const toggleDia = (alunoId: string, diaIdx: number) => {
+    if (!podeEditar) return;
     setDiasAluno(prev => {
       const dias = [...(prev[alunoId] ?? initDias(numDias))];
       const idx = CICLO.indexOf(dias[diaIdx]);
@@ -142,7 +154,7 @@ export default function Faltas() {
   };
 
   const salvar = async () => {
-    if (role !== 'admin') return;
+    if (!podeEditar) return;
     setSaving(true);
     const registros = alunos.map(a => {
       if (statusTextos[a.id]) {
@@ -690,7 +702,7 @@ export default function Faltas() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
           <div>
             <label style={label}>Turma</label>
-            <select style={input} value={turmaId} onChange={e => setTurmaId(e.target.value)}>
+            <select style={input} value={turmaId} onChange={e => setTurmaId(e.target.value)} disabled={!!minhaTurmaId}>
               {turmas.map(t => {
                 // Se existem duas turmas com o mesmo nome (ex: duas "EJA I"), mostra a professora
                 const duplicado = turmas.filter(x => x.nome === t.nome).length > 1;
@@ -701,6 +713,11 @@ export default function Faltas() {
                 );
               })}
             </select>
+            {minhaTurmaId && (
+              <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 4 }}>
+                🔒 Acesso restrito à sua turma
+              </div>
+            )}
           </div>
           <div>
             <label style={label}>Mês</label>
@@ -864,18 +881,18 @@ export default function Faltas() {
                             const status = dias[cd.schoolIdx] ?? 'P';
                             return (
                               <td key={cd.dia}
-                                onClick={() => toggleDia(a.id, cd.schoolIdx)}
+                                onClick={podeEditar ? () => toggleDia(a.id, cd.schoolIdx) : undefined}
                                 title={`Dia ${cd.dia}: ${ST_LABEL[status]}${cd.isSabadoLetivo ? ' (Sábado Letivo)' : ''}`}
                                 style={{
-                                  width: isMobile ? 38 : 24, textAlign: 'center', cursor: 'pointer',
+                                  width: isMobile ? 38 : 24, textAlign: 'center', cursor: podeEditar ? 'pointer' : 'default',
                                   background: ST_BG[status], color: ST_COR[status],
                                   fontWeight: 700, fontSize: isMobile ? 13 : 11,
                                   padding: isMobile ? '12px 0' : '7px 0',
                                   borderLeft: '1px solid var(--border-light)',
                                   userSelect: 'none', transition: 'opacity 0.1s', touchAction: 'manipulation',
                                 }}
-                                onMouseEnter={!isMobile ? (e => (e.currentTarget.style.opacity = '0.75')) : undefined}
-                                onMouseLeave={!isMobile ? (e => (e.currentTarget.style.opacity = '1')) : undefined}
+                                onMouseEnter={!isMobile && podeEditar ? (e => (e.currentTarget.style.opacity = '0.75')) : undefined}
+                                onMouseLeave={!isMobile && podeEditar ? (e => (e.currentTarget.style.opacity = '1')) : undefined}
                               >
                                 {status}
                               </td>
@@ -930,7 +947,7 @@ export default function Faltas() {
             )}
           </div>
 
-          {role === 'admin' ? (
+          {podeEditar ? (
             <button
               style={{
                 ...btn('primary', { full: true }),
