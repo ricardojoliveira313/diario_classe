@@ -32,16 +32,27 @@ export const api = {
   },
 
   getAlunos: async (turmaId?: string) => {
-    let query = supabase.from('Aluno').select('*').order('numero').order('nome');
+    let query = supabase.from('Aluno').select('*').order('numero').order('nome').limit(5000);
     if (turmaId) query = query.eq('turmaId', turmaId);
     const { data, error } = await query;
     if (error) throw error;
     return data ?? [];
   },
   getAllAlunos: async () => {
-    const { data, error } = await supabase.from('Aluno').select('*').order('numero').order('nome');
-    if (error) throw error;
-    return data ?? [];
+    // Busca em lotes para suportar mais de 1000 alunos (limite padrão do Supabase)
+    const PAGE = 1000;
+    let todos: any[] = [];
+    let from = 0;
+    while (true) {
+      const { data, error } = await supabase
+        .from('Aluno').select('*').order('numero').order('nome')
+        .range(from, from + PAGE - 1);
+      if (error) throw error;
+      todos = todos.concat(data ?? []);
+      if (!data || data.length < PAGE) break;
+      from += PAGE;
+    }
+    return todos;
   },
   updateAluno: async (id: string, updates: any) => {
     const { error } = await supabase.from('Aluno').update(updates).eq('id', id);
