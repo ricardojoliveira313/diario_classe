@@ -142,3 +142,6 @@ ALTER TABLE "Educacenso" DISABLE ROW LEVEL SECURITY;
 -- (resolve o erro "Could not find the table in the schema cache")
 
 NOTIFY pgrst, 'reload schema';
+
+-- Professor pode lançar faltas de uma turma específica
+ALTER TABLE "Usuario" ADD COLUMN IF NOT EXISTS turma_id UUID REFERENCES "Turma"(id) ON DELETE SET NULL;

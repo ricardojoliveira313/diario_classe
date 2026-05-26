@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '../api';
+import { supabase, api } from '../api';
 import { useAuth, PAGINAS_VIEWER } from '../AuthContext';
 import type { PageKey } from '../AuthContext';
 import { theme, btn, input, label, card as cardStyle } from '../styles';
@@ -18,7 +18,9 @@ export default function Usuarios() {
   // Painel de permissões por usuário
   const [editandoPermId, setEditandoPermId] = useState<string | null>(null);
   const [permTemp, setPermTemp] = useState<PageKey[] | null>(null);
+  const [turmaTemp, setTurmaTemp] = useState<string | null>(null);
   const [salvandoPerm, setSalvandoPerm] = useState(false);
+  const [turmas, setTurmas] = useState<any[]>([]);
 
   const carregar = async () => {
     setLoading(true);
@@ -27,7 +29,7 @@ export default function Usuarios() {
     setLoading(false);
   };
 
-  useEffect(() => { carregar(); }, []);
+  useEffect(() => { carregar(); api.getTurmas().then(setTurmas); }, []);
 
   if (role !== 'admin') {
     return (
@@ -71,6 +73,7 @@ export default function Usuarios() {
     setEditandoPermId(u.id);
     // null no banco = tudo liberado; array = só essas páginas
     setPermTemp(Array.isArray(u.permissoes) ? [...u.permissoes] : null);
+    setTurmaTemp(u.turma_id ?? null);
   };
 
   const togglePagina = (key: PageKey) => {
@@ -93,7 +96,7 @@ export default function Usuarios() {
 
   const salvarPermissoes = async (id: string) => {
     setSalvandoPerm(true);
-    await supabase.from('Usuario').update({ permissoes: permTemp }).eq('id', id);
+    await supabase.from('Usuario').update({ permissoes: permTemp, turma_id: turmaTemp }).eq('id', id);
     setSalvandoPerm(false);
     setEditandoPermId(null);
     carregar();
@@ -251,6 +254,29 @@ export default function Usuarios() {
                         : permTemp.length === 0
                           ? '⚠️ Nenhuma aba liberada — o usuário não verá nada no menu.'
                           : `🔒 Somente ${permTemp.length} aba(s) liberada(s): ${permTemp.join(', ')}`}
+                    </div>
+
+                    {/* Turma restrita (professor) */}
+                    <div style={{ marginBottom: 14 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6, color: theme.textSecondary }}>
+                        🏫 Turma restrita para lançar faltas
+                      </div>
+                      <select
+                        value={turmaTemp ?? ''}
+                        onChange={e => setTurmaTemp(e.target.value || null)}
+                        style={{ ...input, marginBottom: 0 }}
+                      >
+                        <option value="">— Nenhuma (somente consulta) —</option>
+                        {turmas.map(t => (
+                          <option key={t.id} value={t.id}>
+                            {t.nome}{t.professora ? ` — ${t.professora}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 4 }}>
+                        Se definida, o professor verá e poderá salvar faltas somente desta turma.
+                        Deixe vazio para acesso de consulta apenas.
+                      </div>
                     </div>
 
                     {/* Salvar */}
