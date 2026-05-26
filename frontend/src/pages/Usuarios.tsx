@@ -235,8 +235,9 @@ export default function Usuarios() {
                           <label key={p.key} style={{
                             display: 'flex', alignItems: 'center', gap: 8,
                             padding: '8px 12px', borderRadius: 8, cursor: 'pointer',
-                            background: liberada ? theme.successLight : 'var(--row-even)',
+                            background: liberada ? 'var(--success-light)' : 'var(--row-even)',
                             border: `1px solid ${liberada ? theme.success : theme.borderLight}`,
+                            color: liberada ? theme.success : theme.text,
                             fontWeight: liberada ? 600 : 400,
                             fontSize: 13,
                             transition: 'all 0.15s ease',
