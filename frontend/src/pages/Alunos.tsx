@@ -124,7 +124,8 @@ export default function Alunos() {
 
   const totalAtivos = alunos.filter(a => a.situacao === 'ATIVO').length;
   const totalBolsa = alunos.filter(a => a.bolsa_familia).length;
-  const totalDefi = alunos.filter(a => a.deficiencia).length;
+  const totalDefiAEE = alunos.filter(a => a.deficiencia && turmaMap.get(a.turmaId)?.tipo === 'AEE').length;
+  const totalDefiRegular = alunos.filter(a => a.deficiencia && turmaMap.get(a.turmaId)?.tipo !== 'AEE').length;
 
   // Agrupa por turma quando "Todas as turmas" — cada turma com numeração independente
   const renderRows = useMemo(() => {
@@ -341,7 +342,8 @@ export default function Alunos() {
           <StatCard label="Total" val={alunos.length} color={theme.primary} />
           <StatCard label="Ativos" val={totalAtivos} color={theme.success} sub={alunos.length > 0 ? `${((totalAtivos / alunos.length) * 100).toFixed(0)}%` : undefined} />
           <StatCard label="Bolsa Família" val={totalBolsa} color={theme.orange} />
-          <StatCard label="Deficiência" val={totalDefi} color={theme.purple} />
+          <StatCard label="🏫 Defi. Regular" val={totalDefiRegular} color={theme.purple} sub="Ensino regular" />
+          <StatCard label="🎯 Defi. AEE" val={totalDefiAEE} color="#8b5cf6" sub="Sala de recursos" />
         </div>
       )}
 

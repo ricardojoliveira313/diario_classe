@@ -30,9 +30,10 @@ export default function Dashboard() {
   const baixas = alunos.filter(a => ['BXTR', 'TRAN', 'N COM'].includes(a.situacao)).length;
   const rema = alunos.filter(a => a.situacao === 'REMA').length;
   const bolsa = alunos.filter(a => a.bolsa_familia).length;
-  const comDefi = alunos.filter(a => a.deficiencia).length;
   const dl = getDiasLetivos(mes, ano);
   const turmaMap = new Map(turmas.map(t => [t.id, t]));
+  const comDefiRegular = alunos.filter(a => a.deficiencia && turmaMap.get(a.turmaId)?.tipo !== 'AEE').length;
+  const comDefiAEE = alunos.filter(a => a.deficiencia && turmaMap.get(a.turmaId)?.tipo === 'AEE').length;
 
   const faltasMap = new Map<string, number>(faltas.map(f => [f.alunoId, f.faltas ?? 0]));
   const alertas = alunos.filter(a => {
@@ -72,7 +73,8 @@ export default function Dashboard() {
             <StatCard label="Remanejados" val={rema} color={theme.orange} />
             <StatCard label="Baixas" val={baixas} color={theme.danger} />
             <StatCard label="Bolsa Família" val={bolsa} color={theme.success} sub={`${((bolsa / total) * 100).toFixed(0)}%`} />
-            <StatCard label="Deficiência" val={comDefi} color={theme.purple} />
+            <StatCard label="🏫 Defi. Regular" val={comDefiRegular} color={theme.purple} sub="Ensino regular" />
+            <StatCard label="🎯 Defi. AEE" val={comDefiAEE} color="#8b5cf6" sub="Sala de recursos" />
             <StatCard label="⚠️ Alertas" val={alertas.length} color={alertas.length > 0 ? theme.danger : theme.textMuted} sub="Inf: <60% · Fund: <75%" />
           </div>
 
