@@ -32,7 +32,7 @@ const NAV_ITEMS: { to: string; label: string; end?: boolean; badge?: boolean; ad
   { to: '/faltas',    label: '📋 Faltas',                             pageKey: 'faltas' },
   { to: '/distorcao', label: '📐 Distorção',                          pageKey: 'distorcao' },
   { to: '/ocr',       label: '📷 OCR',       adminOnly: true },
-  { to: '/pendentes', label: '📋 Ata de Resultados', badge: true,    pageKey: 'pendentes' },
+  { to: '/pendentes', label: '📋 Ata',                badge: true,    pageKey: 'pendentes' },
   { to: '/usuarios',  label: '👥 Usuários',  adminOnly: true },
 ];
 
@@ -125,7 +125,7 @@ function AppShell() {
             </NavLink>
 
             {/* Desktop menu */}
-            <div style={{ display: 'flex', gap: 1, flex: 1, overflow: 'hidden' }}>
+            <div className="nav-scroll" style={{ display: 'flex', gap: 1, flex: 1, minWidth: 0 }}>
               {navItems.map(item => (
                 <NavLink
                   key={item.to} to={item.to} end={item.end}
@@ -141,7 +141,7 @@ function AppShell() {
             </div>
 
             {/* Badge de perfil + nome do usuário */}
-            <span style={roleBadgeStyle} title={`${username || ''} — ${role === 'admin' ? 'Acesso completo' : 'Somente visualização'}`}>
+            <span style={{ ...roleBadgeStyle, flexShrink: 0 }} title={`${username || ''} — ${role === 'admin' ? 'Acesso completo' : 'Somente visualização'}`}>
               {role === 'admin' ? '🔑' : '👁️'} {(username || '').split(':')[0].substring(0, 10)}
             </span>
 
@@ -149,20 +149,20 @@ function AppShell() {
             <select
               value={ano} onChange={e => setAno(Number(e.target.value))}
               title="Ano letivo"
-              style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.25)', color: 'white', borderRadius: 6, padding: '4px 6px', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginLeft: 4, minWidth: 60 }}
+              style={{ flexShrink: 0, background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.25)', color: 'white', borderRadius: 6, padding: '4px 6px', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginLeft: 4, minWidth: 60 }}
             >
               {ANOS_DISPONIVEIS.map(a => <option key={a} value={a} style={{ background: theme.primary, color: 'white' }}>{a}</option>)}
             </select>
 
             {/* Theme toggle */}
             <button onClick={toggleTheme} title={themeMode === 'light' ? 'Modo escuro' : 'Modo claro'}
-              style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', cursor: 'pointer', padding: '6px 8px', borderRadius: 6, fontSize: 16, lineHeight: 1 }}>
+              style={{ flexShrink: 0, background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', cursor: 'pointer', padding: '6px 8px', borderRadius: 6, fontSize: 16, lineHeight: 1 }}>
               {themeMode === 'light' ? '🌙' : '☀️'}
             </button>
 
             {/* Sair */}
             <button onClick={logout} title="Sair"
-              style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fca5a5', cursor: 'pointer', padding: '5px 7px', borderRadius: 6, fontSize: 12, fontWeight: 600, lineHeight: 1, whiteSpace: 'nowrap' }}>
+              style={{ flexShrink: 0, background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fca5a5', cursor: 'pointer', padding: '5px 7px', borderRadius: 6, fontSize: 12, fontWeight: 600, lineHeight: 1, whiteSpace: 'nowrap' }}>
               ⬅ Sair
             </button>
 
@@ -175,11 +175,10 @@ function AppShell() {
               {menuAberto ? '✕' : '☰'}
             </button>
 
-            {/* GitHub */}
+            {/* GitHub — só ícone para economizar espaço */}
             <a href="https://github.com/ricardojoliveira313/diario_classe" target="_blank" rel="noopener noreferrer"
-              style={{ color: '#93c5fd', textDecoration: 'none', padding: '6px 8px', borderRadius: 6, fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+              title="GitHub" style={{ flexShrink: 0, color: '#93c5fd', textDecoration: 'none', padding: '6px 8px', borderRadius: 6, fontSize: 12, display: 'flex', alignItems: 'center' }}>
               <svg height="15" width="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-              <span style={{ display: 'inline' }}>GitHub</span>
             </a>
           </div>
 
