@@ -52,7 +52,7 @@ export default function Distorcao() {
   const turmaMap = new Map(turmas.map(t => [t.id, t]));
 
   const todos = alunos
-    .filter(a => ['ATIVO', '', null, undefined].includes(a.situacao) || a.situacao === 'ATIVO')
+    .filter(a => a.situacao === 'ATIVO')
     .map(a => {
       const turma = turmaMap.get(a.turmaId);
       const grade = turma ? extractGrade(turma.nome) : null;
@@ -73,7 +73,7 @@ export default function Distorcao() {
       return t !== 0 ? t : a.nome.localeCompare(b.nome);
     });
 
-  const totalAtivos = alunos.filter(a => a.situacao === 'ATIVO' || !a.situacao).length;
+  const totalAtivos = alunos.filter(a => a.situacao === 'ATIVO').length;
   const pct = totalAtivos > 0 ? ((comDistorcao.length / totalAtivos) * 100).toFixed(1) : '0.0';
 
   // Agrupamento por turma para stats
@@ -81,7 +81,7 @@ export default function Distorcao() {
     .map(t => ({
       nome: t.nome,
       professora: t.professora,
-      total: alunos.filter(a => a.turmaId === t.id && (a.situacao === 'ATIVO' || !a.situacao)).length,
+      total: alunos.filter(a => a.turmaId === t.id && a.situacao === 'ATIVO').length,
       distorcao: comDistorcao.filter(a => a.turmaId === t.id).length,
     }))
     .filter(t => t.distorcao > 0)

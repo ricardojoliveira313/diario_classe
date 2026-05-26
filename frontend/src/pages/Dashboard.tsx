@@ -29,11 +29,11 @@ export default function Dashboard() {
   const ativos = alunos.filter(a => a.situacao === 'ATIVO').length;
   const baixas = alunos.filter(a => ['BXTR', 'TRAN', 'N COM'].includes(a.situacao)).length;
   const rema = alunos.filter(a => a.situacao === 'REMA').length;
-  const bolsa = alunos.filter(a => a.bolsa_familia).length;
+  const bolsa = alunos.filter(a => a.bolsa_familia && a.situacao === 'ATIVO').length;
   const dl = getDiasLetivos(mes, ano);
   const turmaMap = new Map(turmas.map(t => [t.id, t]));
-  const comDefiRegular = alunos.filter(a => a.deficiencia && turmaMap.get(a.turmaId)?.tipo !== 'AEE').length;
-  const comDefiAEE = alunos.filter(a => a.deficiencia && turmaMap.get(a.turmaId)?.tipo === 'AEE').length;
+  const comDefiRegular = alunos.filter(a => a.deficiencia && a.situacao === 'ATIVO' && turmaMap.get(a.turmaId)?.tipo !== 'AEE').length;
+  const comDefiAEE    = alunos.filter(a => a.deficiencia && a.situacao === 'ATIVO' && turmaMap.get(a.turmaId)?.tipo === 'AEE').length;
 
   const faltasMap = new Map<string, number>(faltas.map(f => [f.alunoId, f.faltas ?? 0]));
   const alertas = alunos.filter(a => {
