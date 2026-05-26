@@ -142,6 +142,7 @@ export default function Faltas() {
   };
 
   const salvar = async () => {
+    if (role !== 'admin') return;
     setSaving(true);
     const registros = alunos.map(a => {
       if (statusTextos[a.id]) {
@@ -929,22 +930,32 @@ export default function Faltas() {
             )}
           </div>
 
-          <button
-            style={{
-              ...btn('primary', { full: true }),
-              padding: '14px', fontSize: 17,
-              background: saved ? theme.success : theme.primary,
-              transition: 'all 0.2s ease',
-              borderRadius: isMobile ? 0 : theme.radiusMd,
-              position: isMobile ? 'sticky' : 'static',
-              bottom: isMobile ? 0 : 'auto',
-              zIndex: isMobile ? 10 : 'auto',
-              boxShadow: isMobile ? '0 -2px 10px rgba(0,0,0,0.2)' : 'none',
-            }}
-            onClick={salvar} disabled={saving}
-          >
-            {saving ? <><Spinner size={20} /> Salvando...</> : saved ? '✅ Salvo!' : '💾 Salvar Faltas'}
-          </button>
+          {role === 'admin' ? (
+            <button
+              style={{
+                ...btn('primary', { full: true }),
+                padding: '14px', fontSize: 17,
+                background: saved ? theme.success : theme.primary,
+                transition: 'all 0.2s ease',
+                borderRadius: isMobile ? 0 : theme.radiusMd,
+                position: isMobile ? 'sticky' : 'static',
+                bottom: isMobile ? 0 : 'auto',
+                zIndex: isMobile ? 10 : 'auto',
+                boxShadow: isMobile ? '0 -2px 10px rgba(0,0,0,0.2)' : 'none',
+              }}
+              onClick={salvar} disabled={saving}
+            >
+              {saving ? <><Spinner size={20} /> Salvando...</> : saved ? '✅ Salvo!' : '💾 Salvar Faltas'}
+            </button>
+          ) : (
+            <div style={{
+              padding: '14px', fontSize: 14, fontWeight: 600, textAlign: 'center',
+              background: 'var(--ghost-bg)', borderRadius: theme.radiusMd,
+              color: theme.textMuted, border: `1px solid ${theme.borderLight}`,
+            }}>
+              🔒 Somente visualização — apenas o administrador pode salvar faltas
+            </div>
+          )}
         </div>
       )}
     </div>

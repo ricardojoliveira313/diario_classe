@@ -3,6 +3,7 @@ import { api, supabase } from '../api';
 import { theme, btn, MESES, card as cardStyle, DIAS_LETIVOS_ANO, sortTurmasPedagogico, ordemTurma, input, label } from '../styles';
 import { Loading, EmptyState, Spinner } from '../components';
 import { useAno } from '../AnoContext';
+import { useAuth } from '../AuthContext';
 
 // ─── Helpers de confiança (Folhas de Frequência) ──────────────────────────────
 const COR_CONF: Record<string, string> = { alta: theme.success, media: theme.orange, baixa: theme.danger };
@@ -36,6 +37,7 @@ export default function Pendentes() {
   // ── Aba ativa ──
   const [aba, setAba] = useState<'folhas' | 'ciclo'>('folhas');
   const { ano } = useAno();
+  const { role } = useAuth();
 
   // ── Estado: Folhas de Frequência (existente) ──────────────────────────────
   const [itens, setItens] = useState<any[]>([]);
@@ -161,6 +163,7 @@ export default function Pendentes() {
 
   // ── Salva rendimentos no banco ───────────────────────────────────────────
   const salvarCiclo = async () => {
+    if (role !== 'admin') return;
     const comRendimento = alunosCiclo.filter(a => a.rendimento);
     if (comRendimento.length === 0) {
       setMsgCiclo('⚠️ Nenhum rendimento para salvar. Aplique as sugestões ou defina manualmente.');
@@ -193,6 +196,7 @@ export default function Pendentes() {
   };
 
   const aprovar = async (item: any) => {
+    if (role !== 'admin') return;
     const dados: any[] = editando[item.id] ?? item.dados;
     const validos = dados.filter((d: any) => d.alunoId);
     if (validos.length === 0) { alert('Nenhum aluno cruzado — não é possível aprovar.'); return; }
@@ -211,12 +215,14 @@ export default function Pendentes() {
   };
 
   const rejeitar = async (id: string) => {
+    if (role !== 'admin') return;
     if (!confirm('Rejeitar esta submissão? Os dados não serão salvos.')) return;
     await api.atualizarPendente(id, { status: 'rejeitado' });
     carregar();
   };
 
   const excluir = async (id: string) => {
+    if (role !== 'admin') return;
     if (!confirm('Excluir permanentemente?')) return;
     await api.deletePendente(id);
     carregar();
@@ -354,7 +360,7 @@ export default function Pendentes() {
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    {item.status === 'pendente' && (
+                    {role === 'admin' && item.status === 'pendente' && (
                       <>
                         <button onClick={() => aprovar(item)} disabled={salvando === item.id}
                           style={btn('success', { small: true })}>
@@ -364,7 +370,7 @@ export default function Pendentes() {
                           style={btn('danger', { small: true, outline: true })}>✕</button>
                       </>
                     )}
-                    {item.status !== 'pendente' && (
+                    {role === 'admin' && item.status !== 'pendente' && (
                       <button onClick={() => excluir(item.id)}
                         style={btn('ghost', { small: true })}>🗑</button>
                     )}
@@ -409,7 +415,7 @@ export default function Pendentes() {
                         </div>
                       ))}
                     </div>
-                    {item.status === 'pendente' && (
+                    {role === 'admin' && item.status === 'pendente' && (
                       <div style={{ padding: 12, display: 'flex', gap: 8, background: 'var(--footer-row)', borderTop: `1px solid ${theme.borderLight}` }}>
                         <button onClick={() => aprovar(item)} disabled={salvando === item.id}
                           style={{ ...btn('success', { full: true }), fontSize: 14 }}>
@@ -468,14 +474,18 @@ export default function Pendentes() {
               </div>
             )}
             <div style={{ display: 'flex', gap: 6, marginTop: 18 }}>
-              <button onClick={aplicarSugestoes} style={btn('warning', { small: true, outline: true })}
-                title="Preenche apenas quem ainda não tem rendimento definido">
-                🤖 Sugerir pendentes
-              </button>
-              <button onClick={aplicarSugestoesTodas} style={btn('ghost', { small: true })}
-                title="Sobrescreve todos com a sugestão automática">
-                🔄 Resetar todas
-              </button>
+              {role === 'admin' && (
+                <>
+                  <button onClick={aplicarSugestoes} style={btn('warning', { small: true, outline: true })}
+                    title="Preenche apenas quem ainda não tem rendimento definido">
+                    🤖 Sugerir pendentes
+                  </button>
+                  <button onClick={aplicarSugestoesTodas} style={btn('ghost', { small: true })}
+                    title="Sobrescreve todos com a sugestão automática">
+                    🔄 Resetar todas
+                  </button>
+                </>
+              )}
               <button onClick={carregarCiclo} style={btn('ghost', { small: true })} disabled={loadingCiclo}>
                 {loadingCiclo ? <Spinner size={14} /> : '↺ Recarregar'}
               </button>
@@ -583,28 +593,37 @@ export default function Pendentes() {
                         {a.rendimentoSugerido === 'APROVADO' ? '✅ Aprovado' : '🔁 Permanecente'}
                       </span>
 
-                      {/* Rendimento final (editável) */}
+                      {/* Rendimento final (editável só para admin) */}
                       <div style={{ display: 'flex', justifyContent: 'center' }}>
-                        <select
-                          value={a.rendimento}
-                          onChange={e => setRendimento(a.id, e.target.value)}
-                          style={{
-                            padding: '5px 8px', borderRadius: 6, fontSize: 12, fontWeight: 700,
-                            border: `1.5px solid ${
-                              !a.rendimento ? theme.border
-                              : a.rendimento === 'APROVADO' ? theme.success
-                              : theme.danger
-                            }`,
-                            background: badge.bg,
-                            color: badge.cor,
-                            cursor: 'pointer',
-                            width: '100%',
-                          }}
-                        >
-                          <option value="">— definir —</option>
-                          <option value="APROVADO">✅ Aprovado</option>
-                          <option value="PERMANECENTE">🔁 Permanecente</option>
-                        </select>
+                        {role === 'admin' ? (
+                          <select
+                            value={a.rendimento}
+                            onChange={e => setRendimento(a.id, e.target.value)}
+                            style={{
+                              padding: '5px 8px', borderRadius: 6, fontSize: 12, fontWeight: 700,
+                              border: `1.5px solid ${
+                                !a.rendimento ? theme.border
+                                : a.rendimento === 'APROVADO' ? theme.success
+                                : theme.danger
+                              }`,
+                              background: badge.bg,
+                              color: badge.cor,
+                              cursor: 'pointer',
+                              width: '100%',
+                            }}
+                          >
+                            <option value="">— definir —</option>
+                            <option value="APROVADO">✅ Aprovado</option>
+                            <option value="PERMANECENTE">🔁 Permanecente</option>
+                          </select>
+                        ) : (
+                          <span style={{
+                            fontSize: 12, fontWeight: 700, padding: '5px 8px', borderRadius: 6,
+                            background: badge.bg, color: badge.cor, width: '100%', textAlign: 'center',
+                          }}>
+                            {badge.label || '— não definido —'}
+                          </span>
+                        )}
                       </div>
                     </div>
                   );
@@ -620,10 +639,12 @@ export default function Pendentes() {
                 <span style={{ fontSize: 12, color: theme.textSecondary, marginRight: 'auto' }}>
                   {alunosCicloFiltrados.length} aluno(s) listado(s) · ✏️ indica diferença da sugestão automática
                 </span>
-                <button onClick={salvarCiclo} disabled={salvandoCiclo}
-                  style={{ ...btn('success', {}), minWidth: 160 }}>
-                  {salvandoCiclo ? <><Spinner size={16} /> Salvando...</> : '💾 Salvar Rendimentos'}
-                </button>
+                {role === 'admin' && (
+                  <button onClick={salvarCiclo} disabled={salvandoCiclo}
+                    style={{ ...btn('success', {}), minWidth: 160 }}>
+                    {salvandoCiclo ? <><Spinner size={16} /> Salvando...</> : '💾 Salvar Rendimentos'}
+                  </button>
+                )}
               </div>
             </div>
           )}

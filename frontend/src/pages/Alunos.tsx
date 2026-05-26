@@ -150,6 +150,7 @@ export default function Alunos() {
   }, [alunosFiltrados, turmaId, turmaMap]);
 
   const abrirEdicao = (a: any) => {
+    if (role !== 'admin') return;
     if (editandoId === a.id) { setEditandoId(null); return; }
     setEditandoId(a.id);
     setNovaSituacao(a.situacao ?? 'ATIVO');
@@ -159,6 +160,7 @@ export default function Alunos() {
   };
 
   const salvarSituacao = async (alunoId: string) => {
+    if (role !== 'admin') return;
     setSalvando(true);
     const updates: any = { situacao: novaSituacao };
     if (dataMovimentacao) {
@@ -437,11 +439,18 @@ export default function Alunos() {
                     <span style={{ textAlign: 'center', fontSize: 15 }}>{a.bolsa_familia ? '✅' : '—'}</span>
                     <span style={{ fontSize: 12, color: theme.textSecondary }}>{a.professora || t?.professora || ''}</span>
                     <span style={{ fontSize: 12, color: theme.textSecondary }}>{t?.nome || ''}</span>
-                    <span style={{ fontSize: 12, textAlign: 'center', color: a.cpf ? theme.text : theme.textMuted, fontFamily: 'monospace', cursor: a.cpf ? 'pointer' : 'default' }} onClick={() => { if (a.cpf) copiar(a.cpf, 'cpf'); else { if (!aberto) toggleDetalhes(a.id); setEditandoCpf(a.id); } }} title={a.cpf ? 'Clique para copiar CPF' : 'Clique para adicionar CPF'}>
-                      {a.cpf ? (copiado === 'cpf' ? '✅' : formataCPF(a.cpf)) : <span style={{ color: '#3b82f6', cursor: 'pointer' }}>+ cpf</span>}
+                    <span style={{ fontSize: 12, textAlign: 'center', color: a.cpf ? theme.text : theme.textMuted, fontFamily: 'monospace', cursor: a.cpf ? 'pointer' : 'default' }}
+                      onClick={() => {
+                        if (a.cpf) copiar(a.cpf, 'cpf');
+                        else if (role === 'admin') { if (!aberto) toggleDetalhes(a.id); setEditandoCpf(a.id); }
+                      }}
+                      title={a.cpf ? 'Clique para copiar CPF' : role === 'admin' ? 'Clique para adicionar CPF' : ''}>
+                      {a.cpf ? (copiado === 'cpf' ? '✅' : formataCPF(a.cpf)) : role === 'admin' ? <span style={{ color: '#3b82f6', cursor: 'pointer' }}>+ cpf</span> : <span style={{ color: theme.textMuted }}>—</span>}
                     </span>
-                    <span style={{ fontSize: 12, textAlign: 'center', color: a.cor_raca ? theme.text : theme.textMuted, cursor: a.cor_raca ? 'default' : 'pointer' }} onClick={() => { if (!a.cor_raca) { if (!aberto) toggleDetalhes(a.id); setEditandoCor(a.id); } }} title={a.cor_raca ? '' : 'Clique para adicionar Cor/Raça'}>
-                      {a.cor_raca || <span style={{ color: '#3b82f6', cursor: 'pointer' }}>+ raça</span>}
+                    <span style={{ fontSize: 12, textAlign: 'center', color: a.cor_raca ? theme.text : theme.textMuted, cursor: a.cor_raca || role !== 'admin' ? 'default' : 'pointer' }}
+                      onClick={() => { if (!a.cor_raca && role === 'admin') { if (!aberto) toggleDetalhes(a.id); setEditandoCor(a.id); } }}
+                      title={!a.cor_raca && role === 'admin' ? 'Clique para adicionar Cor/Raça' : ''}>
+                      {a.cor_raca || (role === 'admin' ? <span style={{ color: '#3b82f6', cursor: 'pointer' }}>+ raça</span> : <span style={{ color: theme.textMuted }}>—</span>)}
                     </span>
                   </div>
 
@@ -532,7 +541,7 @@ export default function Alunos() {
                         {a.responsavel && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Responsável:</span> {a.responsavel}</div>}
                         <div>
                           <span style={{ fontWeight: 600, color: theme.textSecondary }}>CPF:</span>
-                          {editandoCpf === a.id ? (
+                          {role === 'admin' && editandoCpf === a.id ? (
                             <span>
                               <input value={a.cpf || ''} onChange={e => {
                                 const v = e.target.value.replace(/\D/g, '').slice(0, 11);
@@ -546,14 +555,18 @@ export default function Alunos() {
                             </span>
                           ) : (
                             <span>
-                              {a.cpf ? a.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : <span style={{ color: theme.textMuted, fontStyle: 'italic', cursor: 'pointer' }} onClick={() => { setEditandoCpf(a.id); setEditandoCor(''); }}>+ adicionar CPF</span>}
-                              {a.cpf && <button onClick={() => setEditandoCpf(a.id)} style={{ ...btn('ghost', { small: true }), marginLeft: 4, fontSize: 11 }}>✏️</button>}
+                              {a.cpf
+                                ? a.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
+                                : role === 'admin'
+                                  ? <span style={{ color: theme.textMuted, fontStyle: 'italic', cursor: 'pointer' }} onClick={() => { setEditandoCpf(a.id); setEditandoCor(''); }}>+ adicionar CPF</span>
+                                  : <span style={{ color: theme.textMuted, fontStyle: 'italic' }}>não informado</span>}
+                              {a.cpf && role === 'admin' && <button onClick={() => setEditandoCpf(a.id)} style={{ ...btn('ghost', { small: true }), marginLeft: 4, fontSize: 11 }}>✏️</button>}
                             </span>
                           )}
                         </div>
                         <div>
                           <span style={{ fontWeight: 600, color: theme.textSecondary }}>Cor/Raça:</span>
-                          {editandoCor === a.id ? (
+                          {role === 'admin' && editandoCor === a.id ? (
                             <span>
                               <select value={a.cor_raca || ''} onChange={e => {
                                 setAlunos(prev => prev.map(x => x.id === a.id ? { ...x, cor_raca: e.target.value } : x));
@@ -574,8 +587,12 @@ export default function Alunos() {
                             </span>
                           ) : (
                             <span>
-                              {a.cor_raca || <span style={{ color: theme.textMuted, fontStyle: 'italic', cursor: 'pointer' }} onClick={() => { setEditandoCor(a.id); setEditandoCpf(''); }}>+ adicionar</span>}
-                              {a.cor_raca && <button onClick={() => setEditandoCor(a.id)} style={{ ...btn('ghost', { small: true }), marginLeft: 4, fontSize: 11 }}>✏️</button>}
+                              {a.cor_raca
+                                ? a.cor_raca
+                                : role === 'admin'
+                                  ? <span style={{ color: theme.textMuted, fontStyle: 'italic', cursor: 'pointer' }} onClick={() => { setEditandoCor(a.id); setEditandoCpf(''); }}>+ adicionar</span>
+                                  : <span style={{ color: theme.textMuted, fontStyle: 'italic' }}>não informado</span>}
+                              {a.cor_raca && role === 'admin' && <button onClick={() => setEditandoCor(a.id)} style={{ ...btn('ghost', { small: true }), marginLeft: 4, fontSize: 11 }}>✏️</button>}
                             </span>
                           )}
                         </div>
@@ -583,7 +600,7 @@ export default function Alunos() {
                     </div>
                   )}
 
-                  {editandoId === a.id && (
+                  {role === 'admin' && editandoId === a.id && (
                     <div className="slide-down" style={{
                       padding: '14px 16px', background: 'var(--edit-bg)',
                       borderBottom: `1px solid var(--edit-border)`,
