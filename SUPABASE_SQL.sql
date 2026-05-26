@@ -83,9 +83,14 @@ ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS cpf                  TEXT DEFAULT N
 -- Destino do remanejamento (pra onde o aluno REMA foi)
 ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS turma_destino       TEXT DEFAULT '';
 ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS professora_destino  TEXT DEFAULT '';
+-- Rendimento do Conselho de Ciclo (3º e 5º Anos): APROVADO | PERMANECENTE
+ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS rendimento          TEXT DEFAULT NULL;
 
 ALTER TABLE "Turma" ADD COLUMN IF NOT EXISTS professora TEXT DEFAULT '';
 ALTER TABLE "Turma" ADD COLUMN IF NOT EXISTS periodo    TEXT DEFAULT '';
+
+-- Permissões por página para cada usuário viewer (null = todas liberadas)
+ALTER TABLE "Usuario" ADD COLUMN IF NOT EXISTS permissoes JSONB DEFAULT NULL;
 
 ALTER TABLE "Falta" ADD COLUMN IF NOT EXISTS frequencia      TEXT DEFAULT '';
 

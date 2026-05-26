@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import { api } from '../api';
 import { theme, btn, input, label, card as cardStyle, sortTurmasPedagogico } from '../styles';
 import { Loading, EmptyState, Spinner } from '../components';
+import { useAuth } from '../AuthContext';
 
 // normaliza para comparação: maiúsculas, sem acento, sem ordinais, espaços simples
 const norm = (s: string) =>
@@ -23,6 +24,7 @@ const normSimp = (s: string) =>
     .trim();
 
 export default function Turmas() {
+  const { role } = useAuth();
   const [turmas, setTurmas] = useState<any[]>([]);
   const [form, setForm] = useState({ nome: '', etapa: 'EF1', numero: 1, letra: 'A', periodo: 'Manhã', professora: '' });
   const [adding, setAdding] = useState(false);
@@ -44,6 +46,7 @@ export default function Turmas() {
   useEffect(() => { load(); }, []);
 
   const save = async () => {
+    if (role !== 'admin') return;
     setSaving(true);
     try {
       await api.createTurma({ nome: form.nome.trim(), professora: form.professora.trim() });
@@ -58,7 +61,7 @@ export default function Turmas() {
   };
 
   const salvarEdicao = async () => {
-    if (!editando) return;
+    if (role !== 'admin' || !editando) return;
     setSavingEdit(true);
     try {
       await api.updateTurma(editando.id, { professora: editando.professora });
@@ -72,6 +75,7 @@ export default function Turmas() {
   };
 
   const del = async (id: string, nome: string) => {
+    if (role !== 'admin') return;
     if (!confirm(`Excluir turma "${nome}"? Todos os alunos e faltas serão removidos.`)) return;
     setDeleting(id);
     try {
@@ -133,6 +137,7 @@ export default function Turmas() {
   };
 
   const salvarImport = async () => {
+    if (role !== 'admin') return;
     const matches = preview.filter(p => p.encontrou && p.professora.trim());
     if (!matches.length) return;
     setSalvandoImport(true);
@@ -167,14 +172,16 @@ export default function Turmas() {
             </div>
           )}
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button style={btn('success', { outline: true })} onClick={() => { setImportando(!importando); setAdding(false); }}>
-            {importando ? 'Fechar importação' : '📥 Importar Professoras'}
-          </button>
-          <button style={adding ? btn('ghost') : btn('primary')} onClick={() => { setAdding(!adding); setImportando(false); }}>
-            {adding ? 'Cancelar' : '+ Nova Turma'}
-          </button>
-        </div>
+        {role === 'admin' && (
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button style={btn('success', { outline: true })} onClick={() => { setImportando(!importando); setAdding(false); }}>
+              {importando ? 'Fechar importação' : '📥 Importar Professoras'}
+            </button>
+            <button style={adding ? btn('ghost') : btn('primary')} onClick={() => { setAdding(!adding); setImportando(false); }}>
+              {adding ? 'Cancelar' : '+ Nova Turma'}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Painel de importação em lote */}
@@ -348,16 +355,18 @@ export default function Turmas() {
                   : <span style={{ color: '#ea580c', fontWeight: 500 }}> · ⚠️ sem professora</span>}
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button style={btn('primary', { small: true, outline: true })}
-                onClick={() => setEditando(editando?.id === t.id ? null : { id: t.id, professora: t.professora ?? '' })}>
-                ✏️ Professora
-              </button>
-              <button style={btn('danger', { small: true, outline: true })}
-                onClick={() => del(t.id, t.nome)} disabled={deleting === t.id}>
-                {deleting === t.id ? <Spinner size={14} /> : 'Excluir'}
-              </button>
-            </div>
+            {role === 'admin' && (
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button style={btn('primary', { small: true, outline: true })}
+                  onClick={() => setEditando(editando?.id === t.id ? null : { id: t.id, professora: t.professora ?? '' })}>
+                  ✏️ Professora
+                </button>
+                <button style={btn('danger', { small: true, outline: true })}
+                  onClick={() => del(t.id, t.nome)} disabled={deleting === t.id}>
+                  {deleting === t.id ? <Spinner size={14} /> : 'Excluir'}
+                </button>
+              </div>
+            )}
           </div>
           {editando?.id === t.id && editando && (
             <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center' }}>

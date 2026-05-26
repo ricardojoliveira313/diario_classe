@@ -1230,16 +1230,23 @@ export default function Importar() {
       // ─── PASSO 2: Alunos — upsert por RA (preserva UUIDs → preserva faltas) ───
       setStatus('Atualizando cadastro de alunos...');
       const { data: existentes } = await supabase
-        .from('Aluno').select('id, ra, nome, situacao');
+        .from('Aluno').select('id, ra, nome, situacao, cpf, nis, responsavel');
       const raToExistingId = new Map<string, string>();
       const nomeToExistingId = new Map<string, string>();
       const remaToId = new Map<string, string>(); // RA → ID do registro REMA
+      // Preserva campos cadastrados manualmente — não sobrescreve com null na importação
+      const idToCpf = new Map<string, string>();
+      const idToNis = new Map<string, string>();
+      const idToResponsavel = new Map<string, string>();
       for (const e of (existentes ?? [])) {
         if (e.ra) {
           if (e.situacao === 'REMA') remaToId.set(String(e.ra), e.id);
           else raToExistingId.set(String(e.ra), e.id);
         }
         nomeToExistingId.set(normalizeStr(e.nome), e.id);
+        if (e.cpf) idToCpf.set(e.id, e.cpf);
+        if (e.nis) idToNis.set(e.id, e.nis);
+        if (e.responsavel) idToResponsavel.set(e.id, e.responsavel);
       }
 
       // ─── Carrega EDUCACENSO do banco (tabela fixa) e enriquece alunos ───
@@ -1282,8 +1289,9 @@ export default function Importar() {
         const existingId = isRema
           ? remaToId.get(raKey)
           : (raToExistingId.get(raKey) ?? nomeToExistingId.get(a.nomeNorm));
+        const alunoId = existingId ?? crypto.randomUUID();
         return {
-          id: existingId ?? crypto.randomUUID(),
+          id: alunoId,
           nome: a.nome,
           turmaId: resolveIdAtualizado(a.serie, a.professora),
           ra: a.ra,
@@ -1296,9 +1304,10 @@ export default function Importar() {
           situacao: a.situacao,
           bolsa_familia: a.bolsaFamilia,
           professora: a.professora,
-          nis: a.nis || null,
-          responsavel: a.responsavel || null,
-          cpf: a.cpf || null,
+          // Preserva valor cadastrado manualmente no banco se o arquivo não trouxer
+          nis: a.nis || idToNis.get(alunoId) || null,
+          responsavel: a.responsavel || idToResponsavel.get(alunoId) || null,
+          cpf: a.cpf || idToCpf.get(alunoId) || null,
           cor_raca: a.corRaca || '',
           turma_origem: a.turmaOrigem || '',
           professora_origem: a.professoraOrigem || '',
