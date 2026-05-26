@@ -17,20 +17,23 @@ import { theme } from './styles';
 import { ThemeProvider, useTheme } from './ThemeContext';
 import { AnoProvider, useAno } from './AnoContext';
 import { AuthProvider, useAuth } from './AuthContext';
-import type { Role } from './AuthContext';
+import type { Role, PageKey } from './AuthContext';
 
 // ─── Itens de navegação ────────────────────────────────────────────────────
-// adminOnly: true → item escondido para perfil "viewer"
-const NAV_ITEMS: { to: string; label: string; end?: boolean; badge?: boolean; adminOnly?: boolean }[] = [
-  { to: '/',          label: '📊 Dashboard', end: true },
+// adminOnly: true  → visível apenas para admin
+// pageKey          → chave usada no painel de permissões (viewers)
+//                    se pageKey estiver definida, viewer só vê se permissoes===null
+//                    ou se permissoes.includes(pageKey)
+const NAV_ITEMS: { to: string; label: string; end?: boolean; badge?: boolean; adminOnly?: boolean; pageKey?: PageKey }[] = [
+  { to: '/',          label: '📊 Dashboard', end: true,              pageKey: 'dashboard' },
   { to: '/importar',  label: '📥 Importar',  adminOnly: true },
-  { to: '/turmas',    label: '👩‍🏫 Turmas' },
-  { to: '/alunos',    label: '👥 Alunos' },
-  { to: '/faltas',    label: '📋 Faltas' },
-  { to: '/distorcao', label: '📐 Distorção' },
+  { to: '/turmas',    label: '👩‍🏫 Turmas',                            pageKey: 'turmas' },
+  { to: '/alunos',    label: '👥 Alunos',                             pageKey: 'alunos' },
+  { to: '/faltas',    label: '📋 Faltas',                             pageKey: 'faltas' },
+  { to: '/distorcao', label: '📐 Distorção',                          pageKey: 'distorcao' },
   { to: '/ocr',       label: '📷 OCR',       adminOnly: true },
-  { to: '/pendentes', label: '📋 Ata de Resultados', badge: true },
-  { to: '/usuarios',  label: '👥 Usuários', adminOnly: true },
+  { to: '/pendentes', label: '📋 Ata de Resultados', badge: true,    pageKey: 'pendentes' },
+  { to: '/usuarios',  label: '👥 Usuários',  adminOnly: true },
 ];
 
 const ANOS_DISPONIVEIS = [2025, 2026, 2027];
@@ -48,7 +51,7 @@ function AppShell() {
   const [scrolled, setScrolled] = useState(false);
   const { theme: themeMode, toggle: toggleTheme } = useTheme();
   const { ano, setAno } = useAno();
-  const { role, username, logout } = useAuth();
+  const { role, username, logout, permissoes } = useAuth();
 
   useEffect(() => {
     api.contarPendentes().then(setNPendentes).catch(() => {});
@@ -62,8 +65,14 @@ function AppShell() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  // Filtra itens do menu conforme o perfil
-  const navItems = NAV_ITEMS.filter(item => role === 'admin' || !item.adminOnly);
+  // Filtra itens do menu conforme o perfil e permissões
+  const navItems = NAV_ITEMS.filter(item => {
+    if (role === 'admin') return true;                    // admin vê tudo
+    if (item.adminOnly) return false;                     // viewer nunca vê adminOnly
+    if (!item.pageKey) return true;                       // sem pageKey → sempre visível
+    if (permissoes === null) return true;                 // null = todas liberadas
+    return permissoes.includes(item.pageKey);             // verifica whitelist
+  });
 
   const navStyle: React.CSSProperties = {
     position: 'sticky', top: 0, zIndex: 50,

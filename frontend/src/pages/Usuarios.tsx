@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../api';
-import { useAuth } from '../AuthContext';
+import { useAuth, PAGINAS_VIEWER } from '../AuthContext';
+import type { PageKey } from '../AuthContext';
 import { theme, btn, input, label, card as cardStyle } from '../styles';
-import { Loading } from '../components';
+import { Loading, Spinner } from '../components';
 
 export default function Usuarios() {
   const { role } = useAuth();
@@ -14,6 +15,10 @@ export default function Usuarios() {
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState('');
   const [sucesso, setSucesso] = useState('');
+  // Painel de permissões por usuário
+  const [editandoPermId, setEditandoPermId] = useState<string | null>(null);
+  const [permTemp, setPermTemp] = useState<PageKey[] | null>(null);
+  const [salvandoPerm, setSalvandoPerm] = useState(false);
 
   const carregar = async () => {
     setLoading(true);
@@ -42,14 +47,11 @@ export default function Usuarios() {
       nome: novoNome.trim(),
       senha: novaSenha,
       perfil: novoPerfil,
+      permissoes: null, // padrão: tudo liberado
     });
     setSalvando(false);
     if (error) {
-      if (error.message?.includes('duplicate')) {
-        setErro('Usuário já existe.');
-      } else {
-        setErro(error.message);
-      }
+      setErro(error.message?.includes('duplicate') ? 'Usuário já existe.' : error.message);
       return;
     }
     setSucesso(`Usuário "${novoNome.trim()}" criado!`);
@@ -63,26 +65,63 @@ export default function Usuarios() {
     carregar();
   };
 
+  // ── Painel de permissões ─────────────────────────────────────────────────
+  const abrirPermissoes = (u: any) => {
+    if (editandoPermId === u.id) { setEditandoPermId(null); return; }
+    setEditandoPermId(u.id);
+    // null no banco = tudo liberado; array = só essas páginas
+    setPermTemp(Array.isArray(u.permissoes) ? [...u.permissoes] : null);
+  };
+
+  const togglePagina = (key: PageKey) => {
+    if (permTemp === null) {
+      // estava tudo liberado → remove todas exceto esta
+      setPermTemp([key]);
+    } else if (permTemp.includes(key)) {
+      const nova = permTemp.filter(k => k !== key);
+      // se ficou vazio, mantém array vazio (nenhuma página)
+      setPermTemp(nova);
+    } else {
+      const nova = [...permTemp, key];
+      // se selecionou todas, volta para null (tudo liberado)
+      if (nova.length === PAGINAS_VIEWER.length) setPermTemp(null);
+      else setPermTemp(nova);
+    }
+  };
+
+  const liberarTodas = () => setPermTemp(null);
+
+  const salvarPermissoes = async (id: string) => {
+    setSalvandoPerm(true);
+    await supabase.from('Usuario').update({ permissoes: permTemp }).eq('id', id);
+    setSalvandoPerm(false);
+    setEditandoPermId(null);
+    carregar();
+  };
+
+  const isPaginaLiberada = (key: PageKey) =>
+    permTemp === null || permTemp.includes(key);
+
   return (
     <div style={{ marginTop: 16, animation: 'fadeIn 0.25s ease both' }}>
       <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>👥 Gerenciar Usuários</h1>
       <p style={{ color: theme.textSecondary, fontSize: 14, marginBottom: 20 }}>
-        Os usuários cadastrados aqui funcionam em conjunto com a variável VITE_USERS.
+        Cadastre usuários e defina quais abas cada viewer pode acessar.
       </p>
 
-      {/* Formulário */}
+      {/* Formulário novo usuário */}
       <div style={{ ...cardStyle(), padding: 20, marginBottom: 20 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>Novo Usuário</h2>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 10, alignItems: 'end' }}>
           <div>
             <label style={label}>Usuário / Email</label>
             <input style={input} value={novoNome} onChange={e => setNovoNome(e.target.value)}
-              placeholder="ex: rico@escola.com" />
+              placeholder="ex: professora@escola.com" />
           </div>
           <div>
             <label style={label}>Senha</label>
             <input style={input} type="password" value={novaSenha} onChange={e => setNovaSenha(e.target.value)}
-              placeholder="minha senha" />
+              placeholder="senha segura" />
           </div>
           <div>
             <label style={label}>Perfil</label>
@@ -99,44 +138,131 @@ export default function Usuarios() {
         </button>
       </div>
 
-      {/* Lista */}
+      {/* Lista de usuários */}
       {loading ? <Loading text="Carregando usuários..." /> : (
         <div style={{ ...cardStyle(), overflow: 'hidden' }}>
           {usuarios.length === 0 ? (
             <p style={{ padding: 20, textAlign: 'center', color: theme.textMuted }}>Nenhum usuário cadastrado.</p>
-          ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-              <thead>
-                <tr style={{ background: 'var(--row-even)' }}>
-                  <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600, color: theme.textSecondary }}>Usuário</th>
-                  <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600, color: theme.textSecondary }}>Perfil</th>
-                  <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 600, color: theme.textSecondary }}>Ação</th>
-                </tr>
-              </thead>
-              <tbody>
-                {usuarios.map(u => (
-                  <tr key={u.id} style={{ borderTop: `1px solid ${theme.borderLight}` }}>
-                    <td style={{ padding: '10px 14px', fontWeight: 500 }}>{u.nome}</td>
-                    <td style={{ padding: '10px 14px' }}>
-                      <span style={{
-                        display: 'inline-block', padding: '2px 10px', borderRadius: 10, fontSize: 12, fontWeight: 600,
-                        background: u.perfil === 'admin' ? theme.primaryBg : theme.orangeLight,
-                        color: u.perfil === 'admin' ? theme.primary : theme.orange,
-                      }}>
-                        {u.perfil === 'admin' ? '🔑 Admin' : '👁️ Viewer'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '10px 14px', textAlign: 'center' }}>
-                      <button onClick={() => remover(u.id, u.nome)}
-                        style={{ ...btn('danger', { small: true }) }}>
-                        🗑️ Remover
+          ) : usuarios.map((u, i) => {
+            const isViewer = u.perfil === 'viewer';
+            const todasLiberadas = !Array.isArray(u.permissoes) || u.permissoes === null;
+            const qtdPaginas = Array.isArray(u.permissoes) ? u.permissoes.length : PAGINAS_VIEWER.length;
+            const editandoPerm = editandoPermId === u.id;
+
+            return (
+              <div key={u.id} style={{ borderTop: i > 0 ? `1px solid ${theme.borderLight}` : undefined }}>
+                {/* Linha principal */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', padding: '12px 16px',
+                  gap: 12, flexWrap: 'wrap',
+                }}>
+                  {/* Nome e perfil */}
+                  <div style={{ flex: 1, minWidth: 160 }}>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{u.nome}</div>
+                    <div style={{ fontSize: 12, color: theme.textMuted, marginTop: 2 }}>
+                      {isViewer
+                        ? (todasLiberadas
+                          ? '🔓 Todas as abas liberadas'
+                          : `🔒 ${qtdPaginas} de ${PAGINAS_VIEWER.length} abas liberadas`)
+                        : '🔑 Acesso total'}
+                    </div>
+                  </div>
+
+                  {/* Badge perfil */}
+                  <span style={{
+                    display: 'inline-block', padding: '3px 10px', borderRadius: 10, fontSize: 12, fontWeight: 600,
+                    background: u.perfil === 'admin' ? theme.primaryBg : theme.orangeLight,
+                    color: u.perfil === 'admin' ? theme.primary : theme.orange,
+                  }}>
+                    {u.perfil === 'admin' ? '🔑 Admin' : '👁️ Viewer'}
+                  </span>
+
+                  {/* Botões */}
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {isViewer && (
+                      <button
+                        onClick={() => abrirPermissoes(u)}
+                        style={btn(editandoPerm ? 'primary' : 'ghost', { small: true })}
+                      >
+                        {editandoPerm ? '✕ Fechar' : '⚙️ Permissões'}
                       </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+                    )}
+                    <button onClick={() => remover(u.id, u.nome)}
+                      style={btn('danger', { small: true })}>
+                      🗑️
+                    </button>
+                  </div>
+                </div>
+
+                {/* Painel de permissões (só viewers) */}
+                {editandoPerm && isViewer && (
+                  <div className="slide-down" style={{
+                    margin: '0 16px 16px',
+                    background: 'var(--ghost-bg)',
+                    border: `1.5px solid ${theme.primary}`,
+                    borderRadius: theme.radiusMd,
+                    padding: 16,
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: theme.primary }}>
+                        ⚙️ Abas visíveis para <strong>{u.nome}</strong>
+                      </div>
+                      <button onClick={liberarTodas} style={btn('ghost', { small: true })}>
+                        ✅ Liberar todas
+                      </button>
+                    </div>
+
+                    {/* Checkboxes */}
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+                      gap: 8,
+                      marginBottom: 14,
+                    }}>
+                      {PAGINAS_VIEWER.map(p => {
+                        const liberada = isPaginaLiberada(p.key);
+                        return (
+                          <label key={p.key} style={{
+                            display: 'flex', alignItems: 'center', gap: 8,
+                            padding: '8px 12px', borderRadius: 8, cursor: 'pointer',
+                            background: liberada ? theme.successLight : 'var(--row-even)',
+                            border: `1px solid ${liberada ? theme.success : theme.borderLight}`,
+                            fontWeight: liberada ? 600 : 400,
+                            fontSize: 13,
+                            transition: 'all 0.15s ease',
+                            userSelect: 'none',
+                          }}>
+                            <input
+                              type="checkbox"
+                              checked={liberada}
+                              onChange={() => togglePagina(p.key)}
+                              style={{ width: 16, height: 16, accentColor: theme.success, cursor: 'pointer' }}
+                            />
+                            <span>{p.label}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+
+                    {/* Resumo */}
+                    <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 12 }}>
+                      {permTemp === null
+                        ? '✅ Todas as abas estão liberadas para este usuário.'
+                        : permTemp.length === 0
+                          ? '⚠️ Nenhuma aba liberada — o usuário não verá nada no menu.'
+                          : `🔒 Somente ${permTemp.length} aba(s) liberada(s): ${permTemp.join(', ')}`}
+                    </div>
+
+                    {/* Salvar */}
+                    <button onClick={() => salvarPermissoes(u.id)} disabled={salvandoPerm}
+                      style={{ ...btn('primary'), fontSize: 13 }}>
+                      {salvandoPerm ? <Spinner size={14} /> : '💾 Salvar permissões'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

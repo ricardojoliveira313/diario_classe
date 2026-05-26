@@ -89,6 +89,9 @@ ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS rendimento          TEXT DEFAULT NU
 ALTER TABLE "Turma" ADD COLUMN IF NOT EXISTS professora TEXT DEFAULT '';
 ALTER TABLE "Turma" ADD COLUMN IF NOT EXISTS periodo    TEXT DEFAULT '';
 
+-- Permissões por página para cada usuário viewer (null = todas liberadas)
+ALTER TABLE "Usuario" ADD COLUMN IF NOT EXISTS permissoes JSONB DEFAULT NULL;
+
 ALTER TABLE "Falta" ADD COLUMN IF NOT EXISTS frequencia      TEXT DEFAULT '';
 
 -- ─── 2b. Tabela EDUCACENSO (dados persistentes do Censo Escolar) ──────

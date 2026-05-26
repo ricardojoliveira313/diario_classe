@@ -11,6 +11,11 @@
 //   escola:escola2026:viewer
 //
 // A sessão persiste enquanto o browser estiver aberto (sessionStorage).
+//
+// ─── Permissões por página (viewers) ─────────────────────────────────────────
+// O campo `permissoes` do usuário no Supabase controla quais abas o viewer vê.
+// null = todas as abas de viewer liberadas (padrão retrocompatível)
+// ["alunos","faltas"] = somente essas abas ficam visíveis
 
 import { createContext, useContext, useState } from 'react';
 import type { ReactNode } from 'react';
@@ -18,9 +23,23 @@ import { supabase } from './api';
 
 export type Role = 'admin' | 'viewer';
 
+// Chaves de página configuráveis para viewers
+export const PAGINAS_VIEWER = [
+  { key: 'dashboard',  label: '📊 Dashboard' },
+  { key: 'turmas',     label: '👩‍🏫 Turmas' },
+  { key: 'alunos',     label: '👥 Alunos' },
+  { key: 'faltas',     label: '📋 Faltas' },
+  { key: 'distorcao',  label: '📐 Distorção' },
+  { key: 'pendentes',  label: '📋 Ata de Resultados' },
+] as const;
+
+export type PageKey = typeof PAGINAS_VIEWER[number]['key'];
+
 interface AuthCtx {
   role: Role | null;
   username: string | null;
+  /** null = todas as páginas liberadas; array = apenas essas páginas */
+  permissoes: PageKey[] | null;
   login: (usuario: string, senha: string) => Promise<'admin' | 'viewer' | 'errado'>;
   logout: () => void;
 }
@@ -46,13 +65,19 @@ const USERS: UserEntry[] = USERS_RAW
 
 const SESSION_KEY = 'diario_auth';
 
+interface SessionState {
+  role: Role;
+  username: string;
+  permissoes: PageKey[] | null;
+}
+
 const AuthContext = createContext<AuthCtx>({
-  role: null, username: null,
+  role: null, username: null, permissoes: null,
   login: () => Promise.resolve('errado' as const), logout: () => {},
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<{ role: Role; username: string } | null>(() => {
+  const [state, setState] = useState<SessionState | null>(() => {
     try {
       const s = sessionStorage.getItem(SESSION_KEY);
       if (!s) return null;
@@ -63,26 +88,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   const login = async (usuario: string, senha: string): Promise<'admin' | 'viewer' | 'errado'> => {
-    // 1º: VITE_USERS (rápido, sem DB)
+    // 1º: VITE_USERS (rápido, sem DB) — usuários de env não têm permissões customizadas
     const envUser = USERS.find(
       u => u.usuario === usuario.trim().toLowerCase() && u.senha === senha
     );
     if (envUser) {
-      const s = { role: envUser.role, username: usuario.trim() };
+      const s: SessionState = { role: envUser.role, username: usuario.trim(), permissoes: null };
       setState(s);
       sessionStorage.setItem(SESSION_KEY, JSON.stringify(s));
       return envUser.role;
     }
-    // 2º: tabela Usuario no Supabase
+    // 2º: tabela Usuario no Supabase (inclui campo permissoes)
     try {
       const { data } = await supabase
         .from('Usuario')
-        .select('nome, senha, perfil')
+        .select('nome, senha, perfil, permissoes')
         .eq('nome', usuario.trim())
         .maybeSingle();
       if (data && data.senha === senha) {
         const role: Role = data.perfil === 'viewer' ? 'viewer' : 'admin';
-        const s = { role, username: usuario.trim() };
+        // Admin ignora permissoes; viewer usa o campo (null = tudo liberado)
+        const permissoes: PageKey[] | null =
+          role === 'admin' ? null : (Array.isArray(data.permissoes) ? data.permissoes : null);
+        const s: SessionState = { role, username: usuario.trim(), permissoes };
         setState(s);
         sessionStorage.setItem(SESSION_KEY, JSON.stringify(s));
         return role;
@@ -97,7 +125,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ role: state?.role ?? null, username: state?.username ?? null, login, logout }}>
+    <AuthContext.Provider value={{
+      role: state?.role ?? null,
+      username: state?.username ?? null,
+      permissoes: state?.permissoes ?? null,
+      login,
+      logout,
+    }}>
       {children}
     </AuthContext.Provider>
   );
