@@ -164,9 +164,16 @@ export default function Usuarios() {
                     <div style={{ fontWeight: 600, fontSize: 14 }}>{u.nome}</div>
                     <div style={{ fontSize: 12, color: theme.textMuted, marginTop: 2 }}>
                       {isViewer
-                        ? (todasLiberadas
-                          ? '🔓 Todas as abas liberadas'
-                          : `🔒 ${qtdPaginas} de ${PAGINAS_VIEWER.length} abas liberadas`)
+                        ? <>
+                            {todasLiberadas
+                              ? '🔓 Todas as abas liberadas'
+                              : `🔒 ${qtdPaginas} de ${PAGINAS_VIEWER.length} abas liberadas`}
+                            {u.turma_id
+                              ? <span style={{ marginLeft: 8, color: theme.success, fontWeight: 600 }}>
+                                  · 🖊️ Lança faltas: {turmas.find(t => t.id === u.turma_id)?.nome ?? '—'}
+                                </span>
+                              : <span style={{ marginLeft: 8, color: theme.textMuted }}>· 👁️ Somente consulta</span>}
+                          </>
                         : '🔑 Acesso total'}
                     </div>
                   </div>
@@ -256,27 +263,75 @@ export default function Usuarios() {
                           : `🔒 Somente ${permTemp.length} aba(s) liberada(s): ${permTemp.join(', ')}`}
                     </div>
 
-                    {/* Turma restrita (professor) */}
-                    <div style={{ marginBottom: 14 }}>
-                      <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6, color: theme.textSecondary }}>
-                        🏫 Turma restrita para lançar faltas
+                    {/* ── Permissão de lançamento de faltas ─────────────────────── */}
+                    <div style={{
+                      border: `1px solid ${theme.borderLight}`,
+                      borderRadius: theme.radiusMd,
+                      padding: 14,
+                      marginBottom: 14,
+                      background: 'var(--row-even)',
+                    }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10, color: theme.textSecondary }}>
+                        📋 Permissão de lançamento de faltas
                       </div>
-                      <select
-                        value={turmaTemp ?? ''}
-                        onChange={e => setTurmaTemp(e.target.value || null)}
-                        style={{ ...input, marginBottom: 0 }}
-                      >
-                        <option value="">— Nenhuma (somente consulta) —</option>
-                        {turmas.map(t => (
-                          <option key={t.id} value={t.id}>
-                            {t.nome}{t.professora ? ` — ${t.professora}` : ''}
-                          </option>
-                        ))}
-                      </select>
-                      <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 4 }}>
-                        Se definida, o professor verá e poderá salvar faltas somente desta turma.
-                        Deixe vazio para acesso de consulta apenas.
-                      </div>
+
+                      {/* Opção 1: Somente consulta */}
+                      <label style={{
+                        display: 'flex', alignItems: 'flex-start', gap: 10,
+                        padding: '10px 12px', borderRadius: 8, cursor: 'pointer',
+                        marginBottom: 8,
+                        background: turmaTemp === null ? theme.primaryBg : 'transparent',
+                        border: `1.5px solid ${turmaTemp === null ? theme.primary : theme.borderLight}`,
+                        transition: 'all 0.15s',
+                      }}>
+                        <input type="radio" checked={turmaTemp === null}
+                          onChange={() => setTurmaTemp(null)}
+                          style={{ marginTop: 2, accentColor: theme.primary }} />
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: 13, color: turmaTemp === null ? theme.primary : theme.text }}>
+                            👁️ Somente consulta
+                          </div>
+                          <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 2 }}>
+                            Pode visualizar dados mas não salvar faltas
+                          </div>
+                        </div>
+                      </label>
+
+                      {/* Opção 2: Pode lançar faltas */}
+                      <label style={{
+                        display: 'flex', alignItems: 'flex-start', gap: 10,
+                        padding: '10px 12px', borderRadius: 8, cursor: 'pointer',
+                        background: turmaTemp !== null ? theme.successLight : 'transparent',
+                        border: `1.5px solid ${turmaTemp !== null ? theme.success : theme.borderLight}`,
+                        transition: 'all 0.15s',
+                      }}>
+                        <input type="radio" checked={turmaTemp !== null}
+                          onChange={() => setTurmaTemp(turmas[0]?.id ?? '')}
+                          style={{ marginTop: 2, accentColor: theme.success }} />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 600, fontSize: 13, color: turmaTemp !== null ? theme.success : theme.text }}>
+                            🖊️ Pode lançar faltas
+                          </div>
+                          <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 2, marginBottom: turmaTemp !== null ? 8 : 0 }}>
+                            Acessa Faltas e pode salvar a chamada da turma abaixo
+                          </div>
+                          {turmaTemp !== null && (
+                            <div onClick={e => e.preventDefault()}>
+                              <select
+                                value={turmaTemp}
+                                onChange={e => setTurmaTemp(e.target.value)}
+                                style={{ ...input, marginBottom: 0, fontSize: 13 }}
+                              >
+                                {turmas.map(t => (
+                                  <option key={t.id} value={t.id}>
+                                    {t.nome}{t.professora ? ` — ${t.professora}` : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                        </div>
+                      </label>
                     </div>
 
                     {/* Salvar */}
