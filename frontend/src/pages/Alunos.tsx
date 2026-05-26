@@ -122,10 +122,11 @@ export default function Alunos() {
     return true;
   }).sort((a, b) => (a.numero || 9999) - (b.numero || 9999));
 
-  const totalAtivos = alunos.filter(a => a.situacao === 'ATIVO').length;
-  const totalBolsa       = alunos.filter(a => a.bolsa_familia && a.situacao === 'ATIVO').length;
-  const totalDefiAEE     = alunos.filter(a => a.deficiencia && a.situacao === 'ATIVO' && turmaMap.get(a.turmaId)?.tipo === 'AEE').length;
-  const totalDefiRegular = alunos.filter(a => a.deficiencia && a.situacao === 'ATIVO' && turmaMap.get(a.turmaId)?.tipo !== 'AEE').length;
+  const isAtivo = (a: any) => !a.situacao || a.situacao === 'ATIVO';
+  const totalAtivos      = alunos.filter(isAtivo).length;
+  const totalBolsa       = alunos.filter(a => a.bolsa_familia && isAtivo(a)).length;
+  const totalDefiAEE     = alunos.filter(a => a.deficiencia && isAtivo(a) && turmaMap.get(a.turmaId)?.tipo === 'AEE').length;
+  const totalDefiRegular = alunos.filter(a => a.deficiencia && isAtivo(a) && turmaMap.get(a.turmaId)?.tipo !== 'AEE').length;
 
   // Agrupa por turma quando "Todas as turmas" — cada turma com numeração independente
   const renderRows = useMemo(() => {

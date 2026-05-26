@@ -25,21 +25,24 @@ export default function Dashboard() {
 
   if (loading) return <Loading />;
 
+  // isAtivo: ATIVO ou sem situação definida (null/vazio) = ativo na escola
+  const isAtivo = (a: any) => !a.situacao || a.situacao === 'ATIVO';
+
   const total = alunos.length;
-  const ativos = alunos.filter(a => a.situacao === 'ATIVO').length;
+  const ativos = alunos.filter(isAtivo).length;
   const baixas = alunos.filter(a => ['BXTR', 'TRAN', 'N COM'].includes(a.situacao)).length;
-  const rema = alunos.filter(a => a.situacao === 'REMA').length;
-  const bolsa = alunos.filter(a => a.bolsa_familia && a.situacao === 'ATIVO').length;
+  const rema   = alunos.filter(a => a.situacao === 'REMA').length;
+  const bolsa  = alunos.filter(a => a.bolsa_familia && isAtivo(a)).length;
   const dl = getDiasLetivos(mes, ano);
   const turmaMap = new Map(turmas.map(t => [t.id, t]));
-  const comDefiRegular = alunos.filter(a => a.deficiencia && a.situacao === 'ATIVO' && turmaMap.get(a.turmaId)?.tipo !== 'AEE').length;
-  const comDefiAEE    = alunos.filter(a => a.deficiencia && a.situacao === 'ATIVO' && turmaMap.get(a.turmaId)?.tipo === 'AEE').length;
+  const comDefiRegular = alunos.filter(a => a.deficiencia && isAtivo(a) && turmaMap.get(a.turmaId)?.tipo !== 'AEE').length;
+  const comDefiAEE     = alunos.filter(a => a.deficiencia && isAtivo(a) && turmaMap.get(a.turmaId)?.tipo === 'AEE').length;
 
   const faltasMap = new Map<string, number>(faltas.map(f => [f.alunoId, f.faltas ?? 0]));
   const alertas = alunos.filter(a => {
     const t = turmaMap.get(a.turmaId);
     const threshold = isInfantilTurma(t?.nome) ? 0.4 : 0.25;
-    return (faltasMap.get(a.id) ?? 0) >= Math.ceil(dl * threshold) && a.situacao === 'ATIVO';
+    return (faltasMap.get(a.id) ?? 0) >= Math.ceil(dl * threshold) && isAtivo(a);
   });
 
   const statsPorTurma = turmas.map(t => {
