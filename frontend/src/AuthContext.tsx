@@ -16,6 +16,12 @@
 // O campo `permissoes` do usuário no Supabase controla quais abas o viewer vê.
 // null = todas as abas de viewer liberadas (padrão retrocompatível)
 // ["alunos","faltas"] = somente essas abas ficam visíveis
+//
+// ─── Capacidades especiais (viewers) ─────────────────────────────────────────
+// Guardadas também no array `permissoes`:
+//   "editar_cpf"      → pode editar CPF dos alunos
+//   "editar_cor_raca" → pode editar Cor/Raça dos alunos
+//   "faltas_todas"    → pode lançar faltas em todas as turmas
 
 import { createContext, useContext, useState } from 'react';
 import type { ReactNode } from 'react';
@@ -35,13 +41,27 @@ export const PAGINAS_VIEWER = [
 
 export type PageKey = typeof PAGINAS_VIEWER[number]['key'];
 
+// Capacidades especiais (permissões granulares além das páginas)
+export const CAPABILITIES = [
+  { key: 'editar_cpf',      label: '✏️ Pode editar CPF dos alunos' },
+  { key: 'editar_cor_raca', label: '🎨 Pode editar Cor/Raça dos alunos' },
+  { key: 'faltas_todas',    label: '📋 Pode lançar faltas em todas as turmas' },
+] as const;
+
+export type CapabilityKey = typeof CAPABILITIES[number]['key'];
+export type PermKey = PageKey | CapabilityKey;
+
 interface AuthCtx {
   role: Role | null;
   username: string | null;
-  /** null = todas as páginas liberadas; array = apenas essas páginas */
-  permissoes: PageKey[] | null;
+  /** null = todas as páginas liberadas; array = apenas essas páginas + capacidades */
+  permissoes: PermKey[] | null;
   /** null = sem turma restrita; UUID = professor restrito a essa turma */
   turmaId: string | null;
+  // Capacidades computadas (shortcut para não testar permissoes em todo lugar)
+  podeEditarCpf: boolean;
+  podeEditarCorRaca: boolean;
+  podeEditarTodasFaltas: boolean;
   login: (usuario: string, senha: string) => Promise<'admin' | 'viewer' | 'errado'>;
   logout: () => void;
 }
@@ -70,12 +90,19 @@ const SESSION_KEY = 'diario_auth';
 interface SessionState {
   role: Role;
   username: string;
-  permissoes: PageKey[] | null;
+  permissoes: PermKey[] | null;
   turmaId: string | null;
+}
+
+function hasCapability(permissoes: PermKey[] | null, key: CapabilityKey, role: Role): boolean {
+  if (role === 'admin') return true;
+  if (permissoes === null) return false; // null = todas as páginas, mas NÃO capacidades especiais
+  return permissoes.includes(key);
 }
 
 const AuthContext = createContext<AuthCtx>({
   role: null, username: null, permissoes: null, turmaId: null,
+  podeEditarCpf: false, podeEditarCorRaca: false, podeEditarTodasFaltas: false,
   login: () => Promise.resolve('errado' as const), logout: () => {},
 });
 
@@ -111,7 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (data && data.senha === senha) {
         const role: Role = data.perfil === 'viewer' ? 'viewer' : 'admin';
         // Admin ignora permissoes; viewer usa o campo (null = tudo liberado)
-        const permissoes: PageKey[] | null =
+        const permissoes: PermKey[] | null =
           role === 'admin' ? null : (Array.isArray(data.permissoes) ? data.permissoes : null);
         const turmaId: string | null = role === 'admin' ? null : (data.turma_id ?? null);
         const s: SessionState = { role, username: usuario.trim(), permissoes, turmaId };
@@ -128,12 +155,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     sessionStorage.removeItem(SESSION_KEY);
   };
 
+  const role = state?.role ?? null;
+  const permissoes = state?.permissoes ?? null;
+
   return (
     <AuthContext.Provider value={{
-      role: state?.role ?? null,
+      role,
       username: state?.username ?? null,
-      permissoes: state?.permissoes ?? null,
+      permissoes,
       turmaId: state?.turmaId ?? null,
+      podeEditarCpf:        hasCapability(permissoes, 'editar_cpf',      role ?? 'viewer'),
+      podeEditarCorRaca:    hasCapability(permissoes, 'editar_cor_raca',  role ?? 'viewer'),
+      podeEditarTodasFaltas:hasCapability(permissoes, 'faltas_todas',     role ?? 'viewer'),
       login,
       logout,
     }}>

@@ -70,8 +70,8 @@ export default function Faltas() {
   const ST_BG = isDark ? ST_BG_DARK : ST_BG_LIGHT;
   const ST_COR = isDark ? ST_COR_DARK : ST_COR_LIGHT;
   const { ano } = useAno();
-  const { role, turmaId: minhaTurmaId } = useAuth();
-  const podeEditar = role === 'admin' || !!minhaTurmaId;
+  const { role, turmaId: minhaTurmaId, podeEditarTodasFaltas } = useAuth();
+  const podeEditar = role === 'admin' || !!minhaTurmaId || podeEditarTodasFaltas;
 
   const [turmas, setTurmas] = useState<any[]>([]);
   const [turmaId, setTurmaId] = useState('');
@@ -107,7 +107,7 @@ export default function Faltas() {
   useEffect(() => {
     api.getTurmas().then(t => {
       const s = sortTurmasPedagogico(t || []);
-      if (minhaTurmaId) {
+      if (minhaTurmaId && !podeEditarTodasFaltas) {
         const minhas = s.filter(x => x.id === minhaTurmaId);
         setTurmas(minhas);
         setTurmaId(minhaTurmaId);
@@ -702,7 +702,7 @@ export default function Faltas() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
           <div>
             <label style={label}>Turma</label>
-            <select style={input} value={turmaId} onChange={e => setTurmaId(e.target.value)} disabled={!!minhaTurmaId}>
+            <select style={input} value={turmaId} onChange={e => setTurmaId(e.target.value)} disabled={!!minhaTurmaId && !podeEditarTodasFaltas}>
               {turmas.map(t => {
                 // Se existem duas turmas com o mesmo nome (ex: duas "EJA I"), mostra a professora
                 const duplicado = turmas.filter(x => x.nome === t.nome).length > 1;
