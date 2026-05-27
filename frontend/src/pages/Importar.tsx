@@ -1460,17 +1460,17 @@ export default function Importar() {
         <div className="scale-in" style={cardStyle({ marginTop: 16, padding: 20 })}>
           <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 14, color: theme.text }}>📊 Resultado do Cruzamento</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10 }}>
-            {[
-              ['🏫 Turmas no arquivo', preview.turmas],
-              [`✅ Turmas reconhecidas`, preview.turmasReconhecidas],
-              ['👥 Alunos', preview.alunos],
-              ['🟢 Bolsa Família', preview.bolsaFamilia],
-              ['📄 Registros Faltas', preview.faltas],
-              ['📂 Arquivos', preview.arquivos],
-            ].map(([label, val]) => (
-                <div key={label as string} style={{ textAlign: 'center', padding: 16, background: theme.primaryBg, borderRadius: theme.radius }}>
-                <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 4, fontWeight: 600 }}>{label as string}</div>
-                <div style={{ fontSize: 28, fontWeight: 800, color: theme.primary }}>{val as number}</div>
+            {([
+              ['🏫 Turmas no arquivo',   preview.turmas,             '#3b82f6'],
+              ['✅ Turmas reconhecidas', preview.turmasReconhecidas, '#10b981'],
+              ['👥 Alunos',              preview.alunos,             '#8b5cf6'],
+              ['🟢 Bolsa Família',       preview.bolsaFamilia,       '#f59e0b'],
+              ['📄 Registros Faltas',    preview.faltas,             '#6b7280'],
+              ['📂 Arquivos',            preview.arquivos,           '#0ea5e9'],
+            ] as [string, number, string][]).map(([label, val, color]) => (
+              <div key={label} style={{ textAlign: 'center', padding: 16, background: color + '18', borderRadius: theme.radius, border: `1.5px solid ${color}44` }}>
+                <div style={{ fontSize: 11, color: theme.textSecondary, marginBottom: 4, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</div>
+                <div style={{ fontSize: 28, fontWeight: 800, color }}>{val}</div>
               </div>
             ))}
           </div>
