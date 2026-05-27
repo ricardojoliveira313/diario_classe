@@ -1248,13 +1248,19 @@ export default function Importar() {
       const { data: todasTurmas } = await supabase.from('Turma').select('id, nome, professora');
       const resolveIdAtualizado = buildResolveId(todasTurmas ?? []);
 
+      // IDs das turmas AEE (necessário para lógica de registros separados AEE)
+      const { data: aeeTurmasDb } = await supabase.from('Turma').select('id').eq('tipo', 'AEE');
+      const aeeturmaIds = new Set<string>((aeeTurmasDb ?? []).map((t: any) => t.id));
+
       // ─── PASSO 2: Alunos — upsert por RA (preserva UUIDs → preserva faltas) ───
+      // AEE: alunos têm 2 registros separados (turma regular + turma AEE) — mesmo padrão que REMA
       setStatus('Atualizando cadastro de alunos...');
       const { data: existentes } = await supabase
-        .from('Aluno').select('id, ra, nome, situacao, cpf, nis, responsavel, bolsa_familia');
+        .from('Aluno').select('id, ra, nome, situacao, cpf, nis, responsavel, bolsa_familia, turmaId');
       const raToExistingId = new Map<string, string>();
       const nomeToExistingId = new Map<string, string>();
       const remaToId = new Map<string, string>(); // RA → ID do registro REMA
+      const aeeToId = new Map<string, string>();  // RA → ID do registro AEE (turma de recursos)
       // Preserva campos cadastrados manualmente — não sobrescreve com null na importação
       const idToCpf = new Map<string, string>();
       const idToNis = new Map<string, string>();
@@ -1262,8 +1268,15 @@ export default function Importar() {
       const idToBolsaFamilia = new Map<string, boolean>();
       for (const e of (existentes ?? [])) {
         if (e.ra) {
-          if (e.situacao === 'REMA') remaToId.set(String(e.ra), e.id);
-          else raToExistingId.set(String(e.ra), e.id);
+          if (e.situacao === 'REMA') {
+            remaToId.set(String(e.ra), e.id);
+          } else if (e.turmaId && aeeturmaIds.has(e.turmaId)) {
+            // Registo AEE: mantém em mapa próprio, NÃO em raToExistingId
+            // Assim importações de turmas regulares nunca sobrescrevem registros AEE
+            aeeToId.set(String(e.ra), e.id);
+          } else {
+            raToExistingId.set(String(e.ra), e.id);
+          }
         }
         nomeToExistingId.set(normalizeNome(e.nome), e.id);  // normalizeNome (mesma fn que a.nomeNorm)
         if (e.cpf) idToCpf.set(e.id, e.cpf);
@@ -1315,6 +1328,10 @@ export default function Importar() {
       const alunosParaUpsert = alunos.map(a => {
         const isRema = a.situacao === 'REMA';
         const raKey = String(a.ra ?? '');
+        // Resolve turma de destino ANTES de decidir qual registro reutilizar
+        const targetTurmaId = resolveIdAtualizado(a.serie, a.professora);
+        const isAEE = targetTurmaId ? aeeturmaIds.has(targetTurmaId) : false;
+
         const existingId = isRema
           // Para REMA: procura primeiro em registos já REMA; se não encontrar E não há
           // versão ATIVO deste RA no import atual, reclama o antigo registo ATIVO
@@ -1323,12 +1340,17 @@ export default function Importar() {
              (!ativosRAsNoImport.has(raKey)
                ? (raToExistingId.get(raKey) ?? nomeToExistingId.get(a.nomeNorm))
                : undefined))
-          : (raToExistingId.get(raKey) ?? nomeToExistingId.get(a.nomeNorm));
+          : isAEE
+            // Para AEE: usa APENAS o mapa AEE; se não existir → cria UUID novo
+            // Nunca sobrescreve o registo de turma regular do mesmo aluno
+            ? aeeToId.get(raKey)
+            // Regular: usa mapa normal (exclui registos AEE, que ficam no aeeToId)
+            : (raToExistingId.get(raKey) ?? nomeToExistingId.get(a.nomeNorm));
         const alunoId = existingId ?? crypto.randomUUID();
         return {
           id: alunoId,
           nome: a.nome,
-          turmaId: resolveIdAtualizado(a.serie, a.professora),
+          turmaId: targetTurmaId,
           ra: a.ra,
           numero: a.numero,
           data_nascimento: a.nascimento,
@@ -1374,9 +1396,21 @@ export default function Importar() {
           batchIdsByRA.get(raStr)!.push(a.id);
         }
         // Candidatos: no banco, fora do batch, mesmo RA que um registo do batch
+        // Excluímos: (1) registros AEE — têm 2 registros legítimos por aluno
+        //            (2) registros regulares quando o batch tem AEE para esse RA
         const candidatos = (existentes ?? []).filter(e => {
           if (!e.ra || batchIds.has(e.id)) return false;
-          return (batchIdsByRA.get(String(e.ra)) ?? []).length > 0;
+          // Nunca apaga registos em turma AEE
+          if (e.turmaId && aeeturmaIds.has(e.turmaId)) return false;
+          const batchIdsForRA = batchIdsByRA.get(String(e.ra)) ?? [];
+          if (batchIdsForRA.length === 0) return false;
+          // Nunca apaga registo regular se o batch importou AEE para este RA
+          const batchTemAEE = batchIdsForRA.some(bid => {
+            const br = alunosParaUpsert.find(x => x.id === bid);
+            return br?.turmaId && aeeturmaIds.has(br.turmaId);
+          });
+          if (batchTemAEE) return false;
+          return true;
         });
         if (candidatos.length > 0) {
           // Verifica quais candidatos têm faltas (esses NÃO são apagados — podem ser AEE legítimos)
