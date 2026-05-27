@@ -35,16 +35,17 @@ export default function Dashboard() {
   const bolsa  = alunos.filter(a => a.bolsa_familia && isAtivo(a)).length;
   const dl = getDiasLetivos(mes, ano);
   const turmaMap = new Map(turmas.map(t => [t.id, t]));
-  // AEE tem prioridade — aluno com registo regular + AEE conta só no AEE (sem dupla contagem)
-  const defiPorRADash = new Map<string, 'AEE' | 'REGULAR'>();
-  for (const a of alunos) {
-    if (!a.deficiencia || !isAtivo(a)) continue;
-    const tipo: 'AEE' | 'REGULAR' = turmaMap.get(a.turmaId)?.tipo === 'AEE' ? 'AEE' : 'REGULAR';
-    const chave = a.ra ? String(a.ra) : a.id;
-    if (!defiPorRADash.has(chave) || tipo === 'AEE') defiPorRADash.set(chave, tipo);
-  }
-  const comDefiRegular = [...defiPorRADash.values()].filter(t => t === 'REGULAR').length;
-  const comDefiAEE     = [...defiPorRADash.values()].filter(t => t === 'AEE').length;
+  // Contagem sem dupla-contagem (mesmo RA em turma regular + AEE):
+  // Registo AEE pode ter deficiência vazia → verifica deficiência no registo regular.
+  const rasComDefiDash = new Set(
+    alunos.filter(a => isAtivo(a) && a.deficiencia).map(a => a.ra ? String(a.ra) : a.id)
+  );
+  const rasEmAEEDash = new Set(
+    alunos.filter(a => isAtivo(a) && turmaMap.get(a.turmaId)?.tipo === 'AEE' && a.ra)
+      .map(a => String(a.ra))
+  );
+  const comDefiAEE     = [...rasEmAEEDash].filter(ra => rasComDefiDash.has(ra)).length;
+  const comDefiRegular = [...rasComDefiDash].filter(ra => !rasEmAEEDash.has(ra)).length;
 
   const faltasMap = new Map<string, number>(faltas.map(f => [f.alunoId, f.faltas ?? 0]));
   const alertas = alunos.filter(a => {
