@@ -570,10 +570,22 @@ export default function Alunos() {
                           <span style={{ fontWeight: 600, color: theme.textSecondary }}>CPF:</span>
                           {podeEditarCpf && editandoCpf === a.id ? (
                             <span>
-                              <input value={a.cpf || ''} onChange={e => {
-                                const v = e.target.value.replace(/\D/g, '').slice(0, 11);
-                                setAlunos(prev => prev.map(x => x.id === a.id ? { ...x, cpf: v } : x));
-                              }} style={{ ...input, width: 140, marginLeft: 6 }} placeholder="00000000000" maxLength={11} />
+                              <input
+                                value={a.cpf || ''}
+                                onChange={e => {
+                                  const v = e.target.value.replace(/\D/g, '').slice(0, 11);
+                                  setAlunos(prev => prev.map(x => x.id === a.id ? { ...x, cpf: v } : x));
+                                }}
+                                onBlur={async e => {
+                                  // Auto-salva ao sair do campo (sem precisar clicar 💾)
+                                  const v = e.target.value.replace(/\D/g, '').slice(0, 11);
+                                  await api.updateAluno(a.id, { cpf: v || null });
+                                  setEditandoCpf('');
+                                }}
+                                style={{ ...input, width: 140, marginLeft: 6 }}
+                                placeholder="00000000000" maxLength={11}
+                                autoFocus
+                              />
                               <button onClick={async () => {
                                 await api.updateAluno(a.id, { cpf: a.cpf || null });
                                 setEditandoCpf('');
@@ -595,8 +607,12 @@ export default function Alunos() {
                           <span style={{ fontWeight: 600, color: theme.textSecondary }}>Cor/Raça:</span>
                           {podeEditarCorRaca && editandoCor === a.id ? (
                             <span>
-                              <select value={a.cor_raca || ''} onChange={e => {
-                                setAlunos(prev => prev.map(x => x.id === a.id ? { ...x, cor_raca: e.target.value } : x));
+                              <select value={a.cor_raca || ''} onChange={async e => {
+                                const novaCorRaca = e.target.value;
+                                setAlunos(prev => prev.map(x => x.id === a.id ? { ...x, cor_raca: novaCorRaca } : x));
+                                // Auto-salva ao selecionar (sem precisar clicar 💾)
+                                await api.updateAluno(a.id, { cor_raca: novaCorRaca || null });
+                                setEditandoCor('');
                               }} style={{ ...input, width: 140, marginLeft: 6 }}>
                                 <option value="">--</option>
                                 <option value="Branca">Branca</option>
@@ -606,11 +622,7 @@ export default function Alunos() {
                                 <option value="Indígena">Indígena</option>
                                 <option value="Não declarado">Não declarado</option>
                               </select>
-                              <button onClick={async () => {
-                                await api.updateAluno(a.id, { cor_raca: a.cor_raca || null });
-                                setEditandoCor('');
-                              }} style={{ ...btn('success', { small: true }), marginLeft: 4 }}>💾</button>
-                              <button onClick={() => setEditandoCor('')} style={{ ...btn('ghost', { small: true }) }}>✕</button>
+                              <button onClick={() => setEditandoCor('')} style={{ ...btn('ghost', { small: true }), marginLeft: 4 }}>✕</button>
                             </span>
                           ) : (
                             <span>
