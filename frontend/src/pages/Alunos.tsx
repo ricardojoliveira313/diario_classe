@@ -123,10 +123,21 @@ export default function Alunos() {
   }).sort((a, b) => (a.numero || 9999) - (b.numero || 9999));
 
   const isAtivo = (a: any) => !a.situacao || a.situacao === 'ATIVO';
-  const totalAtivos      = alunos.filter(isAtivo).length;
-  const totalBolsa       = alunos.filter(a => a.bolsa_familia && isAtivo(a)).length;
-  const totalDefiAEE     = alunos.filter(a => a.deficiencia && isAtivo(a) && turmaMap.get(a.turmaId)?.tipo === 'AEE').length;
-  const totalDefiRegular = alunos.filter(a => a.deficiencia && isAtivo(a) && turmaMap.get(a.turmaId)?.tipo !== 'AEE').length;
+  const totalAtivos = alunos.filter(isAtivo).length;
+  const totalBolsa  = alunos.filter(a => a.bolsa_familia && isAtivo(a)).length;
+
+  // Contagem de deficiências sem dupla-contagem:
+  // Alunos AEE têm 2 registos (turma regular + sala AEE com mesmo RA).
+  // Usa RA como chave única — AEE tem prioridade, nunca conta no Regular.
+  const defiPorRA = new Map<string, 'AEE' | 'REGULAR'>();
+  for (const a of alunos) {
+    if (!a.deficiencia || !isAtivo(a)) continue;
+    const tipo: 'AEE' | 'REGULAR' = turmaMap.get(a.turmaId)?.tipo === 'AEE' ? 'AEE' : 'REGULAR';
+    const chave = a.ra ? String(a.ra) : a.id;
+    if (!defiPorRA.has(chave) || tipo === 'AEE') defiPorRA.set(chave, tipo);
+  }
+  const totalDefiAEE     = [...defiPorRA.values()].filter(t => t === 'AEE').length;
+  const totalDefiRegular = [...defiPorRA.values()].filter(t => t === 'REGULAR').length;
 
   // Agrupa por turma quando "Todas as turmas" — cada turma com numeração independente
   const renderRows = useMemo(() => {
