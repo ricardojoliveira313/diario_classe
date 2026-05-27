@@ -241,6 +241,10 @@ export default function Dashboard() {
 
   return (
     <div style={{ marginTop: 16, animation: 'fadeIn 0.25s ease both' }}>
+      {/* INDICADOR DE VERSÃO — remover depois de confirmar deploy */}
+      <div style={{ background: '#16a34a', color: 'white', padding: '6px 12px', borderRadius: 6, marginBottom: 12, fontSize: 12, fontWeight: 700 }}>
+        ✅ Build 2026-05-27 v3 — cards clicáveis activos
+      </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
         <h1 style={{ fontSize: 26, fontWeight: 800, color: theme.text }}>📊 Dashboard</h1>
         <select value={mes} onChange={e => setMes(Number(e.target.value))}
