@@ -1156,6 +1156,13 @@ export default function Importar() {
         const aliasT = applyAlias(t.nome);
         if (aliasT !== t.nome) normToTurmaId.set(normT(aliasT), t.id);
       }
+      // Detecta tipo da turma pelo nome: AEE → 'AEE', outros → preserva existente
+      const detectarTipo = (nome: string, existente?: any): string | undefined => {
+        const n = normT(nome);
+        if (/^AEE\b/.test(n) || n.includes('ATENDIMENTO EDUCACIONAL')) return 'AEE';
+        return existente?.tipo || undefined;
+      };
+
       const turmasParaUpsert = turmas.map(t => {
         // Tenta match exato, depois por alias (SED → nome limpo)
         let id = nomeToTurmaId.get(t.nome);
@@ -1184,13 +1191,16 @@ export default function Importar() {
         // Se já existe, preserva nome e professora do banco (não sobrescreve com SED)
         if (id && matchName) {
           const existente = turmasExistentes.find((x: any) => x.id === id);
-          return { id, nome: matchName, professora: existente?.professora || t.professora || '' };
+          const tipo = detectarTipo(matchName, existente);
+          return { id, nome: matchName, professora: existente?.professora || t.professora || '', ...(tipo ? { tipo } : {}) };
         }
         if (id) {
           const existente = turmasExistentes.find((x: any) => x.id === id);
-          return { id, nome: t.nome, professora: existente?.professora || t.professora || '' };
+          const tipo = detectarTipo(t.nome, existente);
+          return { id, nome: t.nome, professora: existente?.professora || t.professora || '', ...(tipo ? { tipo } : {}) };
         }
-        return { nome: t.nome, professora: t.professora };
+        const tipo = detectarTipo(t.nome);
+        return { nome: t.nome, professora: t.professora, ...(tipo ? { tipo } : {}) };
       });
       for (let i = 0; i < turmasParaUpsert.length; i += 80) {
         const { data: chunk } = await supabase
@@ -1199,6 +1209,17 @@ export default function Importar() {
           .select();
         if (chunk) {
           for (const t of chunk) nomeToTurmaId.set(t.nome, t.id);
+        }
+      }
+
+      // ─── PASSO 1.2: Garante tipo='AEE' em todas as turmas com nome AEE* ───
+      {
+        const { data: todasTurmasAtual } = await supabase.from('Turma').select('id, nome, tipo');
+        const semTipoAEE = (todasTurmasAtual ?? []).filter(t =>
+          /^AEE\b/i.test(t.nome) && t.tipo !== 'AEE'
+        );
+        for (const t of semTipoAEE) {
+          await supabase.from('Turma').update({ tipo: 'AEE' }).eq('id', t.id);
         }
       }
 
