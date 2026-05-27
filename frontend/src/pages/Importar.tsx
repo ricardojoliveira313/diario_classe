@@ -1230,7 +1230,7 @@ export default function Importar() {
       // ─── PASSO 2: Alunos — upsert por RA (preserva UUIDs → preserva faltas) ───
       setStatus('Atualizando cadastro de alunos...');
       const { data: existentes } = await supabase
-        .from('Aluno').select('id, ra, nome, situacao, cpf, nis, responsavel');
+        .from('Aluno').select('id, ra, nome, situacao, cpf, nis, responsavel, bolsa_familia');
       const raToExistingId = new Map<string, string>();
       const nomeToExistingId = new Map<string, string>();
       const remaToId = new Map<string, string>(); // RA → ID do registro REMA
@@ -1238,6 +1238,7 @@ export default function Importar() {
       const idToCpf = new Map<string, string>();
       const idToNis = new Map<string, string>();
       const idToResponsavel = new Map<string, string>();
+      const idToBolsaFamilia = new Map<string, boolean>();
       for (const e of (existentes ?? [])) {
         if (e.ra) {
           if (e.situacao === 'REMA') remaToId.set(String(e.ra), e.id);
@@ -1247,6 +1248,7 @@ export default function Importar() {
         if (e.cpf) idToCpf.set(e.id, e.cpf);
         if (e.nis) idToNis.set(e.id, e.nis);
         if (e.responsavel) idToResponsavel.set(e.id, e.responsavel);
+        if (e.bolsa_familia) idToBolsaFamilia.set(e.id, true);
       }
 
       // ─── Carrega EDUCACENSO do banco (tabela fixa) e enriquece alunos ───
@@ -1302,7 +1304,8 @@ export default function Importar() {
           data_movimentacao: a.dataMovimentacao || null,
           deficiencia: a.deficiencia,
           situacao: a.situacao,
-          bolsa_familia: a.bolsaFamilia,
+          // Preserva bolsa_família existente no banco se o arquivo não trouxer
+          bolsa_familia: a.bolsaFamilia || idToBolsaFamilia.get(alunoId) || false,
           professora: a.professora,
           // Preserva valor cadastrado manualmente no banco se o arquivo não trouxer
           nis: a.nis || idToNis.get(alunoId) || null,
