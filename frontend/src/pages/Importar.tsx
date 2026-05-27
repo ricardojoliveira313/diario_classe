@@ -760,7 +760,7 @@ export default function Importar() {
           idxNome = vals.indexOf('NOME');
           idxNasc = vals.indexOf('DATA DE NASCIMENTO');
           idxCPF = vals.indexOf('CPF');
-          idxDef = vals.findIndex(v => v.startsWith('TIPO(S) DE DEFICIENCIA'));
+          idxDef = vals.findIndex(v => v?.startsWith('TIPO(S) DE DEFICIENCIA'));
           idxCor = vals.indexOf('COR/RACA');
           break;
         }
