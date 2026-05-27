@@ -597,12 +597,16 @@ export default function Importar() {
     const mapa = new Map<string, { nis: string; responsavel: string }>();
 
     const indexar = (nome: string, nasc: string, nis: string, responsavel: string) => {
-      if (nome.length < 3 || !/^\d{11}$/.test(nis)) return;
-      mapa.set(`${nome}|${nasc}`, { nis, responsavel });
+      // Aceita NIS com ou sem espaços/hífens: normaliza para só dígitos
+      const nisLimpo = nis.replace(/\D/g, '');
+      if (nome.length < 3 || !/^\d{11}$/.test(nisLimpo)) return;
+      mapa.set(`${nome}|${nasc}`, { nis: nisLimpo, responsavel });
+      // Chave por NIS (match direto para alunos que já têm NIS no banco)
+      mapa.set(`NIS:${nisLimpo}`, { nis: nisLimpo, responsavel });
       // Chave fuzzy: nome sem artigos + data (tolera variações de "DA"/"DE" entre sistemas)
       const nomeSimp = nomeSignificativo(nome);
       if (nomeSimp.length >= 3 && nasc) {
-        mapa.set(`~${nomeSimp}|${nasc}`, { nis, responsavel });
+        mapa.set(`~${nomeSimp}|${nasc}`, { nis: nisLimpo, responsavel });
       }
     };
 
@@ -626,12 +630,14 @@ export default function Importar() {
       }
 
       // Abordagem 1: âncora no NIS → busca Nome: e Dt. Nasc.: imediatamente antes
-      const nisRe = /\bNIS:\s*(\d{11})/g;
+      // Janela de 1500 chars (era 800 — aumentada para blocos maiores)
+      const nisRe = /\bNIS[:\s]*(\d[\d\s\-]{9,12}\d)/g;
       let m: RegExpExecArray | null;
+      let extraidos1 = 0;
       while ((m = nisRe.exec(texto)) !== null) {
         const nis = m[1];
         const endPos = m.index;
-        const lookback = texto.substring(Math.max(0, endPos - 800), endPos);
+        const lookback = texto.substring(Math.max(0, endPos - 1500), endPos);
 
         const lastNomeIdx = lookback.lastIndexOf('Nome:');
         if (lastNomeIdx < 0) continue;
@@ -639,22 +645,27 @@ export default function Importar() {
         const nameStop = afterNome.search(/Dt\.\s*Nasc\.|NIS:|S[eé]rie:|Respons/);
         const nome = normalizeNome((nameStop > 0 ? afterNome.substring(0, nameStop) : afterNome).trim());
 
-        const nascMatches = [...lookback.matchAll(/Dt\.\s*Nasc\.:\s*(\d{2}\/\d{2}\/\d{4})/g)];
-        const nasc = nascMatches.length > 0 ? nascMatches[nascMatches.length - 1][1] : '';
+        const nascMatches = [...lookback.matchAll(/Dt\.\s*Nasc\.:\s*(\d{1,2}\/\d{1,2}\/\d{4})/g)];
+        const nascRaw = nascMatches.length > 0 ? nascMatches[nascMatches.length - 1][1] : '';
+        // Normaliza data para DD/MM/YYYY com zeros à esquerda
+        const nasc = nascRaw ? nascRaw.split('/').map(p => p.padStart(2, '0')).join('/') : '';
 
         indexar(nome, nasc, nis, '');
+        extraidos1++;
       }
 
-      // Abordagem 2 (fallback): split por bloco
-      if (mapa.size < 5) {
+      // Abordagem 2 (fallback por ficheiro — não usa contagem global)
+      if (extraidos1 < 5) {
         const blocos = texto.split(/(?=\bNome:\s)/);
         for (const bloco of blocos) {
           if (!bloco.includes('Nome:')) continue;
           const nomeM = bloco.match(/\bNome:\s*(.+?)(?=\s*Dt\.\s*Nasc\.|\s*NIS:|\s*S[eé]rie:|\s*Respons|$)/s);
-          const nascM = bloco.match(/Dt\.\s*Nasc\.:\s*(\d{2}\/\d{2}\/\d{4})/);
-          const nisM = bloco.match(/\bNIS:\s*(\d{11})/);
+          const nascM = bloco.match(/Dt\.\s*Nasc\.:\s*(\d{1,2}\/\d{1,2}\/\d{4})/);
+          const nisM = bloco.match(/\bNIS[:\s]*(\d[\d\s\-]{9,12}\d)/);
           if (nomeM?.[1] && nisM?.[1]) {
-            indexar(normalizeNome(nomeM[1].trim()), nascM?.[1] ?? '', nisM[1], '');
+            const nascRaw = nascM?.[1] ?? '';
+            const nasc = nascRaw ? nascRaw.split('/').map(p => p.padStart(2, '0')).join('/') : '';
+            indexar(normalizeNome(nomeM[1].trim()), nasc, nisM[1], '');
           }
         }
       }
@@ -666,11 +677,13 @@ export default function Importar() {
     const mapa = new Map<string, { nis: string; responsavel: string }>();
 
     const indexar = (nome: string, nasc: string, nis: string, responsavel: string) => {
-      if (nome.length < 3 || !/^\d{11}$/.test(nis)) return;
-      mapa.set(`${nome}|${nasc}`, { nis, responsavel });
+      const nisLimpo = nis.replace(/\D/g, '');
+      if (nome.length < 3 || !/^\d{11}$/.test(nisLimpo)) return;
+      mapa.set(`${nome}|${nasc}`, { nis: nisLimpo, responsavel });
+      mapa.set(`NIS:${nisLimpo}`, { nis: nisLimpo, responsavel });
       const nomeSimp = nomeSignificativo(nome);
       if (nomeSimp.length >= 3 && nasc) {
-        mapa.set(`~${nomeSimp}|${nasc}`, { nis, responsavel });
+        mapa.set(`~${nomeSimp}|${nasc}`, { nis: nisLimpo, responsavel });
       }
     };
 
@@ -844,6 +857,8 @@ export default function Importar() {
       try { cpfMap = await parseEducacensoCPF(xlsxFiles); } catch (e: any) { setErro('Erro no EDUCACENSO: ' + (e.message ?? e)); return; }
       // Merge: TXT tem prioridade (mais confiável), PDF completa o que faltar
       const bolsaMap = new Map([...bolsaMapPDF, ...bolsaMapTXT]);
+      // Contagem de entradas únicas no BF (exclui chaves NIS: e ~fuzzy para contar só alunos reais)
+      const bfTotalPDF = [...bolsaMap.keys()].filter(k => !k.startsWith('NIS:') && !k.startsWith('~')).length;
 
       // ─── Cruzamento ───
       const todosAlunos = new Map<string, AlunoUnificado>();
@@ -965,11 +980,13 @@ export default function Importar() {
             // Não sobrescreve o nome da turma, só usa o período para enriquecer se necessário
           }
         }
-        // Cruzamento Bolsa Família: nome+data (exato), depois nome sem artigos+data (fuzzy)
+        // Cruzamento Bolsa Família: nome+data (exato) → fuzzy → NIS direto
         const bfExato = bolsaMap.get(`${a.nomeNorm}|${a.nascimento}`);
         const nomeSimp = nomeSignificativo(a.nomeNorm);
         const bfFuzzy = a.nascimento ? bolsaMap.get(`~${nomeSimp}|${a.nascimento}`) : undefined;
-        const bf = bfExato ?? bfFuzzy;
+        // Fallback: match por NIS se o aluno já tem NIS (de importação anterior)
+        const bfNIS = a.nis ? bolsaMap.get(`NIS:${a.nis}`) : undefined;
+        const bf = bfExato ?? bfFuzzy ?? bfNIS;
         if (bf) {
           a.nis = a.nis || bf.nis;
           a.responsavel = a.responsavel || bf.responsavel;
@@ -1041,11 +1058,13 @@ export default function Importar() {
           return false;
         }).length;
 
+      const bfCruzados = alunosArr.filter(a => a.bolsaFamilia).length;
       const prev = {
         turmas: turmasUnicas.size,
         turmasReconhecidas,
         alunos: alunosArr.length,
-        bolsaFamilia: alunosArr.filter(a => a.bolsaFamilia).length,
+        bolsaFamilia: bfCruzados,
+        bolsaFamiliaTotal: bfTotalPDF,    // total extraído do PDF BF
         bolsaMapSize: bolsaMap.size,
         arquivos: files.length,
         faltas: totalFaltas,
@@ -1577,13 +1596,14 @@ export default function Importar() {
               ['🏫 Turmas no arquivo',   preview.turmas,             '#3b82f6'],
               ['✅ Turmas reconhecidas', preview.turmasReconhecidas, '#10b981'],
               ['👥 Alunos',              preview.alunos,             '#8b5cf6'],
-              ['🟢 Bolsa Família',       preview.bolsaFamilia,       '#f59e0b'],
+              ['🟢 Bolsa Família',       preview.bolsaFamilia,       '#f59e0b', preview.bolsaFamiliaTotal ? `${preview.bolsaFamiliaTotal} no PDF` : undefined],
               ['📄 Registros Faltas',    preview.faltas,             '#6b7280'],
               ['📂 Arquivos',            preview.arquivos,           '#0ea5e9'],
-            ] as [string, number, string][]).map(([label, val, color]) => (
+            ] as [string, number, string, string?][]).map(([label, val, color, sub]) => (
               <div key={label} style={{ textAlign: 'center', padding: 16, background: color + '18', borderRadius: theme.radius, border: `1.5px solid ${color}44` }}>
                 <div style={{ fontSize: 11, color: theme.textSecondary, marginBottom: 4, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</div>
                 <div style={{ fontSize: 28, fontWeight: 800, color }}>{val}</div>
+                {sub && <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 2 }}>{sub}</div>}
               </div>
             ))}
           </div>
