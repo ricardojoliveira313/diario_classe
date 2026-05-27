@@ -1244,7 +1244,7 @@ export default function Importar() {
           if (e.situacao === 'REMA') remaToId.set(String(e.ra), e.id);
           else raToExistingId.set(String(e.ra), e.id);
         }
-        nomeToExistingId.set(normalizeStr(e.nome), e.id);
+        nomeToExistingId.set(normalizeNome(e.nome), e.id);  // normalizeNome (mesma fn que a.nomeNorm)
         if (e.cpf) idToCpf.set(e.id, e.cpf);
         if (e.nis) idToNis.set(e.id, e.nis);
         if (e.responsavel) idToResponsavel.set(e.id, e.responsavel);
@@ -1285,11 +1285,23 @@ export default function Importar() {
         }
       }
 
+      // RAs que aparecem como ATIVO (ou outra situação não-REMA) neste import
+      // Usado para evitar que o mesmo RA seja "reclamado" tanto pelo registo ATIVO como pelo REMA
+      const ativosRAsNoImport = new Set<string>(
+        alunos.filter(a => a.ra && a.situacao !== 'REMA').map(a => String(a.ra))
+      );
+
       const alunosParaUpsert = alunos.map(a => {
         const isRema = a.situacao === 'REMA';
         const raKey = String(a.ra ?? '');
         const existingId = isRema
-          ? remaToId.get(raKey)
+          // Para REMA: procura primeiro em registos já REMA; se não encontrar E não há
+          // versão ATIVO deste RA no import atual, reclama o antigo registo ATIVO
+          // (evita que o ATIVO fique como fantasma quando o aluno saiu por remanejamento)
+          ? (remaToId.get(raKey) ??
+             (!ativosRAsNoImport.has(raKey)
+               ? (raToExistingId.get(raKey) ?? nomeToExistingId.get(a.nomeNorm))
+               : undefined))
           : (raToExistingId.get(raKey) ?? nomeToExistingId.get(a.nomeNorm));
         const alunoId = existingId ?? crypto.randomUUID();
         return {
@@ -1326,6 +1338,48 @@ export default function Importar() {
         if (error) throw error;
         setProgresso(Math.min(i + 80, alunosParaUpsert.length));
         setStatus(`Atualizando alunos... ${Math.min(i + 80, alunosParaUpsert.length)}/${alunosParaUpsert.length}`);
+      }
+
+      // ─── DEDUPLICAÇÃO: remove registos fantasma com mesmo RA ───
+      // Causados por imports anteriores onde o match de nome/RA falhou
+      {
+        const batchIds = new Set(alunosParaUpsert.map(a => a.id));
+        const batchIdsByRA = new Map<string, string[]>();
+        for (const a of alunosParaUpsert) {
+          if (!a.ra) continue;
+          const raStr = String(a.ra);
+          if (!batchIdsByRA.has(raStr)) batchIdsByRA.set(raStr, []);
+          batchIdsByRA.get(raStr)!.push(a.id);
+        }
+        // Fantasmas: registos que estavam no banco ANTES deste import,
+        // não foram incluídos no batch atual, mas têm o mesmo RA que um registo do batch
+        const fantasmas = (existentes ?? []).filter(e => {
+          if (!e.ra || batchIds.has(e.id)) return false;
+          return (batchIdsByRA.get(String(e.ra)) ?? []).length > 0;
+        });
+        if (fantasmas.length > 0) {
+          setStatus(`🧹 Removendo ${fantasmas.length} registros duplicados...`);
+          // Migra BF, CPF, NIS do fantasma → registo real (para não perder dados históricos)
+          for (const ghost of fantasmas) {
+            const realIds = batchIdsByRA.get(String(ghost.ra)) ?? [];
+            if (realIds.length !== 1) continue;
+            const realId = realIds[0];
+            const up: any = {};
+            if (ghost.bolsa_familia) up.bolsa_familia = true;
+            if (ghost.cpf) up.cpf = ghost.cpf;
+            if (ghost.nis) up.nis = ghost.nis;
+            if (ghost.responsavel) up.responsavel = ghost.responsavel;
+            if (Object.keys(up).length > 0) {
+              await supabase.from('Aluno').update(up).eq('id', realId);
+            }
+          }
+          const ghostIds = fantasmas.map(g => g.id);
+          for (let i = 0; i < ghostIds.length; i += 100) {
+            const chunk = ghostIds.slice(i, i + 100);
+            await supabase.from('Falta').delete().in('alunoId', chunk);
+            await supabase.from('Aluno').delete().in('id', chunk);
+          }
+        }
       }
 
       // ─── PASSO 3: Re-ler IDs dos alunos ───
