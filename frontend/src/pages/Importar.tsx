@@ -1340,8 +1340,9 @@ export default function Importar() {
         setStatus(`Atualizando alunos... ${Math.min(i + 80, alunosParaUpsert.length)}/${alunosParaUpsert.length}`);
       }
 
-      // ─── DEDUPLICAÇÃO: remove registos fantasma com mesmo RA ───
-      // Causados por imports anteriores onde o match de nome/RA falhou
+      // ─── DEDUPLICAÇÃO CONSERVADORA: só remove fantasmas sem histórico de faltas ───
+      // Alunos AEE têm 2 registos legítimos (turma regular + AEE) com mesmo RA → não apagar
+      // Apenas apaga registos que: mesmo RA que um registo do batch + ZERO faltas associadas
       {
         const batchIds = new Set(alunosParaUpsert.map(a => a.id));
         const batchIdsByRA = new Map<string, string[]>();
@@ -1351,33 +1352,36 @@ export default function Importar() {
           if (!batchIdsByRA.has(raStr)) batchIdsByRA.set(raStr, []);
           batchIdsByRA.get(raStr)!.push(a.id);
         }
-        // Fantasmas: registos que estavam no banco ANTES deste import,
-        // não foram incluídos no batch atual, mas têm o mesmo RA que um registo do batch
-        const fantasmas = (existentes ?? []).filter(e => {
+        // Candidatos: no banco, fora do batch, mesmo RA que um registo do batch
+        const candidatos = (existentes ?? []).filter(e => {
           if (!e.ra || batchIds.has(e.id)) return false;
           return (batchIdsByRA.get(String(e.ra)) ?? []).length > 0;
         });
-        if (fantasmas.length > 0) {
-          setStatus(`🧹 Removendo ${fantasmas.length} registros duplicados...`);
-          // Migra BF, CPF, NIS do fantasma → registo real (para não perder dados históricos)
-          for (const ghost of fantasmas) {
-            const realIds = batchIdsByRA.get(String(ghost.ra)) ?? [];
-            if (realIds.length !== 1) continue;
-            const realId = realIds[0];
-            const up: any = {};
-            if (ghost.bolsa_familia) up.bolsa_familia = true;
-            if (ghost.cpf) up.cpf = ghost.cpf;
-            if (ghost.nis) up.nis = ghost.nis;
-            if (ghost.responsavel) up.responsavel = ghost.responsavel;
-            if (Object.keys(up).length > 0) {
-              await supabase.from('Aluno').update(up).eq('id', realId);
+        if (candidatos.length > 0) {
+          // Verifica quais candidatos têm faltas (esses NÃO são apagados — podem ser AEE legítimos)
+          const { data: faltasCands } = await supabase
+            .from('Falta').select('alunoId').in('alunoId', candidatos.map(c => c.id));
+          const idsComFaltas = new Set((faltasCands ?? []).map((f: any) => f.alunoId));
+          const fantasmas = candidatos.filter(c => !idsComFaltas.has(c.id));
+          if (fantasmas.length > 0) {
+            setStatus(`🧹 Removendo ${fantasmas.length} registros duplicados sem histórico...`);
+            for (const ghost of fantasmas) {
+              const realIds = batchIdsByRA.get(String(ghost.ra)) ?? [];
+              if (realIds.length !== 1) continue;
+              const realId = realIds[0];
+              const up: any = {};
+              if (ghost.bolsa_familia) up.bolsa_familia = true;
+              if (ghost.cpf) up.cpf = ghost.cpf;
+              if (ghost.nis) up.nis = ghost.nis;
+              if (ghost.responsavel) up.responsavel = ghost.responsavel;
+              if (Object.keys(up).length > 0) {
+                await supabase.from('Aluno').update(up).eq('id', realId);
+              }
             }
-          }
-          const ghostIds = fantasmas.map(g => g.id);
-          for (let i = 0; i < ghostIds.length; i += 100) {
-            const chunk = ghostIds.slice(i, i + 100);
-            await supabase.from('Falta').delete().in('alunoId', chunk);
-            await supabase.from('Aluno').delete().in('id', chunk);
+            const ghostIds = fantasmas.map(g => g.id);
+            for (let i = 0; i < ghostIds.length; i += 100) {
+              await supabase.from('Aluno').delete().in('id', ghostIds.slice(i, i + 100));
+            }
           }
         }
       }
