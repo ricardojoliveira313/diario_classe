@@ -32,19 +32,28 @@ export function EmptyState({ icon, message, action }: { icon: string; message: s
   );
 }
 
-export function StatCard({ label, val, color, sub }: { label: string; val: string | number; color: string; sub?: string }) {
+export function StatCard({ label, val, color, sub, onClick, active }: {
+  label: string; val: string | number; color: string; sub?: string;
+  onClick?: () => void; active?: boolean;
+}) {
   return (
-    <div style={{
-      background: theme.card,
+    <div onClick={onClick} style={{
+      background: active ? color + '18' : theme.card,
       borderRadius: theme.radius,
       padding: '14px 16px',
-      boxShadow: theme.shadow,
+      boxShadow: active ? `0 0 0 2px ${color}` : theme.shadow,
       textAlign: 'center',
       transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-    }}>
+      cursor: onClick ? 'pointer' : undefined,
+      userSelect: 'none',
+    }}
+    onMouseEnter={e => onClick && ((e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)')}
+    onMouseLeave={e => onClick && ((e.currentTarget as HTMLDivElement).style.transform = '')}
+    >
       <div style={{ fontSize: 12, color: theme.textSecondary, fontWeight: 600, marginBottom: 3 }}>{label}</div>
       <div style={{ fontSize: 26, fontWeight: 800, color, lineHeight: 1.2 }}>{val}</div>
       {sub && <div style={{ fontSize: 12, color: theme.textMuted, marginTop: 3 }}>{sub}</div>}
+      {onClick && <div style={{ fontSize: 10, color: color, marginTop: 4, opacity: 0.7 }}>clique para ver</div>}
     </div>
   );
 }

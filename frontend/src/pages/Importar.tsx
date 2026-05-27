@@ -7,6 +7,84 @@ import { FileRow, ProgressBar, ErrorBox, Spinner } from '../components';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs`;
 
+// ─── Relatório de conciliação Bolsa Família ────────────────────────────────
+function BFConciliacaoPanel({ naoEncontrados }: { naoEncontrados: { nome: string; nasc: string; nis: string }[] }) {
+  const [aberto, setAberto] = useState(false);
+  const [busca, setBusca] = useState('');
+  const filtrado = busca.trim()
+    ? naoEncontrados.filter(r => r.nome.toLowerCase().includes(busca.toLowerCase()) || r.nis.includes(busca))
+    : naoEncontrados;
+
+  return (
+    <div style={{
+      marginTop: 12,
+      background: '#fff7ed', border: '1px solid #f59e0b',
+      borderRadius: theme.radius,
+    }}>
+      <button
+        onClick={() => setAberto(v => !v)}
+        style={{
+          width: '100%', background: 'none', border: 'none', cursor: 'pointer',
+          padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        }}
+      >
+        <span style={{ fontWeight: 700, color: '#b45309', fontSize: 13 }}>
+          ⚠️ {naoEncontrados.length} aluno{naoEncontrados.length !== 1 ? 's' : ''} do PDF Bolsa Família não encontrado{naoEncontrados.length !== 1 ? 's' : ''} nos arquivos de matrícula
+        </span>
+        <span style={{ fontSize: 18, color: '#b45309' }}>{aberto ? '▲' : '▼'}</span>
+      </button>
+      {aberto && (
+        <div style={{ borderTop: '1px solid #f59e0b33', padding: '8px 14px 12px' }}>
+          <p style={{ fontSize: 12, color: '#92400e', marginBottom: 8 }}>
+            Estes alunos estão no PDF do Bolsa Família mas <strong>não constam em nenhum arquivo de matrícula importado</strong>.
+            Podem ter sido transferidos, desmatriculados, ou o nome/data pode diferir.
+          </p>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+            <input
+              value={busca} onChange={e => setBusca(e.target.value)}
+              placeholder="🔍 Buscar nome ou NIS..."
+              style={{ flex: 1, padding: '6px 10px', borderRadius: 6, border: '1px solid #f59e0b', fontSize: 13 }}
+            />
+            <button onClick={() => {
+              const csv = 'Nome;Dt. Nasc.;NIS\n' + naoEncontrados.map(r => `${r.nome};${r.nasc};${r.nis}`).join('\n');
+              const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+              const url = URL.createObjectURL(blob); const a = document.createElement('a');
+              a.href = url; a.download = 'BF_nao_encontrados.csv'; a.click();
+            }} style={{
+              background: '#f59e0b22', border: '1px solid #f59e0b88', borderRadius: 6,
+              padding: '6px 12px', cursor: 'pointer', fontSize: 12, color: '#b45309', fontWeight: 600,
+            }}>⬇ CSV</button>
+          </div>
+          <div style={{ maxHeight: 280, overflowY: 'auto', borderRadius: 6, border: '1px solid #f59e0b33' }}>
+            <div style={{
+              display: 'grid', gridTemplateColumns: '2fr 1fr 1.2fr',
+              padding: '6px 12px', background: '#fef3c7',
+              fontSize: 11, fontWeight: 700, color: '#92400e', textTransform: 'uppercase',
+            }}>
+              <span>Nome (do PDF BF)</span><span>Dt. Nasc.</span><span>NIS</span>
+            </div>
+            {filtrado.map((r, i) => (
+              <div key={i} style={{
+                display: 'grid', gridTemplateColumns: '2fr 1fr 1.2fr',
+                padding: '7px 12px', fontSize: 13,
+                background: i % 2 === 0 ? 'transparent' : '#fffbeb',
+                borderTop: '1px solid #f59e0b22',
+              }}>
+                <span style={{ fontWeight: 500 }}>{r.nome || '—'}</span>
+                <span style={{ color: '#78716c' }}>{r.nasc || '—'}</span>
+                <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{r.nis || '—'}</span>
+              </div>
+            ))}
+          </div>
+          <p style={{ fontSize: 11, color: '#92400e', marginTop: 6 }}>
+            Mostrando {filtrado.length} de {naoEncontrados.length}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const MES_MAP: Record<string, number> = {
   JANEIRO: 1, FEVEREIRO: 2, MARCO: 3, MARÇO: 3, ABRIL: 4,
   MAIO: 5, JUNHO: 6, JULHO: 7, AGOSTO: 8,
@@ -958,6 +1036,8 @@ export default function Importar() {
 
       // Enriquece com professor da tabela TURMA-PROFESSORES
       const alunosArr = Array.from(todosAlunos.values());
+      // Rastreio de NIS do BF que foram cruzados com algum aluno do arquivo
+      const bfUsados = new Set<string>();
       for (const a of alunosArr) {
         // Busca exata, depois simplificada (sem PRÉ-ESCOLA/MANHA/ANUAL), depois por prefixo
         const serieNorm = normalizeStr(a.serie);
@@ -991,6 +1071,8 @@ export default function Importar() {
           a.nis = a.nis || bf.nis;
           a.responsavel = a.responsavel || bf.responsavel;
           a.bolsaFamilia = true;
+          // Marca a entrada do mapa como usada (para relatório de não encontrados)
+          bfUsados.add(bf.nis);
         }
         // Cruzamento CPF + Deficiência + Cor/Raça (EDUCACENSO): CPF → nome+data → fuzzy
         const ecPorCPF = a.cpf ? cpfMap.get(`CPF:${a.cpf}`) : undefined;
@@ -1001,6 +1083,17 @@ export default function Importar() {
           a.cpf = ec.cpf || a.cpf || '';
           a.deficiencia = a.deficiencia || ec.deficiencia || '';
           a.corRaca = a.corRaca || ec.corRaca || '';
+        }
+      }
+
+      // ─── Relatório BF: entradas do PDF que não encontraram aluno no arquivo ───
+      // (só entradas com chave nome|data, excluindo NIS: e ~fuzzy)
+      const bfNaoEncontrados: { nome: string; nasc: string; nis: string }[] = [];
+      for (const [chave, val] of bolsaMap.entries()) {
+        if (chave.startsWith('NIS:') || chave.startsWith('~')) continue;
+        if (!bfUsados.has(val.nis)) {
+          const parts = chave.split('|');
+          bfNaoEncontrados.push({ nome: parts[0] ?? '', nasc: parts[1] ?? '', nis: val.nis });
         }
       }
 
@@ -1074,7 +1167,7 @@ export default function Importar() {
       const educacensoArr = Array.from(cpfMap.entries())
         .filter(([chave]) => !chave.startsWith('CPF:') && !chave.startsWith('~'))
         .map(([chave, val]) => ({ chave, ...val }));
-      dadosRef.current = { turmas: Array.from(turmasUnicas.values()), alunos: alunosArr, faltasArr: [], educacenso: educacensoArr };
+      dadosRef.current = { turmas: Array.from(turmasUnicas.values()), alunos: alunosArr, faltasArr: [], educacenso: educacensoArr, bfNaoEncontrados };
       setStatus('');
     } catch (ex: any) {
       setErro('Erro na análise: ' + ex.message);
@@ -1618,6 +1711,12 @@ export default function Importar() {
             ✅ Faltas históricas serão PRESERVADAS.
             Apenas registros do mês correspondente serão atualizados.
           </div>
+
+          {/* ─── Relatório de conciliação Bolsa Família ─────────────── */}
+          {dadosRef.current?.bfNaoEncontrados?.length > 0 && (
+            <BFConciliacaoPanel naoEncontrados={dadosRef.current.bfNaoEncontrados} />
+          )}
+
           <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
             <button onClick={() => { setPreview(null); dadosRef.current = null; }}
               style={btn('ghost', { full: true })}>Reanalisar</button>
