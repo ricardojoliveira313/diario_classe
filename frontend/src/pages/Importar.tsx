@@ -1336,23 +1336,34 @@ export default function Importar() {
       }
 
       // ─── PASSO 1.5: Limpa turmas SED duplicadas (religa alunos na turma limpa) ───
+      // Só faz merge quando o nome simplificado é EXACTAMENTE igual ao da turma destino.
+      // Nunca usa startsWith — evita apagar turmas de professoras diferentes que têm
+      // nome parecido (ex: "MULTISSERIADA A MANHÃ" ≠ "MULTISSERIADA A NOITE").
       const SED_SUFIXOS = /\b(MANHA|TARDE|NOTURNO|MATUTINO|VESPERTINO|NOITE|ANUAL|INTEGRAL|PRE\s*ESCOLA)\b/i;
+      const strippaSED = (s: string) => normT(s)
+        .replace(/\bPRE\s*ESCOLA\b/g, '').replace(/\bPRÉ\s*ESCOLA\b/g, '')
+        .replace(/\b(MANHA|TARDE|NOTURNO|MATUTINO|VESPERTINO|NOITE|ANUAL|INTEGRAL)\b/g, '')
+        .replace(/\s+/g, ' ').trim();
+      const turmaIdToProf = new Map<string, string>(
+        turmasExistentes.map((t: any) => [t.id, normT(t.professora ?? '')])
+      );
       for (const t of turmasExistentes) {
         if (!SED_SUFIXOS.test(t.nome)) continue;
-        const simplificado = normT(t.nome)
-          .replace(/\bPRE\s*ESCOLA\b/g, '').replace(/\bPRÉ\s*ESCOLA\b/g, '')
-          .replace(/\b(MANHA|TARDE|NOTURNO|MATUTINO|VESPERTINO|NOITE|ANUAL|INTEGRAL)\b/g, '')
-          .replace(/\s+/g, ' ').trim();
+        const simplificado = strippaSED(t.nome);
+        const srcProf = normT(t.professora ?? '');
         for (const [origName, tid] of nomeToTurmaId) {
           if (t.id === tid) continue;
           const nn = normT(origName);
-          if (nn === simplificado || nn.startsWith(simplificado) || simplificado.startsWith(nn)) {
-            // Reatribui alunos e faltas da turma SED → limpa
-            await supabase.from('Aluno').update({ turmaId: tid }).eq('turmaId', t.id);
-            await supabase.from('Falta').update({ turmaId: tid }).eq('turmaId', t.id);
-            await supabase.from('Turma').delete().eq('id', t.id);
-            break;
-          }
+          // Exige correspondência exacta do nome simplificado
+          if (nn !== simplificado) continue;
+          // Não merge se as professoras forem diferentes (turmas distintas)
+          const dstProf = turmaIdToProf.get(tid) ?? '';
+          if (srcProf && dstProf && srcProf !== dstProf) continue;
+          // Reatribui alunos e faltas da turma SED → limpa
+          await supabase.from('Aluno').update({ turmaId: tid }).eq('turmaId', t.id);
+          await supabase.from('Falta').update({ turmaId: tid }).eq('turmaId', t.id);
+          await supabase.from('Turma').delete().eq('id', t.id);
+          break;
         }
       }
 
