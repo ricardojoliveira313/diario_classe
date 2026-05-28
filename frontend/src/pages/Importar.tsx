@@ -1344,10 +1344,9 @@ export default function Importar() {
         }
       }
 
-      // ─── PASSO 1.5: Limpa turmas SED duplicadas (religa alunos na turma limpa) ───
-      // Só faz merge quando o nome simplificado é EXACTAMENTE igual ao da turma destino.
-      // Nunca usa startsWith — evita apagar turmas de professoras diferentes que têm
-      // nome parecido (ex: "MULTISSERIADA A MANHÃ" ≠ "MULTISSERIADA A NOITE").
+      // PASSO 1.5: Turmas com sufixos SED (MANHÃ, TARDE…) — migra alunos para a turma limpa
+      // mas NUNCA apaga a turma original. Turmas são dados permanentes (como CPF e Educacenso).
+      // A limpeza manual pode ser feita na página Turmas se necessário.
       const SED_SUFIXOS = /\b(MANHA|TARDE|NOTURNO|MATUTINO|VESPERTINO|NOITE|ANUAL|INTEGRAL|PRE\s*ESCOLA)\b/i;
       const strippaSED = (s: string) => normT(s)
         .replace(/\bPRE\s*ESCOLA\b/g, '').replace(/\bPRÉ\s*ESCOLA\b/g, '')
@@ -1363,15 +1362,13 @@ export default function Importar() {
         for (const [origName, tid] of nomeToTurmaId) {
           if (t.id === tid) continue;
           const nn = normT(origName);
-          // Exige correspondência exacta do nome simplificado
           if (nn !== simplificado) continue;
-          // Não merge se as professoras forem diferentes (turmas distintas)
           const dstProf = turmaIdToProf.get(tid) ?? '';
           if (srcProf && dstProf && srcProf !== dstProf) continue;
-          // Reatribui alunos e faltas da turma SED → limpa
+          // Migra alunos e faltas para a turma com nome limpo — mas não apaga a turma SED
           await supabase.from('Aluno').update({ turmaId: tid }).eq('turmaId', t.id);
           await supabase.from('Falta').update({ turmaId: tid }).eq('turmaId', t.id);
-          await supabase.from('Turma').delete().eq('id', t.id);
+          // NÃO apaga a turma — turmas são permanentes no banco
           break;
         }
       }
