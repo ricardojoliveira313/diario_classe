@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { api } from '../api';
+import { api, supabase } from '../api';
 import { theme, btn, input, label, card as cardStyle, sortTurmasPedagogico } from '../styles';
 import { Loading, EmptyState, Spinner } from '../components';
 import { useAuth } from '../AuthContext';
@@ -107,23 +107,42 @@ export default function Turmas() {
 
   const restaurarTurmasPadrao = async () => {
     if (role !== 'admin') return;
-    if (!confirm(`Restaurar as ${TURMAS_PADRAO.length} turmas padrão da escola?\n\nTurmas existentes terão professora e período atualizados.\nTurmas que não existem serão criadas.`)) return;
+    if (!confirm(`Restaurar as ${TURMAS_PADRAO.length} turmas padrão da escola?\n\nTurmas existentes (mesmo com nome do SED) terão nome, professora e período atualizados.\nTurmas inexistentes serão criadas.\nTurmas duplicadas e vazias serão removidas.`)) return;
     setRestaurando(true);
     setResultRestaura(null);
-    let criadas = 0, atualizadas = 0, erros = 0;
+    let criadas = 0, atualizadas = 0, erros = 0, limpas = 0;
     const atuais = await api.getTurmas();
+    const idsUsados = new Set<string>();
+
     for (const tp of TURMAS_PADRAO) {
-      const match = atuais.find((t: any) => norm(t.nome) === norm(tp.nome));
+      // Match por nome exato primeiro, depois por normSimp (apanha nomes do SED)
+      const match = atuais.find((t: any) => norm(t.nome) === norm(tp.nome))
+        ?? atuais.find((t: any) => normSimp(t.nome) === normSimp(tp.nome));
       try {
         if (match) {
-          await api.updateTurma(match.id, { professora: tp.professora, periodo: tp.periodo });
+          await api.updateTurma(match.id, { nome: tp.nome, professora: tp.professora, periodo: tp.periodo });
+          idsUsados.add(match.id);
           atualizadas++;
         } else {
-          await api.createTurma({ nome: tp.nome, professora: tp.professora, periodo: tp.periodo });
+          const nova = await api.createTurma({ nome: tp.nome, professora: tp.professora, periodo: tp.periodo });
+          if (nova?.id) idsUsados.add(nova.id);
           criadas++;
         }
       } catch { erros++; }
     }
+
+    // Limpar turmas duplicadas vazias (criadas por runs anteriores com nome errado)
+    const normSimpsPadrao = new Set(TURMAS_PADRAO.map(tp => normSimp(tp.nome)));
+    for (const t of atuais) {
+      if (idsUsados.has(t.id)) continue;
+      if (!normSimpsPadrao.has(normSimp(t.nome))) continue;
+      // É duplicata de turma padrão — apagar só se não tiver alunos
+      const { count } = await supabase.from('Aluno').select('*', { count: 'exact', head: true }).eq('turmaId', t.id);
+      if (count === 0) {
+        try { await api.deleteTurma(t.id); limpas++; } catch {}
+      }
+    }
+
     setRestaurando(false);
     setResultRestaura({ criadas, atualizadas, erros });
     load();
