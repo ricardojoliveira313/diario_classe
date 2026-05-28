@@ -166,6 +166,8 @@ export default function Dashboard() {
   if (loading) return <Loading />;
 
   const isAtivo = (a: any) => !a.situacao || a.situacao === 'ATIVO';
+  // Detecta turma AEE pelo nome (robusto) — não depende do campo tipo estar preenchido
+  const isAEETurma = (t: any) => t?.tipo === 'AEE' || /^AEE\b/i.test(t?.nome ?? '');
 
   const total  = alunos.length;
   const ativos = alunos.filter(isAtivo).length;
@@ -180,16 +182,16 @@ export default function Dashboard() {
   );
   // Todos os alunos ativos em turmas AEE (sala de recursos) — com ou sem campo deficiencia preenchido
   const rasEmAEE = new Set(
-    alunos.filter(a => isAtivo(a) && turmaMap.get(a.turmaId)?.tipo === 'AEE' && a.ra)
+    alunos.filter(a => isAtivo(a) && isAEETurma(turmaMap.get(a.turmaId)) && a.ra)
       .map(a => String(a.ra))
   );
   // Alunos em AEE sem RA (contados separadamente para não perder ninguém)
-  const alunoAEESemRA = alunos.filter(a => isAtivo(a) && turmaMap.get(a.turmaId)?.tipo === 'AEE' && !a.ra);
+  const alunoAEESemRA = alunos.filter(a => isAtivo(a) && isAEETurma(turmaMap.get(a.turmaId)) && !a.ra);
   const comDefiAEE     = rasEmAEE.size + alunoAEESemRA.length;
   const comDefiRegular = [...rasComDefi].filter(ra => !rasEmAEE.has(ra)).length;
 
   // Breakdown de alunos NÃO-ativos matriculados em turmas AEE (para auditoria)
-  const alunosAEEInativos = alunos.filter(a => !isAtivo(a) && turmaMap.get(a.turmaId)?.tipo === 'AEE');
+  const alunosAEEInativos = alunos.filter(a => !isAtivo(a) && isAEETurma(turmaMap.get(a.turmaId)));
   const situacoesAEEInativas: Record<string, number> = {};
   for (const a of alunosAEEInativos) {
     const sit = a.situacao || 'sem situação';
@@ -224,12 +226,12 @@ export default function Dashboard() {
     if (!isAtivo(a) || !a.ra) continue;
     const ra = String(a.ra);
     if (a.deficiencia) raToDefi.set(ra, a.deficiencia);
-    if (turmaMap.get(a.turmaId)?.tipo === 'AEE') raToAEE.set(ra, a);
+    if (isAEETurma(turmaMap.get(a.turmaId))) raToAEE.set(ra, a);
     else raToRegular.set(ra, a);
   }
 
   const listaBF: any[] = alunos
-    .filter(a => a.bolsa_familia && isAtivo(a) && turmaMap.get(a.turmaId)?.tipo !== 'AEE')
+    .filter(a => a.bolsa_familia && isAtivo(a) && !isAEETurma(turmaMap.get(a.turmaId)))
     .map(a => ({
       nome: a.nome,
       ra: a.ra || '—',
