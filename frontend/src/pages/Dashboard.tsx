@@ -172,11 +172,14 @@ export default function Dashboard() {
   const rasComDefi = new Set(
     alunos.filter(a => isAtivo(a) && a.deficiencia).map(a => a.ra ? String(a.ra) : a.id)
   );
+  // Todos os alunos ativos em turmas AEE (sala de recursos) — com ou sem campo deficiencia preenchido
   const rasEmAEE = new Set(
     alunos.filter(a => isAtivo(a) && turmaMap.get(a.turmaId)?.tipo === 'AEE' && a.ra)
       .map(a => String(a.ra))
   );
-  const comDefiAEE     = [...rasEmAEE].filter(ra => rasComDefi.has(ra)).length;
+  // Alunos em AEE sem RA (contados separadamente para não perder ninguém)
+  const alunoAEESemRA = alunos.filter(a => isAtivo(a) && turmaMap.get(a.turmaId)?.tipo === 'AEE' && !a.ra);
+  const comDefiAEE     = rasEmAEE.size + alunoAEESemRA.length;
   const comDefiRegular = [...rasComDefi].filter(ra => !rasEmAEE.has(ra)).length;
 
   const faltasMap = new Map<string, number>(faltas.map(f => [f.alunoId, f.faltas ?? 0]));
@@ -234,21 +237,29 @@ export default function Dashboard() {
     .filter(Boolean)
     .sort((a: any, b: any) => a.nome.localeCompare(b.nome));
 
-  const listaDefiAEE: any[] = [...rasEmAEE]
-    .filter(ra => rasComDefi.has(ra))
-    .map(ra => {
+  // Todos os alunos AEE — com e sem RA
+  const listaDefiAEE: any[] = [
+    ...[...rasEmAEE].map(ra => {
       const aeeRec = raToAEE.get(ra);
       const regRec = raToRegular.get(ra);
       const rec = regRec ?? aeeRec;
       if (!rec) return null;
       return {
         nome: rec.nome, ra,
-        deficiencia: raToDefi.get(ra) || '—',
+        deficiencia: raToDefi.get(ra) || aeeRec?.deficiencia || regRec?.deficiencia || '—',
         turmaRegular: regRec ? (turmaMap.get(regRec.turmaId)?.nome || '—') : '—',
         turmaAEE: aeeRec ? (turmaMap.get(aeeRec.turmaId)?.nome || '—') : '—',
         professoraAEE: aeeRec ? (turmaMap.get(aeeRec.turmaId)?.professora || '—') : '—',
       };
-    })
+    }),
+    ...alunoAEESemRA.map(a => ({
+      nome: a.nome, ra: '—',
+      deficiencia: a.deficiencia || '—',
+      turmaRegular: '—',
+      turmaAEE: turmaMap.get(a.turmaId)?.nome || '—',
+      professoraAEE: turmaMap.get(a.turmaId)?.professora || '—',
+    })),
+  ]
     .filter(Boolean)
     .sort((a: any, b: any) => a.nome.localeCompare(b.nome));
 
