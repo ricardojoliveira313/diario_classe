@@ -193,7 +193,7 @@ export default function Importar() {
   const [sucesso, setSucesso] = useState(false);
   const [fixing, setFixing] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  const dadosRef = useRef<{ turmas: any[]; alunos: AlunoUnificado[]; faltasArr: any[]; educacenso?: any[] } | null>(null);
+  const dadosRef = useRef<{ turmas: any[]; alunos: AlunoUnificado[]; faltasArr: any[]; educacenso?: any[]; bfNaoEncontrados?: { nome: string; nasc: string; nis: string }[] } | null>(null);
 
   const fixSchema = useCallback(async () => {
     setFixing(true);
@@ -1392,7 +1392,7 @@ export default function Importar() {
       // AEE: alunos têm 2 registros separados (turma regular + turma AEE) — mesmo padrão que REMA
       setStatus('Atualizando cadastro de alunos...');
       const { data: existentes } = await supabase
-        .from('Aluno').select('id, ra, nome, situacao, cpf, nis, responsavel, bolsa_familia, turmaId');
+        .from('Aluno').select('id, ra, nome, situacao, cpf, nis, responsavel, bolsa_familia, turmaId, data_nascimento');
       const raToExistingId = new Map<string, string>();
       const nomeToExistingId = new Map<string, string>();
       const remaToId = new Map<string, string>(); // RA → ID do registro REMA
@@ -1580,6 +1580,66 @@ export default function Importar() {
             for (let i = 0; i < ghostIds.length; i += 100) {
               await supabase.from('Aluno').delete().in('id', ghostIds.slice(i, i + 100));
             }
+          }
+        }
+      }
+
+      // ─── BF extra: marca bolsa_família em alunos que estão no banco mas não vieram nos arquivos ───
+      // Caso típico: alunos atípicos (AEE) ou turmas não enviadas nesta importação
+      {
+        const bfPendentes = dadosRef.current?.bfNaoEncontrados ?? [];
+        if (bfPendentes.length > 0) {
+          // Índices para match rápido contra existentes (já têm data_nascimento agora)
+          const existentesPorNis = new Map<string, string>(); // nis → id
+          const existentesPorChave = new Map<string, string>(); // nome|data → id
+          const existentesPorFuzzy = new Map<string, string>(); // ~nomeSimp|data → id
+          for (const e of (existentes ?? [])) {
+            if (e.nis) existentesPorNis.set(e.nis.replace(/\D/g, ''), e.id);
+            if (e.nome) {
+              const enome = normalizeNome(e.nome);
+              // data_nascimento pode vir como YYYY-MM-DD (Supabase date) ou DD/MM/YYYY (texto legado)
+              const raw = (e.data_nascimento as string) || '';
+              const eNasc = raw.includes('-') ? raw.split('-').reverse().join('/') : raw;
+              if (eNasc) {
+                existentesPorChave.set(`${enome}|${eNasc}`, e.id);
+                const simp = nomeSignificativo(enome);
+                if (simp.length >= 6) existentesPorFuzzy.set(`~${simp}|${eNasc}`, e.id);
+              }
+            }
+          }
+
+          const bfIdsParaAtualizar: string[] = [];
+          const bfNisEncontrados = new Set<string>();
+
+          for (const bf of bfPendentes) {
+            // 1º: NIS direto
+            let matchId = bf.nis ? existentesPorNis.get(bf.nis) : undefined;
+            // 2º: nome+data exato
+            if (!matchId) matchId = existentesPorChave.get(`${bf.nome}|${bf.nasc}`);
+            // 3º: fuzzy (sem artigos) + data
+            if (!matchId) {
+              const bfSimp = nomeSignificativo(bf.nome);
+              if (bfSimp.length >= 6) matchId = existentesPorFuzzy.get(`~${bfSimp}|${bf.nasc}`);
+            }
+
+            if (matchId) {
+              const existente = (existentes ?? []).find(e => e.id === matchId);
+              if (!existente?.bolsa_familia) bfIdsParaAtualizar.push(matchId);
+              bfNisEncontrados.add(bf.nis);
+            }
+          }
+
+          if (bfIdsParaAtualizar.length > 0) {
+            setStatus(`Marcando ${bfIdsParaAtualizar.length} alunos adicionais como Bolsa Família...`);
+            for (let i = 0; i < bfIdsParaAtualizar.length; i += 50) {
+              await supabase.from('Aluno').update({ bolsa_familia: true })
+                .in('id', bfIdsParaAtualizar.slice(i, i + 50));
+            }
+          }
+
+          // Atualiza o relatório removendo os que foram encontrados no banco
+          if (bfNisEncontrados.size > 0) {
+            dadosRef.current!.bfNaoEncontrados = bfPendentes.filter(b => !bfNisEncontrados.has(b.nis));
           }
         }
       }

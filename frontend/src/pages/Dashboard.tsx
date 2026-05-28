@@ -187,8 +187,10 @@ export default function Dashboard() {
   );
   // Alunos em AEE sem RA (contados separadamente para não perder ninguém)
   const alunoAEESemRA = alunos.filter(a => isAtivo(a) && isAEETurma(turmaMap.get(a.turmaId)) && !a.ra);
+  // "Sala de Recursos" = total matriculados na AEE (com ou sem deficiencia preenchida)
   const comDefiAEE     = rasEmAEE.size + alunoAEESemRA.length;
-  const comDefiRegular = [...rasComDefi].filter(ra => !rasEmAEE.has(ra)).length;
+  // "Defi. c/ Laudo" = TODOS os alunos com deficiência (incluindo AEE — frequentam regular E AEE)
+  const comDefiRegular = rasComDefi.size;
 
   // Breakdown de alunos NÃO-ativos matriculados em turmas AEE (para auditoria)
   const alunosAEEInativos = alunos.filter(a => !isAtivo(a) && isAEETurma(turmaMap.get(a.turmaId)));
@@ -241,16 +243,24 @@ export default function Dashboard() {
     }))
     .sort((a, b) => a.nome.localeCompare(b.nome));
 
+  // Defi. Regular lista todos os alunos com deficiência
+  // Para alunos que também têm AEE, mostra a turma regular (não a AEE)
   const listaDefiRegular: any[] = [...rasComDefi]
-    .filter(ra => !rasEmAEE.has(ra))
     .map(ra => {
-      const a = raToRegular.get(ra) ?? alunos.find(x => isAtivo(x) && x.ra && String(x.ra) === ra);
+      // Prefere o registro da turma REGULAR; fallback para qualquer registro
+      const a = raToRegular.get(ra) ?? raToAEE.get(ra) ?? alunos.find(x => isAtivo(x) && (x.ra ? String(x.ra) : x.id) === ra);
       if (!a) return null;
+      const temAEE = rasEmAEE.has(ra);
       return {
         nome: a.nome, ra,
         deficiencia: raToDefi.get(ra) || a.deficiencia || '—',
-        turma: turmaMap.get(a.turmaId)?.nome || '—',
-        professora: turmaMap.get(a.turmaId)?.professora || '—',
+        turma: raToRegular.has(ra)
+          ? (turmaMap.get(raToRegular.get(ra)!.turmaId)?.nome || '—')
+          : (turmaMap.get(a.turmaId)?.nome || '—'),
+        professora: raToRegular.has(ra)
+          ? (turmaMap.get(raToRegular.get(ra)!.turmaId)?.professora || '—')
+          : (turmaMap.get(a.turmaId)?.professora || '—'),
+        aee: temAEE ? '✅' : '—',
       };
     })
     .filter(Boolean)
@@ -303,7 +313,7 @@ export default function Dashboard() {
       )}
       {modal === 'defiRegular' && (
         <ModalDetalhe
-          titulo="🏫 Deficiência — Ensino Regular"
+          titulo="🏫 Deficiência — Todos os alunos com laudo"
           cor={theme.purple}
           lista={listaDefiRegular}
           onClose={() => setModal(null)}
@@ -311,8 +321,9 @@ export default function Dashboard() {
             { label: 'Nome', key: 'nome' },
             { label: 'RA', key: 'ra' },
             { label: 'Deficiência', key: 'deficiencia' },
-            { label: 'Turma', key: 'turma' },
+            { label: 'Turma Regular', key: 'turma' },
             { label: 'Professora', key: 'professora' },
+            { label: 'AEE', key: 'aee' },
           ]}
         />
       )}
@@ -359,7 +370,7 @@ export default function Dashboard() {
               active={modal === 'bf'}
             />
             <StatCard
-              label="🏫 Defi. Regular" val={comDefiRegular} color={theme.purple}
+              label="🏫 Defi. c/ Laudo" val={comDefiRegular} color={theme.purple}
               sub="toque para ver"
               onClick={() => setModal('defiRegular')}
               active={modal === 'defiRegular'}
