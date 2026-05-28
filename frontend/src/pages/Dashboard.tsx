@@ -7,11 +7,12 @@ import { useAno } from '../AnoContext';
 type DetalheCard = 'bf' | 'defiRegular' | 'defiAEE' | null;
 
 // ─── Modal de detalhe (overlay fixo, sempre visível) ──────────────────────
-function ModalDetalhe({ titulo, cor, lista, colunas, onClose }: {
+function ModalDetalhe({ titulo, cor, lista, colunas, onClose, nota }: {
   titulo: string; cor: string;
   lista: any[];
   colunas: { label: string; key: string }[];
   onClose: () => void;
+  nota?: string;
 }) {
   const [busca, setBusca] = useState('');
   const filtrado = busca.trim()
@@ -108,9 +109,10 @@ function ModalDetalhe({ titulo, cor, lista, colunas, onClose }: {
         <div style={{
           padding: '10px 18px', fontSize: 12, color: theme.textMuted,
           borderTop: `1px solid ${theme.borderLight}`,
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          display: 'flex', flexDirection: 'column', gap: 4,
           flexShrink: 0,
         }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>Total: <strong style={{ color: cor }}>{lista.length}</strong></span>
           <button onClick={() => {
             const csv = [colunas.map(c => c.label).join(';'),
@@ -124,6 +126,10 @@ function ModalDetalhe({ titulo, cor, lista, colunas, onClose }: {
             background: cor + '18', border: `1px solid ${cor}55`, borderRadius: theme.radius,
             padding: '5px 12px', cursor: 'pointer', fontSize: 12, color: cor, fontWeight: 700,
           }}>⬇ Exportar CSV</button>
+          </div>
+          {nota && (
+            <span style={{ fontSize: 11, color: theme.textMuted, fontStyle: 'italic' }}>{nota}</span>
+          )}
         </div>
       </div>
     </div>
@@ -181,6 +187,17 @@ export default function Dashboard() {
   const alunoAEESemRA = alunos.filter(a => isAtivo(a) && turmaMap.get(a.turmaId)?.tipo === 'AEE' && !a.ra);
   const comDefiAEE     = rasEmAEE.size + alunoAEESemRA.length;
   const comDefiRegular = [...rasComDefi].filter(ra => !rasEmAEE.has(ra)).length;
+
+  // Breakdown de alunos NÃO-ativos matriculados em turmas AEE (para auditoria)
+  const alunosAEEInativos = alunos.filter(a => !isAtivo(a) && turmaMap.get(a.turmaId)?.tipo === 'AEE');
+  const situacoesAEEInativas: Record<string, number> = {};
+  for (const a of alunosAEEInativos) {
+    const sit = a.situacao || 'sem situação';
+    situacoesAEEInativas[sit] = (situacoesAEEInativas[sit] || 0) + 1;
+  }
+  const notaAEE = alunosAEEInativos.length > 0
+    ? `Excluídos ${alunosAEEInativos.length} inativos: ${Object.entries(situacoesAEEInativas).map(([k, v]) => `${v}×${k}`).join(', ')}`
+    : 'Todos os matriculados na AEE estão ativos';
 
   const faltasMap = new Map<string, number>(faltas.map(f => [f.alunoId, f.faltas ?? 0]));
   const alertas = alunos.filter(a => {
@@ -299,10 +316,11 @@ export default function Dashboard() {
       )}
       {modal === 'defiAEE' && (
         <ModalDetalhe
-          titulo="🎯 Deficiência — Sala de Recursos (AEE)"
+          titulo="🎯 Sala de Recursos (AEE) — alunos ativos"
           cor="#8b5cf6"
           lista={listaDefiAEE}
           onClose={() => setModal(null)}
+          nota={notaAEE}
           colunas={[
             { label: 'Nome', key: 'nome' },
             { label: 'RA', key: 'ra' },
@@ -345,7 +363,7 @@ export default function Dashboard() {
               active={modal === 'defiRegular'}
             />
             <StatCard
-              label="🎯 Defi. AEE" val={comDefiAEE} color="#8b5cf6"
+              label="🎯 AEE ativos" val={comDefiAEE} color="#8b5cf6"
               sub="toque para ver"
               onClick={() => setModal('defiAEE')}
               active={modal === 'defiAEE'}
