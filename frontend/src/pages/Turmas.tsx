@@ -323,17 +323,29 @@ export default function Turmas() {
     try {
       const normalizeStr = (s: string) =>
         (s ?? '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+      // normaliza data para DD/MM/YYYY independente de como está armazenada
+      const normDate = (d: string) => {
+        if (!d) return '';
+        if (/^\d{4}-\d{2}-\d{2}/.test(d)) {
+          const [y, m, dd] = d.slice(0, 10).split('-');
+          return `${dd}/${m}/${y}`;
+        }
+        return d.slice(0, 10);
+      };
 
       const { data: educ } = await supabase.from('Educacenso').select('cpf, nome, data_nascimento, cor_raca, deficiencia');
-      if (!educ?.length) { alert('Tabela Educacenso vazia.'); setRecuperando(false); return; }
+      if (!educ?.length) { alert('Tabela Educacenso vazia — importe o Educacenso primeiro.'); setRecuperando(false); return; }
 
-      const educMap = new Map<string, { cor_raca: string; cpf: string; deficiencia: string }>();
+      const educMap = new Map<string, { cor_raca: string; cpf: string }>();
       for (const rec of educ) {
-        const entry = { cor_raca: rec.cor_raca || '', cpf: rec.cpf || '', deficiencia: rec.deficiencia || '' };
+        const entry = { cor_raca: rec.cor_raca || '', cpf: rec.cpf || '' };
         if (rec.cpf) educMap.set(`CPF:${rec.cpf}`, entry);
         if (rec.nome) {
           const nn = normalizeStr(rec.nome);
-          educMap.set(`${nn}|${rec.data_nascimento || ''}`, entry);
+          const dt = normDate(rec.data_nascimento || '');
+          educMap.set(`${nn}|${dt}`, entry);
+          // também indexa sem data para match parcial
+          educMap.set(`NOME:${nn}`, entry);
         }
       }
 
@@ -346,8 +358,11 @@ export default function Turmas() {
         const semCpf = !a.cpf;
         if (!semCorRaca && !semCpf) continue;
 
+        const nn = normalizeStr(a.nome);
+        const dt = normDate(a.data_nascimento || '');
         const ec = (a.cpf ? educMap.get(`CPF:${a.cpf}`) : undefined)
-          ?? educMap.get(`${normalizeStr(a.nome)}|${a.data_nascimento || ''}`);
+          ?? educMap.get(`${nn}|${dt}`)
+          ?? educMap.get(`NOME:${nn}`);
         if (!ec) continue;
 
         const update: any = { id: a.id };
@@ -362,7 +377,8 @@ export default function Turmas() {
         const { error } = await supabase.from('Aluno').upsert(lote, { onConflict: 'id' });
         if (!error) atualizados += lote.length;
       }
-      setResultRecupera({ atualizados, semMatch: alunos.filter(a => (!a.cor_raca || !a.cpf)).length - atualizados });
+      const totalSemDados = alunos.filter(a => (!a.cor_raca || !a.cpf)).length;
+      setResultRecupera({ atualizados, semMatch: totalSemDados - atualizados });
     } catch (e: any) {
       alert('Erro ao recuperar: ' + (e.message ?? e));
     }
