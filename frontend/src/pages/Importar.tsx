@@ -1480,7 +1480,9 @@ export default function Importar() {
             // Nunca sobrescreve o registo de turma regular do mesmo aluno
             ? aeeToId.get(raKey)
             // Regular: usa mapa normal (exclui registos AEE, que ficam no aeeToId)
-            : (raToExistingId.get(raKey) ?? nomeToExistingId.get(a.nomeNorm));
+            // Se o RA já existe como REMA no banco, NÃO usa nomeToExistingId como fallback
+            // (evita que ATIVO e REMA do mesmo aluno partilhem o mesmo ID)
+            : (raToExistingId.get(raKey) ?? (remaToId.has(raKey) ? undefined : nomeToExistingId.get(a.nomeNorm)));
         const alunoId = existingId ?? crypto.randomUUID();
         return {
           id: alunoId,
