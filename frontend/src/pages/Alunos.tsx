@@ -133,8 +133,9 @@ export default function Alunos() {
   const rasComDefi = new Set(
     alunos.filter(a => isAtivo(a) && a.deficiencia).map(a => a.ra ? String(a.ra) : a.id)
   );
+  const isAEETurma = (t: any) => t?.tipo === 'AEE' || /^AEE\b/i.test(t?.nome ?? '');
   const rasEmAEE = new Set(
-    alunos.filter(a => isAtivo(a) && turmaMap.get(a.turmaId)?.tipo === 'AEE' && a.ra)
+    alunos.filter(a => isAtivo(a) && isAEETurma(turmaMap.get(a.turmaId)) && a.ra)
       .map(a => String(a.ra))
   );
   const totalDefiAEE     = [...rasEmAEE].filter(ra => rasComDefi.has(ra)).length;

@@ -1371,9 +1371,13 @@ export default function Importar() {
       const { data: todasTurmas } = await supabase.from('Turma').select('id, nome, professora');
       const resolveIdAtualizado = buildResolveId(todasTurmas ?? []);
 
-      // IDs das turmas AEE (necessário para lógica de registros separados AEE)
-      const { data: aeeTurmasDb } = await supabase.from('Turma').select('id').eq('tipo', 'AEE');
-      const aeeturmaIds = new Set<string>((aeeTurmasDb ?? []).map((t: any) => t.id));
+      // IDs das turmas AEE — detecta pelo nome (robusto) e pelo campo tipo
+      // Assim funciona mesmo que tipo='AEE' não esteja preenchido na BD
+      const aeeturmaIds = new Set<string>(
+        (todasTurmas ?? [])
+          .filter((t: any) => t.tipo === 'AEE' || /^AEE\b/i.test(t.nome ?? ''))
+          .map((t: any) => t.id)
+      );
 
       // ─── PASSO 2: Alunos — upsert por RA (preserva UUIDs → preserva faltas) ───
       // AEE: alunos têm 2 registros separados (turma regular + turma AEE) — mesmo padrão que REMA
