@@ -83,6 +83,8 @@ export default function Turmas() {
     { nome: '5º ano B', professora: 'Jessica', periodo: 'Manhã' },
     { nome: '5º ano C', professora: 'Alessandra', periodo: 'Tarde' },
     { nome: '5º ano D', professora: 'Raquel', periodo: 'Tarde' },
+    { nome: 'EJA I – ALFABETIZAÇÃO', professora: 'Maria dos Anjos Ferreira do Carmo', periodo: 'Noite' },
+    { nome: 'EJA I – POS-ALFABETIZAÇÃO', professora: 'Elaine Aparecida da Silva Figueiredo', periodo: 'Noite' },
   ];
 
   const load = () => api.getTurmas().then(d => setTurmas(sortTurmasPedagogico(d || []))).finally(() => setLoading(false));
