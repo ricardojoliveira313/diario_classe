@@ -42,6 +42,8 @@ export default function Turmas() {
   const [backupsNuvem, setBackupsNuvem] = useState<any[]>([]);
   const [showBackups, setShowBackups] = useState(false);
   const [restaurandoBackup, setRestaurandoBackup] = useState<string | null>(null);
+  const [recuperando, setRecuperando] = useState(false);
+  const [resultRecupera, setResultRecupera] = useState<{ atualizados: number; semMatch: number } | null>(null);
 
   // --- importação em lote ---
   const [importando, setImportando] = useState(false);
@@ -313,6 +315,60 @@ export default function Turmas() {
     load();
   };
 
+  const recuperarCorRacaCpf = async () => {
+    if (role !== 'admin') return;
+    if (!confirm('Recuperar cor/raça e CPF dos alunos a partir do Educacenso?\n\nSó preenche campos que estão vazios — não apaga dados existentes.')) return;
+    setRecuperando(true);
+    setResultRecupera(null);
+    try {
+      const normalizeStr = (s: string) =>
+        (s ?? '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+
+      const { data: educ } = await supabase.from('Educacenso').select('cpf, nome, data_nascimento, cor_raca, deficiencia');
+      if (!educ?.length) { alert('Tabela Educacenso vazia.'); setRecuperando(false); return; }
+
+      const educMap = new Map<string, { cor_raca: string; cpf: string; deficiencia: string }>();
+      for (const rec of educ) {
+        const entry = { cor_raca: rec.cor_raca || '', cpf: rec.cpf || '', deficiencia: rec.deficiencia || '' };
+        if (rec.cpf) educMap.set(`CPF:${rec.cpf}`, entry);
+        if (rec.nome) {
+          const nn = normalizeStr(rec.nome);
+          educMap.set(`${nn}|${rec.data_nascimento || ''}`, entry);
+        }
+      }
+
+      const { data: alunos } = await supabase.from('Aluno').select('id, ra, nome, cpf, cor_raca, data_nascimento');
+      if (!alunos?.length) { setRecuperando(false); return; }
+
+      const paraAtualizar: { id: string; cor_raca?: string; cpf?: string }[] = [];
+      for (const a of alunos) {
+        const semCorRaca = !a.cor_raca;
+        const semCpf = !a.cpf;
+        if (!semCorRaca && !semCpf) continue;
+
+        const ec = (a.cpf ? educMap.get(`CPF:${a.cpf}`) : undefined)
+          ?? educMap.get(`${normalizeStr(a.nome)}|${a.data_nascimento || ''}`);
+        if (!ec) continue;
+
+        const update: any = { id: a.id };
+        if (semCorRaca && ec.cor_raca) update.cor_raca = ec.cor_raca;
+        if (semCpf && ec.cpf) update.cpf = ec.cpf;
+        if (Object.keys(update).length > 1) paraAtualizar.push(update);
+      }
+
+      let atualizados = 0;
+      for (let i = 0; i < paraAtualizar.length; i += 100) {
+        const lote = paraAtualizar.slice(i, i + 100);
+        const { error } = await supabase.from('Aluno').upsert(lote, { onConflict: 'id' });
+        if (!error) atualizados += lote.length;
+      }
+      setResultRecupera({ atualizados, semMatch: alunos.filter(a => (!a.cor_raca || !a.cpf)).length - atualizados });
+    } catch (e: any) {
+      alert('Erro ao recuperar: ' + (e.message ?? e));
+    }
+    setRecuperando(false);
+  };
+
   const salvarEdicao = async () => {
     if (role !== 'admin' || !editando) return;
     setSavingEdit(true);
@@ -451,6 +507,14 @@ export default function Turmas() {
             </button>
             <button
               style={btn('danger', { outline: true })}
+              onClick={recuperarCorRacaCpf}
+              disabled={recuperando}
+              title="Recupera cor/raça e CPF do Educacenso para alunos com campos vazios"
+            >
+              {recuperando ? <><Spinner size={14} /> Recuperando...</> : '🎨 Recuperar Cor/CPF'}
+            </button>
+            <button
+              style={btn('danger', { outline: true })}
               onClick={reconectarAlunos}
               disabled={reconectando}
               title="Reconecta alunos sem turma às turmas pelo nome da professora"
@@ -519,6 +583,22 @@ export default function Turmas() {
               ))
             }
           </div>
+        </div>
+      )}
+
+      {/* Resultado da recuperação de cor/raça e CPF */}
+      {resultRecupera && (
+        <div style={{
+          padding: '12px 16px', marginBottom: 12, borderRadius: 8,
+          background: '#f0fdf4', border: '1px solid #bbf7d0',
+          fontSize: 14, color: '#166534', fontWeight: 600,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+        }}>
+          <span>
+            🎨 {resultRecupera.atualizados} aluno{resultRecupera.atualizados !== 1 ? 's' : ''} com cor/raça ou CPF recuperados do Educacenso
+            {resultRecupera.semMatch > 0 && <span style={{ color: '#ea580c' }}> · {resultRecupera.semMatch} sem correspondência no Educacenso</span>}
+          </span>
+          <button onClick={() => setResultRecupera(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: 'inherit' }}>✕</button>
         </div>
       )}
 
