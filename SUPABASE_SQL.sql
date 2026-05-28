@@ -88,6 +88,12 @@ ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS rendimento          TEXT DEFAULT NU
 
 ALTER TABLE "Turma" ADD COLUMN IF NOT EXISTS professora TEXT DEFAULT '';
 ALTER TABLE "Turma" ADD COLUMN IF NOT EXISTS periodo    TEXT DEFAULT '';
+-- Tipo da turma: REGULAR (padrão), AEE (Sala de Recursos), EJA (Alfabetização/Pós-Alfa)
+ALTER TABLE "Turma" ADD COLUMN IF NOT EXISTS tipo TEXT DEFAULT 'REGULAR';
+-- Define tipo='AEE' em todas as turmas cujo nome começa por AEE (idempotente)
+UPDATE "Turma" SET tipo = 'AEE'
+  WHERE (nome ILIKE 'AEE%' OR nome ILIKE '%ATENDIMENTO EDUCACIONAL%')
+    AND (tipo IS NULL OR tipo <> 'AEE');
 
 -- Permissões por página para cada usuário viewer (null = todas liberadas)
 ALTER TABLE "Usuario" ADD COLUMN IF NOT EXISTS permissoes JSONB DEFAULT NULL;
