@@ -402,7 +402,9 @@ export default function Importar() {
               // Só usa o Nº de fontes que contenham a lista completa (ex: exportação SED).
               const numero = isDiario ? 0 : (parseInt(String(nr['Nº'] ?? nr['N°'] ?? nr['NR'] ?? nr['NUMERO'] ?? nr['CHAMADA'] ?? '')) || 0);
               const serie = String(nr['SERIE'] ?? nr['TURMA'] ?? '').trim();
-              if (!nome) continue;
+              // Séries numéricas puras (ex: "0", "10") são códigos internos do SED para EJA
+              // — não correspondem a nenhum nome de turma e causam turmaId=null se importados
+              if (!nome || /^\d{1,3}$/.test(serie)) continue;
 
         const ra = parseInt(String(nr['RA'] ?? '')) || null;
         const nasc = fmtDate(nr['DATA DE NASCIMENTO'] ?? nr['DATA NASCIMENTO']);
@@ -1185,11 +1187,13 @@ export default function Importar() {
     setProgresso(0);
 
     // Normaliza para matching: sem acento, sem ordinal, maiúsculas, espaço simples
+    // \bEJAI\b → EJA I: "EJAI - ALFABETIZAÇÃO" e "EJA I ALFABETIZAÇÃO" são a mesma turma
     const normT = (s: string) => (s ?? '').toUpperCase()
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .replace(/[ªº°]/g, '')
       .replace(/[-]/g, ' ')
-      .replace(/\s+/g, ' ').trim();
+      .replace(/\s+/g, ' ').trim()
+      .replace(/\bEJAI\b/g, 'EJA I');
 
     // Remove sufixos verbosos do SED: "1ª ETAPA PRÉ-ESCOLA A MANHA ANUAL" → "1 ETAPA A"
     const normSerieSED = (s: string) => normT(s)
@@ -1235,9 +1239,14 @@ export default function Importar() {
         for (const key of [n, nSed]) {
           candidates = serieToTurmasList.get(key) ?? [];
           if (!candidates.length) {
+            // Recolhe TODOS os prefix-matches (não só o primeiro) para que a
+            // disambiguação por professora funcione quando há múltiplas turmas com
+            // prefixo igual (ex: "EJA I ALFABETIZACAO" e "EJA I POS ALFABETIZACAO")
+            const allPrefix: Array<{ id: string; professora: string }> = [];
             for (const [k, v] of serieToTurmasList.entries()) {
-              if (k.startsWith(key) || key.startsWith(k)) { candidates = v; break; }
+              if (k.startsWith(key) || key.startsWith(k)) allPrefix.push(...v);
             }
+            if (allPrefix.length) candidates = allPrefix;
           }
           if (candidates.length) break;
         }
@@ -1533,6 +1542,13 @@ export default function Importar() {
             return br?.turmaId && aeeturmaIds.has(br.turmaId);
           });
           if (batchTemAEE) return false;
+          // Nunca apaga registo com turmaId válido quando o batch NÃO encontrou turma
+          // (turmaId=null no batch = falha de matching, não uma mudança real do aluno)
+          const batchSemTurma = batchIdsForRA.every(bid => {
+            const br = alunosParaUpsert.find(x => x.id === bid);
+            return !br?.turmaId;
+          });
+          if (batchSemTurma && e.turmaId) return false;
           return true;
         });
         if (candidatos.length > 0) {
@@ -1620,17 +1636,6 @@ export default function Importar() {
           .from('Falta')
           .upsert(faltasParaInserir.slice(i, i + 80), { onConflict: 'alunoId,mes,ano' });
         if (error) throw error;
-      }
-
-      // ─── PASSO 5: Limpa turmas que ficaram sem alunos (duplicatas de imports anteriores) ───
-      setStatus('Limpando turmas duplicadas...');
-      const { data: alunosComTurma } = await supabase
-        .from('Aluno').select('turmaId').not('turmaId', 'is', null);
-      const idsComAlunos = new Set((alunosComTurma ?? []).map((a: any) => a.turmaId));
-      const { data: todasTurmasFim } = await supabase.from('Turma').select('id');
-      const turmasVazias = (todasTurmasFim ?? []).filter((t: any) => !idsComAlunos.has(t.id));
-      if (turmasVazias.length > 0) {
-        await supabase.from('Turma').delete().in('id', turmasVazias.map((t: any) => t.id));
       }
 
       setStatus('');
