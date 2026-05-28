@@ -37,6 +37,7 @@ export default function Turmas() {
   const [resultRestaura, setResultRestaura] = useState<{ criadas: number; atualizadas: number; erros: number } | null>(null);
   const [reconectando, setReconectando] = useState(false);
   const [resultReconecta, setResultReconecta] = useState<{ atualizados: number; semMatch: number } | null>(null);
+  const [fazendoBackup, setFazendoBackup] = useState(false);
 
   // --- importação em lote ---
   const [importando, setImportando] = useState(false);
@@ -130,6 +131,72 @@ export default function Turmas() {
     setRestaurando(false);
     setResultRestaura({ criadas, atualizadas, erros });
     load();
+  };
+
+  const fazerBackup = async () => {
+    setFazendoBackup(true);
+    try {
+      const [{ data: turmData }, { data: alunoData }, { data: faltaData }] = await Promise.all([
+        supabase.from('Turma').select('*').order('nome'),
+        supabase.from('Aluno').select('*').order('nome'),
+        supabase.from('Falta').select('*'),
+      ]);
+
+      const wb = XLSX.utils.book_new();
+
+      // Aba Turmas
+      const wsTurmas = XLSX.utils.json_to_sheet(
+        (turmData ?? []).map((t: any) => ({
+          id: t.id, nome: t.nome, professora: t.professora ?? '',
+          periodo: t.periodo ?? '', tipo: t.tipo ?? '',
+        }))
+      );
+      wsTurmas['!cols'] = [{ wch: 38 }, { wch: 24 }, { wch: 26 }, { wch: 12 }, { wch: 8 }];
+      XLSX.utils.book_append_sheet(wb, wsTurmas, 'Turmas');
+
+      // Aba Alunos
+      const turmaMapBk = new Map((turmData ?? []).map((t: any) => [t.id, t.nome]));
+      const wsAlunos = XLSX.utils.json_to_sheet(
+        (alunoData ?? []).map((a: any) => ({
+          id: a.id, ra: a.ra ?? '', dig_ra: a.dig_ra ?? '', nome: a.nome,
+          turma: turmaMapBk.get(a.turmaId) ?? '',
+          turmaId: a.turmaId ?? '',
+          professora: a.professora ?? '',
+          situacao: a.situacao ?? '',
+          data_nascimento: a.data_nascimento ?? '',
+          data_inicio_matricula: a.data_inicio_matricula ?? '',
+          data_fim_matricula: a.data_fim_matricula ?? '',
+          data_movimentacao: a.data_movimentacao ?? '',
+          deficiencia: a.deficiencia ?? '',
+          bolsa_familia: a.bolsa_familia ? 'Sim' : 'Não',
+          nis: a.nis ?? '',
+          cpf: a.cpf ?? '',
+          cor_raca: a.cor_raca ?? '',
+          numero: a.numero ?? '',
+        }))
+      );
+      wsAlunos['!cols'] = [
+        { wch: 38 }, { wch: 12 }, { wch: 8 }, { wch: 40 }, { wch: 20 }, { wch: 38 },
+        { wch: 22 }, { wch: 14 }, { wch: 14 }, { wch: 18 }, { wch: 18 }, { wch: 18 },
+        { wch: 24 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 6 },
+      ];
+      XLSX.utils.book_append_sheet(wb, wsAlunos, 'Alunos');
+
+      // Aba Faltas
+      const wsFaltas = XLSX.utils.json_to_sheet(
+        (faltaData ?? []).map((f: any) => ({
+          alunoId: f.alunoId, mes: f.mes, ano: f.ano,
+          faltas: f.faltas ?? 0, compensadas: f.compensadas ?? 0,
+        }))
+      );
+      XLSX.utils.book_append_sheet(wb, wsFaltas, 'Faltas');
+
+      const dataStr = new Date().toISOString().slice(0, 16).replace('T', '_').replace(':', 'h');
+      XLSX.writeFile(wb, `Backup_DiarioClasse_${dataStr}.xlsx`);
+    } catch (e: any) {
+      alert('Erro ao gerar backup: ' + (e.message ?? e));
+    }
+    setFazendoBackup(false);
   };
 
   const reconectarAlunos = async () => {
@@ -294,6 +361,14 @@ export default function Turmas() {
         </div>
         {role === 'admin' && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              style={{ ...btn('success'), fontWeight: 800 }}
+              onClick={fazerBackup}
+              disabled={fazendoBackup}
+              title="Exporta backup completo: turmas, alunos e faltas"
+            >
+              {fazendoBackup ? <><Spinner size={14} /> Gerando...</> : '💾 Backup Completo'}
+            </button>
             <button
               style={btn('danger', { outline: true })}
               onClick={reconectarAlunos}
