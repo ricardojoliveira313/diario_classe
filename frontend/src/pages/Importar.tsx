@@ -1389,7 +1389,7 @@ export default function Importar() {
       // AEE: alunos têm 2 registros separados (turma regular + turma AEE) — mesmo padrão que REMA
       setStatus('Atualizando cadastro de alunos...');
       const { data: existentes } = await supabase
-        .from('Aluno').select('id, ra, nome, situacao, cpf, nis, responsavel, bolsa_familia, turmaId, data_nascimento');
+        .from('Aluno').select('id, ra, nome, situacao, cpf, nis, responsavel, bolsa_familia, turmaId, data_nascimento, cor_raca');
       const raToExistingId = new Map<string, string>();
       const nomeToExistingId = new Map<string, string>();
       const remaToId = new Map<string, string>(); // RA → ID do registro REMA
@@ -1399,6 +1399,7 @@ export default function Importar() {
       const idToNis = new Map<string, string>();
       const idToResponsavel = new Map<string, string>();
       const idToBolsaFamilia = new Map<string, boolean>();
+      const idToCorRaca = new Map<string, string>();
       for (const e of (existentes ?? [])) {
         if (e.ra) {
           if (e.situacao === 'REMA') {
@@ -1416,6 +1417,7 @@ export default function Importar() {
         if (e.nis) idToNis.set(e.id, e.nis);
         if (e.responsavel) idToResponsavel.set(e.id, e.responsavel);
         if (e.bolsa_familia) idToBolsaFamilia.set(e.id, true);
+        if (e.cor_raca) idToCorRaca.set(e.id, e.cor_raca);
       }
 
       // ─── Carrega EDUCACENSO do banco (tabela fixa) e enriquece alunos ───
@@ -1499,7 +1501,7 @@ export default function Importar() {
           nis: a.nis || idToNis.get(alunoId) || null,
           responsavel: a.responsavel || idToResponsavel.get(alunoId) || null,
           cpf: a.cpf || idToCpf.get(alunoId) || null,
-          cor_raca: a.corRaca || '',
+          cor_raca: a.corRaca || idToCorRaca.get(alunoId) || '',
           turma_origem: a.turmaOrigem || '',
           professora_origem: a.professoraOrigem || '',
           turma_destino: a.turmaDestino || '',
