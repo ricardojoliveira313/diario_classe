@@ -107,17 +107,31 @@ export default function Turmas() {
 
   const restaurarTurmasPadrao = async () => {
     if (role !== 'admin') return;
-    if (!confirm(`Restaurar as ${TURMAS_PADRAO.length} turmas padrão da escola?\n\nTurmas existentes (mesmo com nome do SED) terão nome, professora e período atualizados.\nTurmas inexistentes serão criadas.\nTurmas duplicadas e vazias serão removidas.`)) return;
+    if (!confirm(`Restaurar e vincular as ${TURMAS_PADRAO.length} turmas com professoras?\n\nTurmas com alunos terão nome e professora atualizados.\nTurmas duplicadas vazias serão removidas.\nTurmas inexistentes serão criadas.`)) return;
     setRestaurando(true);
     setResultRestaura(null);
-    let criadas = 0, atualizadas = 0, erros = 0, limpas = 0;
+    let criadas = 0, atualizadas = 0, erros = 0;
     const atuais = await api.getTurmas();
-    const idsUsados = new Set<string>();
 
+    // Conta alunos por turma para priorizar turmas com alunos no matching
+    const { data: contagens } = await supabase
+      .from('Aluno')
+      .select('turmaId')
+      .in('turmaId', atuais.map((t: any) => t.id));
+    const qtdPorTurma = new Map<string, number>();
+    for (const { turmaId } of contagens ?? []) {
+      qtdPorTurma.set(turmaId, (qtdPorTurma.get(turmaId) ?? 0) + 1);
+    }
+    // Ordena: turmas com mais alunos primeiro → matching preferirá essas
+    const atuaisOrdenados = [...atuais].sort((a: any, b: any) =>
+      (qtdPorTurma.get(b.id) ?? 0) - (qtdPorTurma.get(a.id) ?? 0)
+    );
+
+    const idsUsados = new Set<string>();
     for (const tp of TURMAS_PADRAO) {
-      // Match por nome exato primeiro, depois por normSimp (apanha nomes do SED)
-      const match = atuais.find((t: any) => norm(t.nome) === norm(tp.nome))
-        ?? atuais.find((t: any) => normSimp(t.nome) === normSimp(tp.nome));
+      // Busca por nome exato, depois por normSimp — sempre preferindo turmas com alunos
+      const match = atuaisOrdenados.find((t: any) => norm(t.nome) === norm(tp.nome))
+        ?? atuaisOrdenados.find((t: any) => normSimp(t.nome) === normSimp(tp.nome));
       try {
         if (match) {
           await api.updateTurma(match.id, { nome: tp.nome, professora: tp.professora, periodo: tp.periodo });
@@ -131,15 +145,13 @@ export default function Turmas() {
       } catch { erros++; }
     }
 
-    // Limpar turmas duplicadas vazias (criadas por runs anteriores com nome errado)
+    // Remove duplicatas vazias (turmas padrão sem alunos que sobraram de runs anteriores)
     const normSimpsPadrao = new Set(TURMAS_PADRAO.map(tp => normSimp(tp.nome)));
     for (const t of atuais) {
       if (idsUsados.has(t.id)) continue;
-      if (!normSimpsPadrao.has(normSimp(t.nome))) continue;
-      // É duplicata de turma padrão — apagar só se não tiver alunos
-      const { count } = await supabase.from('Aluno').select('*', { count: 'exact', head: true }).eq('turmaId', t.id);
-      if (count === 0) {
-        try { await api.deleteTurma(t.id); limpas++; } catch {}
+      if (!normSimpsPadrao.has(normSimp((t as any).nome))) continue;
+      if ((qtdPorTurma.get(t.id) ?? 0) === 0) {
+        try { await api.deleteTurma(t.id); } catch {}
       }
     }
 
