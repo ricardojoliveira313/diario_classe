@@ -143,7 +143,8 @@ export default function Alunos() {
     alunos.filter(a => isAtivo(a) && isAEETurma(turmaMap.get(a.turmaId)) && a.ra)
       .map(a => String(a.ra))
   );
-  const totalDefiAEE     = [...rasEmAEE].filter(ra => rasComDefi.has(ra)).length;
+  // AEE = todos os ativos com deficiência (inclui os que perderam turmaId por exclusão em cascata)
+  const totalDefiAEE     = rasComDefi.size;
   const totalDefiRegular = rasComDefi.size;
 
   // Agrupa por turma quando "Todas as turmas" — cada turma com numeração independente

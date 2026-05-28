@@ -187,9 +187,9 @@ export default function Dashboard() {
   );
   // Alunos em AEE sem RA (contados separadamente para não perder ninguém)
   const alunoAEESemRA = alunos.filter(a => isAtivo(a) && isAEETurma(turmaMap.get(a.turmaId)) && !a.ra);
-  // "Sala de Recursos" = total matriculados na AEE (com ou sem deficiencia preenchida)
-  const comDefiAEE     = rasEmAEE.size + alunoAEESemRA.length;
-  // "Defi. c/ Laudo" = TODOS os alunos com deficiência (incluindo AEE — frequentam regular E AEE)
+  // "Sala de Recursos" = todos os ativos com deficiência (inclui os que perderam turmaId por exclusão em cascata)
+  const comDefiAEE     = rasComDefi.size;
+  // "Defi. c/ Laudo" = TODOS os alunos com deficiência
   const comDefiRegular = rasComDefi.size;
 
   // Breakdown de alunos NÃO-ativos matriculados em turmas AEE (para auditoria)
@@ -266,22 +266,22 @@ export default function Dashboard() {
     .filter(Boolean)
     .sort((a: any, b: any) => a.nome.localeCompare(b.nome));
 
-  // Todos os alunos AEE — com e sem RA
+  // Todos os alunos com deficiência (AEE) — inclui os sem turmaId por exclusão em cascata
   const listaDefiAEE: any[] = [
-    ...[...rasEmAEE].map(ra => {
+    ...[...rasComDefi].map(ra => {
       const aeeRec = raToAEE.get(ra);
       const regRec = raToRegular.get(ra);
-      const rec = regRec ?? aeeRec;
+      const rec = regRec ?? aeeRec ?? alunos.find(x => isAtivo(x) && (x.ra ? String(x.ra) : x.id) === ra);
       if (!rec) return null;
       return {
         nome: rec.nome, ra,
-        deficiencia: raToDefi.get(ra) || aeeRec?.deficiencia || regRec?.deficiencia || '—',
-        turmaRegular: regRec ? (turmaMap.get(regRec.turmaId)?.nome || '—') : '—',
+        deficiencia: raToDefi.get(ra) || aeeRec?.deficiencia || regRec?.deficiencia || rec.deficiencia || '—',
+        turmaRegular: regRec ? (turmaMap.get(regRec.turmaId)?.nome || '—') : (rec.turmaId && !isAEETurma(turmaMap.get(rec.turmaId)) ? turmaMap.get(rec.turmaId)?.nome || '—' : '—'),
         turmaAEE: aeeRec ? (turmaMap.get(aeeRec.turmaId)?.nome || '—') : '—',
         professoraAEE: aeeRec ? (turmaMap.get(aeeRec.turmaId)?.professora || '—') : '—',
       };
     }),
-    ...alunoAEESemRA.map(a => ({
+    ...alunoAEESemRA.filter(a => !a.ra).map(a => ({
       nome: a.nome, ra: '—',
       deficiencia: a.deficiencia || '—',
       turmaRegular: '—',

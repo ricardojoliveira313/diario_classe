@@ -1389,7 +1389,7 @@ export default function Importar() {
       // AEE: alunos têm 2 registros separados (turma regular + turma AEE) — mesmo padrão que REMA
       setStatus('Atualizando cadastro de alunos...');
       const { data: existentes } = await supabase
-        .from('Aluno').select('id, ra, nome, situacao, cpf, nis, responsavel, bolsa_familia, turmaId, data_nascimento, cor_raca');
+        .from('Aluno').select('id, ra, nome, situacao, cpf, nis, responsavel, bolsa_familia, turmaId, data_nascimento, cor_raca, deficiencia');
       const raToExistingId = new Map<string, string>();
       const nomeToExistingId = new Map<string, string>();
       const remaToId = new Map<string, string>(); // RA → ID do registro REMA
@@ -1400,6 +1400,7 @@ export default function Importar() {
       const idToResponsavel = new Map<string, string>();
       const idToBolsaFamilia = new Map<string, boolean>();
       const idToCorRaca = new Map<string, string>();
+      const idToDefi = new Map<string, string>();
       for (const e of (existentes ?? [])) {
         if (e.ra) {
           if (e.situacao === 'REMA') {
@@ -1418,6 +1419,7 @@ export default function Importar() {
         if (e.responsavel) idToResponsavel.set(e.id, e.responsavel);
         if (e.bolsa_familia) idToBolsaFamilia.set(e.id, true);
         if (e.cor_raca) idToCorRaca.set(e.id, e.cor_raca);
+        if (e.deficiencia) idToDefi.set(e.id, e.deficiencia);
       }
 
       // ─── Carrega EDUCACENSO do banco (tabela fixa) e enriquece alunos ───
@@ -1494,7 +1496,7 @@ export default function Importar() {
           data_inicio_matricula: a.dataInicioMatricula || null,
           data_fim_matricula: a.dataFimMatricula || null,
           data_movimentacao: a.dataMovimentacao || null,
-          deficiencia: a.deficiencia,
+          deficiencia: a.deficiencia || idToDefi.get(alunoId) || '',
           situacao: a.situacao,
           // Preserva bolsa_família existente no banco se o arquivo não trouxer
           bolsa_familia: a.bolsaFamilia || idToBolsaFamilia.get(alunoId) || false,
