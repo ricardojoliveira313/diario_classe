@@ -55,6 +55,7 @@ export default function Alunos() {
   const [msgEnriquecimento, setMsgEnriquecimento] = useState('');
   const [modoCpfRapido, setModoCpfRapido] = useState(false);
   const [cpfInputs, setCpfInputs] = useState<Record<string, string>>({});
+  const [corRacaInputs, setCorRacaInputs] = useState<Record<string, string>>({});
   const [cpfSalvos, setCpfSalvos] = useState<Set<string>>(new Set());
   const [cpfSalvando, setCpfSalvando] = useState<Set<string>>(new Set());
   const { role, podeEditarCpf, podeEditarCorRaca } = useAuth();
@@ -202,14 +203,20 @@ export default function Alunos() {
     });
   };
 
-  const salvarCpfRapido = async (alunoId: string, cpf: string) => {
+  const salvarDadosRapido = async (alunoId: string, cpf: string, corRaca: string) => {
     const limpo = cpf.replace(/\D/g, '');
-    if (!limpo || cpfSalvando.has(alunoId)) return;
+    if (!limpo && !corRaca) return;
+    if (cpfSalvando.has(alunoId)) return;
     setCpfSalvando(prev => new Set(prev).add(alunoId));
     try {
-      await api.updateAluno(alunoId, { cpf: limpo });
-      setAlunos(prev => prev.map(a => a.id === alunoId ? { ...a, cpf: limpo } : a));
-      setCpfSalvos(prev => new Set(prev).add(alunoId));
+      const updates: any = {};
+      if (limpo) updates.cpf = limpo;
+      if (corRaca) updates.cor_raca = corRaca;
+      if (Object.keys(updates).length > 0) {
+        await api.updateAluno(alunoId, updates);
+        setAlunos(prev => prev.map(a => a.id === alunoId ? { ...a, ...updates } : a));
+        setCpfSalvos(prev => new Set(prev).add(alunoId));
+      }
     } catch {}
     setCpfSalvando(prev => { const s = new Set(prev); s.delete(alunoId); return s; });
   };
@@ -289,7 +296,7 @@ export default function Alunos() {
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {(role === 'admin' || podeEditarCpf) && (
             <button
-              onClick={() => { setModoCpfRapido(m => !m); setCpfSalvos(new Set()); setCpfInputs({}); }}
+              onClick={() => { setModoCpfRapido(m => !m); setCpfSalvos(new Set()); setCpfInputs({}); setCorRacaInputs({}); }}
               style={btn(modoCpfRapido ? 'danger' : 'warning', { small: true })}
               title="Lista todos os alunos sem CPF para cadastro rápido"
             >
@@ -322,15 +329,16 @@ export default function Alunos() {
 
       {/* ─── MODO CADASTRO RÁPIDO DE CPF ─── */}
       {modoCpfRapido && (() => {
+        const COR_RACA_OPCOES = ['Branca', 'Preta', 'Parda', 'Amarela', 'Indígena', 'Não declarada'];
         const semCpf = [...alunos]
-          .filter(a => !a.cpf && !cpfSalvos.has(a.id))
+          .filter(a => (!a.cpf || !a.cor_raca) && !cpfSalvos.has(a.id))
           .sort((a, b) => {
             const ta = turmaMap.get(a.turmaId)?.nome ?? 'ZZZZ';
             const tb = turmaMap.get(b.turmaId)?.nome ?? 'ZZZZ';
             if (ta !== tb) return ta.localeCompare(tb, 'pt-BR');
             return (a.numero || 9999) - (b.numero || 9999);
           });
-        const todos = [...alunos].filter(a => !a.cpf);
+        const todos = [...alunos].filter(a => !a.cpf || !a.cor_raca);
         const salvosCount = cpfSalvos.size;
         const inputRefs: Record<string, HTMLInputElement | null> = {};
         const focarProximo = (alunoId: string) => {
@@ -353,30 +361,31 @@ export default function Alunos() {
                   {semCpf.length} alunos sem CPF · {salvosCount} salvos nesta sessão
                 </span>
               </div>
-              <span style={{ fontSize: 12, color: '#92400e' }}>Busque o CPF pelo RA no SED → digite aqui → Enter para salvar e avançar</span>
+              <span style={{ fontSize: 12, color: '#92400e' }}>Busque pelo RA no SED → preencha CPF e cor/raça → Enter salva e avança</span>
             </div>
             {semCpf.length === 0
               ? <div style={{ textAlign: 'center', padding: 32, color: '#16a34a', fontWeight: 700, fontSize: 16 }}>
-                  ✅ Todos os alunos já têm CPF cadastrado!
+                  ✅ Todos os alunos já têm CPF e cor/raça cadastrados!
                 </div>
               : (
                 <div style={{ background: theme.card, borderRadius: 12, border: `1px solid ${theme.borderLight}`, overflow: 'hidden' }}>
                   <div style={{
-                    display: 'grid', gridTemplateColumns: '120px 1fr 160px 110px 180px',
+                    display: 'grid', gridTemplateColumns: '120px 1fr 140px 100px 155px 150px',
                     padding: '8px 14px', background: theme.bg,
                     fontSize: 11, fontWeight: 700, color: theme.textMuted, textTransform: 'uppercase', letterSpacing: '0.04em',
                     borderBottom: `1px solid ${theme.borderLight}`,
                   }}>
-                    <span>RA</span><span>Nome</span><span>Turma</span><span>Nascimento</span><span>CPF</span>
+                    <span>RA</span><span>Nome</span><span>Turma</span><span>Nascimento</span><span>CPF</span><span>Cor/Raça</span>
                   </div>
                   {semCpf.map((a, idx) => {
                     const turma = turmaMap.get(a.turmaId);
                     const salvando = cpfSalvando.has(a.id);
+                    const salvo = cpfSalvos.has(a.id);
                     return (
                       <div key={a.id} style={{
-                        display: 'grid', gridTemplateColumns: '120px 1fr 160px 110px 180px',
+                        display: 'grid', gridTemplateColumns: '120px 1fr 140px 100px 155px 150px',
                         alignItems: 'center', padding: '7px 14px',
-                        background: idx % 2 === 0 ? 'var(--row-even)' : 'var(--row-odd)',
+                        background: salvo ? '#f0fdf4' : idx % 2 === 0 ? 'var(--row-even)' : 'var(--row-odd)',
                         borderBottom: `1px solid ${theme.borderLight}`,
                       }}>
                         <span style={{ fontWeight: 800, fontSize: 14, color: '#2563eb', fontFamily: 'monospace', letterSpacing: '0.02em' }}>
@@ -385,30 +394,48 @@ export default function Alunos() {
                         <span style={{ fontSize: 13, fontWeight: 600, color: theme.text }}>{a.nome}</span>
                         <span style={{ fontSize: 12, color: theme.textMuted }}>{turma?.nome ?? 'Sem turma'}</span>
                         <span style={{ fontSize: 12, color: theme.textMuted }}>{a.data_nascimento ?? ''}</span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <input
-                            ref={el => { inputRefs[a.id] = el; }}
-                            type="text"
-                            inputMode="numeric"
-                            maxLength={14}
-                            placeholder="000.000.000-00"
-                            value={cpfInputs[a.id] ?? ''}
-                            onChange={e => setCpfInputs(prev => ({ ...prev, [a.id]: e.target.value }))}
-                            onKeyDown={e => {
-                              if (e.key === 'Enter') {
-                                salvarCpfRapido(a.id, cpfInputs[a.id] ?? '').then(() => focarProximo(a.id));
-                              }
-                            }}
-                            onBlur={() => { if (cpfInputs[a.id]?.replace(/\D/g, '').length >= 11) salvarCpfRapido(a.id, cpfInputs[a.id] ?? ''); }}
-                            style={{
-                              ...input,
-                              width: 130, padding: '4px 8px', fontSize: 13,
-                              fontFamily: 'monospace', letterSpacing: '0.04em',
-                              border: `1.5px solid ${salvando ? '#f59e0b' : '#d1d5db'}`,
-                            }}
-                            disabled={salvando}
-                          />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          {a.cpf
+                            ? <span style={{ fontSize: 12, color: '#16a34a', fontFamily: 'monospace' }}>✓ {a.cpf}</span>
+                            : <input
+                                ref={el => { inputRefs[a.id] = el; }}
+                                type="text"
+                                inputMode="numeric"
+                                maxLength={14}
+                                placeholder="000.000.000-00"
+                                value={cpfInputs[a.id] ?? ''}
+                                onChange={e => setCpfInputs(prev => ({ ...prev, [a.id]: e.target.value }))}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') {
+                                    salvarDadosRapido(a.id, cpfInputs[a.id] ?? '', corRacaInputs[a.id] ?? '').then(() => focarProximo(a.id));
+                                  }
+                                }}
+                                onBlur={() => { if (cpfInputs[a.id]?.replace(/\D/g, '').length >= 11) salvarDadosRapido(a.id, cpfInputs[a.id] ?? '', corRacaInputs[a.id] ?? ''); }}
+                                style={{
+                                  ...input, width: 130, padding: '4px 8px', fontSize: 12,
+                                  fontFamily: 'monospace', border: `1.5px solid ${salvando ? '#f59e0b' : '#d1d5db'}`,
+                                }}
+                                disabled={salvando}
+                              />
+                          }
                           {salvando && <Spinner size={14} />}
+                        </div>
+                        <div>
+                          {a.cor_raca
+                            ? <span style={{ fontSize: 12, color: '#16a34a' }}>✓ {a.cor_raca}</span>
+                            : <select
+                                value={corRacaInputs[a.id] ?? ''}
+                                onChange={e => {
+                                  setCorRacaInputs(prev => ({ ...prev, [a.id]: e.target.value }));
+                                  if (e.target.value) salvarDadosRapido(a.id, cpfInputs[a.id] ?? '', e.target.value);
+                                }}
+                                style={{ ...input, padding: '4px 6px', fontSize: 12, width: '100%' }}
+                                disabled={salvando}
+                              >
+                                <option value="">— selecionar —</option>
+                                {COR_RACA_OPCOES.map(op => <option key={op} value={op}>{op}</option>)}
+                              </select>
+                          }
                         </div>
                       </div>
                     );
