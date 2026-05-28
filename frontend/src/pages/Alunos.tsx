@@ -139,7 +139,7 @@ export default function Alunos() {
       .map(a => String(a.ra))
   );
   const totalDefiAEE     = [...rasEmAEE].filter(ra => rasComDefi.has(ra)).length;
-  const totalDefiRegular = [...rasComDefi].filter(ra => !rasEmAEE.has(ra)).length;
+  const totalDefiRegular = rasComDefi.size;
 
   // Agrupa por turma quando "Todas as turmas" — cada turma com numeração independente
   const renderRows = useMemo(() => {

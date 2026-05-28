@@ -33,6 +33,8 @@ export default function Turmas() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [editando, setEditando] = useState<{ id: string; professora: string } | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [restaurando, setRestaurando] = useState(false);
+  const [resultRestaura, setResultRestaura] = useState<{ criadas: number; atualizadas: number; erros: number } | null>(null);
 
   // --- importação em lote ---
   const [importando, setImportando] = useState(false);
@@ -41,6 +43,47 @@ export default function Turmas() {
   const [salvandoImport, setSalvandoImport] = useState(false);
   const [resultImport, setResultImport] = useState<{ ok: number; nao: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const TURMAS_PADRAO = [
+    { nome: '1ª ETAPA A', professora: 'Maria Lucia', periodo: 'Manhã' },
+    { nome: '1ª ETAPA B', professora: 'Denise', periodo: 'Manhã' },
+    { nome: '1ª ETAPA C', professora: 'Fernanda', periodo: 'Manhã' },
+    { nome: '1ª ETAPA D', professora: 'Celina', periodo: 'Manhã' },
+    { nome: '1ª ETAPA E', professora: 'Debora', periodo: 'Tarde' },
+    { nome: '1ª ETAPA F', professora: 'Andressa', periodo: 'Tarde' },
+    { nome: '1ª ETAPA G', professora: 'Rosangela', periodo: 'Tarde' },
+    { nome: '1ª ETAPA H', professora: 'Adriana Zenoides', periodo: 'Tarde' },
+    { nome: '2ª ETAPA A', professora: 'Liliane', periodo: 'Manhã' },
+    { nome: '2ª ETAPA B', professora: 'Silvana', periodo: 'Manhã' },
+    { nome: '2ª ETAPA C', professora: 'Michele', periodo: 'Manhã' },
+    { nome: '2ª ETAPA D', professora: 'Solange', periodo: 'Manhã' },
+    { nome: '2ª ETAPA E', professora: 'Sabrina', periodo: 'Tarde' },
+    { nome: '2ª ETAPA F', professora: 'Angelita', periodo: 'Tarde' },
+    { nome: '2ª ETAPA G', professora: 'Kamila', periodo: 'Tarde' },
+    { nome: '2ª ETAPA H', professora: 'Danielle', periodo: 'Tarde' },
+    { nome: '1º ano A', professora: 'Roseli Pereira', periodo: 'Manhã' },
+    { nome: '1º ano B', professora: 'Bruna', periodo: 'Manhã' },
+    { nome: '1º ano C', professora: 'Luciany', periodo: 'Tarde' },
+    { nome: '1º ano D', professora: 'Silene', periodo: 'Tarde' },
+    { nome: '1º ano E', professora: 'Bianca', periodo: 'Tarde' },
+    { nome: '2º ano A', professora: 'Ione', periodo: 'Manhã' },
+    { nome: '2º ano B', professora: 'Sandra', periodo: 'Manhã' },
+    { nome: '2º ano C', professora: 'Gilmara', periodo: 'Manhã' },
+    { nome: '2º ano D', professora: 'Paula', periodo: 'Tarde' },
+    { nome: '2º ano E', professora: 'Marta', periodo: 'Tarde' },
+    { nome: '3º ano A', professora: 'Magnus', periodo: 'Manhã' },
+    { nome: '3º ano B', professora: 'Thabata', periodo: 'Manhã' },
+    { nome: '3º ano C', professora: 'Cátia', periodo: 'Tarde' },
+    { nome: '3º ano D', professora: 'Adriana Caetano', periodo: 'Tarde' },
+    { nome: '4º ano A', professora: 'Juliana', periodo: 'Manhã' },
+    { nome: '4º ano B', professora: 'Camila P', periodo: 'Manhã' },
+    { nome: '4º ano C', professora: 'Cida Drigo', periodo: 'Tarde' },
+    { nome: '4º ano D', professora: 'Karine', periodo: 'Tarde' },
+    { nome: '5º ano A', professora: 'Roseli Zamana', periodo: 'Manhã' },
+    { nome: '5º ano B', professora: 'Jessica', periodo: 'Manhã' },
+    { nome: '5º ano C', professora: 'Alessandra', periodo: 'Tarde' },
+    { nome: '5º ano D', professora: 'Raquel', periodo: 'Tarde' },
+  ];
 
   const load = () => api.getTurmas().then(d => setTurmas(sortTurmasPedagogico(d || []))).finally(() => setLoading(false));
   useEffect(() => { load(); }, []);
@@ -58,6 +101,30 @@ export default function Turmas() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const restaurarTurmasPadrao = async () => {
+    if (role !== 'admin') return;
+    if (!confirm(`Restaurar as ${TURMAS_PADRAO.length} turmas padrão da escola?\n\nTurmas existentes terão professora e período atualizados.\nTurmas que não existem serão criadas.`)) return;
+    setRestaurando(true);
+    setResultRestaura(null);
+    let criadas = 0, atualizadas = 0, erros = 0;
+    const atuais = await api.getTurmas();
+    for (const tp of TURMAS_PADRAO) {
+      const match = atuais.find((t: any) => norm(t.nome) === norm(tp.nome));
+      try {
+        if (match) {
+          await api.updateTurma(match.id, { professora: tp.professora, periodo: tp.periodo });
+          atualizadas++;
+        } else {
+          await api.createTurma({ nome: tp.nome, professora: tp.professora, periodo: tp.periodo });
+          criadas++;
+        }
+      } catch { erros++; }
+    }
+    setRestaurando(false);
+    setResultRestaura({ criadas, atualizadas, erros });
+    load();
   };
 
   const salvarEdicao = async () => {
@@ -173,7 +240,15 @@ export default function Turmas() {
           )}
         </div>
         {role === 'admin' && (
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              style={btn('warning', { outline: true })}
+              onClick={restaurarTurmasPadrao}
+              disabled={restaurando}
+              title="Restaura as 38 turmas padrão da escola com professoras e períodos"
+            >
+              {restaurando ? <><Spinner size={14} /> Restaurando...</> : '🏫 Restaurar Turmas'}
+            </button>
             <button style={btn('success', { outline: true })} onClick={() => { setImportando(!importando); setAdding(false); }}>
               {importando ? 'Fechar importação' : '📥 Importar Professoras'}
             </button>
@@ -183,6 +258,25 @@ export default function Turmas() {
           </div>
         )}
       </div>
+
+      {/* Resultado da restauração de turmas */}
+      {resultRestaura && (
+        <div style={{
+          padding: '12px 16px', marginBottom: 12, borderRadius: 8,
+          background: resultRestaura.erros > 0 ? '#fff7ed' : '#f0fdf4',
+          border: `1px solid ${resultRestaura.erros > 0 ? '#fed7aa' : '#bbf7d0'}`,
+          fontSize: 14, color: resultRestaura.erros > 0 ? '#9a3412' : '#166534', fontWeight: 600,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+        }}>
+          <span>
+            ✅ {resultRestaura.criadas} turma{resultRestaura.criadas !== 1 ? 's' : ''} criada{resultRestaura.criadas !== 1 ? 's' : ''}
+            {' · '}
+            🔄 {resultRestaura.atualizadas} atualizada{resultRestaura.atualizadas !== 1 ? 's' : ''}
+            {resultRestaura.erros > 0 && <span style={{ color: '#dc2626' }}> · ❌ {resultRestaura.erros} com erro</span>}
+          </span>
+          <button onClick={() => setResultRestaura(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: 'inherit' }}>✕</button>
+        </div>
+      )}
 
       {/* Painel de importação em lote */}
       {importando && (
