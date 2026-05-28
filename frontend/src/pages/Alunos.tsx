@@ -214,8 +214,16 @@ export default function Alunos() {
       if (corRaca) updates.cor_raca = corRaca;
       if (Object.keys(updates).length > 0) {
         await api.updateAluno(alunoId, updates);
-        setAlunos(prev => prev.map(a => a.id === alunoId ? { ...a, ...updates } : a));
-        setCpfSalvos(prev => new Set(prev).add(alunoId));
+        // Atualiza estado local — o aluno some da lista naturalmente
+        // quando !a.cpf && !a.cor_raca ambos estiverem preenchidos
+        setAlunos(prev => {
+          const novo = prev.map(a => a.id === alunoId ? { ...a, ...updates } : a);
+          const atualizado = novo.find(a => a.id === alunoId);
+          if (atualizado?.cpf && atualizado?.cor_raca) {
+            setCpfSalvos(s => new Set(s).add(alunoId));
+          }
+          return novo;
+        });
       }
     } catch {}
     setCpfSalvando(prev => { const s = new Set(prev); s.delete(alunoId); return s; });
@@ -331,7 +339,7 @@ export default function Alunos() {
       {modoCpfRapido && (() => {
         const COR_RACA_OPCOES = ['Branca', 'Preta', 'Parda', 'Amarela', 'Indígena', 'Não declarada'];
         const semCpf = [...alunos]
-          .filter(a => (!a.cpf || !a.cor_raca) && !cpfSalvos.has(a.id))
+          .filter(a => !a.cpf || !a.cor_raca)
           .sort((a, b) => {
             const ta = turmaMap.get(a.turmaId)?.nome ?? 'ZZZZ';
             const tb = turmaMap.get(b.turmaId)?.nome ?? 'ZZZZ';
