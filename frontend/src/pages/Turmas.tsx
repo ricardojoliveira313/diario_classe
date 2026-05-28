@@ -38,6 +38,10 @@ export default function Turmas() {
   const [reconectando, setReconectando] = useState(false);
   const [resultReconecta, setResultReconecta] = useState<{ atualizados: number; semMatch: number } | null>(null);
   const [fazendoBackup, setFazendoBackup] = useState(false);
+  const [backupNuvemStatus, setBackupNuvemStatus] = useState<string | null>(null);
+  const [backupsNuvem, setBackupsNuvem] = useState<any[]>([]);
+  const [showBackups, setShowBackups] = useState(false);
+  const [restaurandoBackup, setRestaurandoBackup] = useState<string | null>(null);
 
   // --- importação em lote ---
   const [importando, setImportando] = useState(false);
@@ -131,6 +135,68 @@ export default function Turmas() {
     setRestaurando(false);
     setResultRestaura({ criadas, atualizadas, erros });
     load();
+  };
+
+  const salvarBackupNuvem = async () => {
+    setBackupNuvemStatus('Salvando...');
+    try {
+      const [{ data: turmData }, { data: alunoData }, { data: faltaData }] = await Promise.all([
+        supabase.from('Turma').select('*'),
+        supabase.from('Aluno').select('*'),
+        supabase.from('Falta').select('*'),
+      ]);
+      const descricao = `${new Date().toLocaleString('pt-BR')} — ${alunoData?.length ?? 0} alunos, ${turmData?.length ?? 0} turmas`;
+      const { error } = await supabase.from('Backup').insert({
+        descricao,
+        turmas: turmData ?? [],
+        alunos: alunoData ?? [],
+        faltas: faltaData ?? [],
+      });
+      if (error) throw error;
+      setBackupNuvemStatus('✅ Backup salvo na nuvem!');
+    } catch (e: any) {
+      setBackupNuvemStatus('❌ Erro: ' + (e.message ?? e));
+    }
+    setTimeout(() => setBackupNuvemStatus(null), 4000);
+  };
+
+  const carregarBackupsNuvem = async () => {
+    const { data } = await supabase
+      .from('Backup')
+      .select('id, created_at, descricao')
+      .order('created_at', { ascending: false })
+      .limit(20);
+    setBackupsNuvem(data ?? []);
+    setShowBackups(true);
+  };
+
+  const restaurarDoBackup = async (backupId: string) => {
+    if (!confirm('Restaurar este backup? Os dados atuais serão atualizados com os dados do backup (sem apagar).')) return;
+    setRestaurandoBackup(backupId);
+    try {
+      const { data: bk } = await supabase.from('Backup').select('*').eq('id', backupId).single();
+      if (!bk) throw new Error('Backup não encontrado');
+      // Restaura turmas
+      if (bk.turmas?.length) {
+        await supabase.from('Turma').upsert(bk.turmas, { onConflict: 'id' });
+      }
+      // Restaura alunos em lotes
+      const alunos: any[] = bk.alunos ?? [];
+      for (let i = 0; i < alunos.length; i += 100) {
+        await supabase.from('Aluno').upsert(alunos.slice(i, i + 100), { onConflict: 'id' });
+      }
+      // Restaura faltas em lotes
+      const faltas: any[] = bk.faltas ?? [];
+      for (let i = 0; i < faltas.length; i += 100) {
+        await supabase.from('Falta').upsert(faltas.slice(i, i + 100), { onConflict: 'alunoId,mes,ano' });
+      }
+      alert(`✅ Backup restaurado!\n${alunos.length} alunos · ${bk.turmas?.length ?? 0} turmas · ${faltas.length} faltas`);
+      setShowBackups(false);
+      load();
+    } catch (e: any) {
+      alert('Erro ao restaurar: ' + (e.message ?? e));
+    }
+    setRestaurandoBackup(null);
   };
 
   const fazerBackup = async () => {
@@ -362,12 +428,26 @@ export default function Turmas() {
         {role === 'admin' && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button
+              style={{ ...btn('primary'), fontWeight: 800 }}
+              onClick={salvarBackupNuvem}
+              title="Salva backup completo na nuvem (Supabase)"
+            >
+              ☁️ Backup Nuvem
+            </button>
+            <button
+              style={btn('primary', { outline: true })}
+              onClick={carregarBackupsNuvem}
+              title="Ver e restaurar backups salvos na nuvem"
+            >
+              📋 Ver Backups
+            </button>
+            <button
               style={{ ...btn('success'), fontWeight: 800 }}
               onClick={fazerBackup}
               disabled={fazendoBackup}
               title="Exporta backup completo: turmas, alunos e faltas"
             >
-              {fazendoBackup ? <><Spinner size={14} /> Gerando...</> : '💾 Backup Completo'}
+              {fazendoBackup ? <><Spinner size={14} /> Gerando...</> : '💾 Backup Excel'}
             </button>
             <button
               style={btn('danger', { outline: true })}
@@ -394,6 +474,53 @@ export default function Turmas() {
           </div>
         )}
       </div>
+
+      {/* Status backup nuvem */}
+      {backupNuvemStatus && (
+        <div style={{
+          padding: '10px 16px', marginBottom: 10, borderRadius: 8, fontWeight: 600, fontSize: 14,
+          background: backupNuvemStatus.startsWith('✅') ? '#f0fdf4' : backupNuvemStatus.startsWith('❌') ? '#fef2f2' : '#eff6ff',
+          border: `1px solid ${backupNuvemStatus.startsWith('✅') ? '#bbf7d0' : backupNuvemStatus.startsWith('❌') ? '#fecaca' : '#bfdbfe'}`,
+          color: backupNuvemStatus.startsWith('✅') ? '#166534' : backupNuvemStatus.startsWith('❌') ? '#dc2626' : '#1e40af',
+        }}>{backupNuvemStatus}</div>
+      )}
+
+      {/* Modal backups na nuvem */}
+      {showBackups && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setShowBackups(false)}>
+          <div style={{ background: 'var(--bg-card)', borderRadius: 16, padding: 24, maxWidth: 600, width: '95%', maxHeight: '80vh', overflow: 'auto', boxShadow: '0 24px 64px rgba(0,0,0,0.4)' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 800 }}>☁️ Backups na Nuvem</h2>
+              <button onClick={() => setShowBackups(false)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: theme.textMuted }}>✕</button>
+            </div>
+            {backupsNuvem.length === 0
+              ? <div style={{ textAlign: 'center', color: theme.textMuted, padding: 24 }}>Nenhum backup encontrado.<br />Clique em "☁️ Backup Nuvem" para criar o primeiro.</div>
+              : backupsNuvem.map((bk, i) => (
+                <div key={bk.id} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '10px 14px', borderRadius: 8, marginBottom: 8,
+                  background: i % 2 === 0 ? 'var(--row-even)' : 'var(--row-odd)',
+                  border: `1px solid ${theme.borderLight}`,
+                }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: theme.text }}>{bk.descricao}</div>
+                    <div style={{ fontSize: 11, color: theme.textMuted }}>{new Date(bk.created_at).toLocaleString('pt-BR')}</div>
+                  </div>
+                  <button
+                    style={btn('warning', { small: true })}
+                    onClick={() => restaurarDoBackup(bk.id)}
+                    disabled={restaurandoBackup === bk.id}
+                  >
+                    {restaurandoBackup === bk.id ? <Spinner size={14} /> : '↩️ Restaurar'}
+                  </button>
+                </div>
+              ))
+            }
+          </div>
+        </div>
+      )}
 
       {/* Resultado da reconexão de alunos */}
       {resultReconecta && (
