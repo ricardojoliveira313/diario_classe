@@ -35,6 +35,8 @@ export default function Turmas() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [restaurando, setRestaurando] = useState(false);
   const [resultRestaura, setResultRestaura] = useState<{ criadas: number; atualizadas: number; erros: number } | null>(null);
+  const [reconectando, setReconectando] = useState(false);
+  const [resultReconecta, setResultReconecta] = useState<{ atualizados: number; semMatch: number } | null>(null);
 
   // --- importação em lote ---
   const [importando, setImportando] = useState(false);
@@ -107,56 +109,74 @@ export default function Turmas() {
 
   const restaurarTurmasPadrao = async () => {
     if (role !== 'admin') return;
-    if (!confirm(`Restaurar e vincular as ${TURMAS_PADRAO.length} turmas com professoras?\n\nTurmas com alunos terão nome e professora atualizados.\nTurmas duplicadas vazias serão removidas.\nTurmas inexistentes serão criadas.`)) return;
+    if (!confirm(`Restaurar as ${TURMAS_PADRAO.length} turmas padrão?\n\nCria turmas inexistentes e atualiza nome/professora/período das existentes.`)) return;
     setRestaurando(true);
     setResultRestaura(null);
     let criadas = 0, atualizadas = 0, erros = 0;
     const atuais = await api.getTurmas();
-
-    // Conta alunos por turma para priorizar turmas com alunos no matching
-    const { data: contagens } = await supabase
-      .from('Aluno')
-      .select('turmaId')
-      .in('turmaId', atuais.map((t: any) => t.id));
-    const qtdPorTurma = new Map<string, number>();
-    for (const { turmaId } of contagens ?? []) {
-      qtdPorTurma.set(turmaId, (qtdPorTurma.get(turmaId) ?? 0) + 1);
-    }
-    // Ordena: turmas com mais alunos primeiro → matching preferirá essas
-    const atuaisOrdenados = [...atuais].sort((a: any, b: any) =>
-      (qtdPorTurma.get(b.id) ?? 0) - (qtdPorTurma.get(a.id) ?? 0)
-    );
-
-    const idsUsados = new Set<string>();
     for (const tp of TURMAS_PADRAO) {
-      // Busca por nome exato, depois por normSimp — sempre preferindo turmas com alunos
-      const match = atuaisOrdenados.find((t: any) => norm(t.nome) === norm(tp.nome))
-        ?? atuaisOrdenados.find((t: any) => normSimp(t.nome) === normSimp(tp.nome));
+      const match = atuais.find((t: any) => norm(t.nome) === norm(tp.nome))
+        ?? atuais.find((t: any) => normSimp(t.nome) === normSimp(tp.nome));
       try {
         if (match) {
           await api.updateTurma(match.id, { nome: tp.nome, professora: tp.professora, periodo: tp.periodo });
-          idsUsados.add(match.id);
           atualizadas++;
         } else {
-          const nova = await api.createTurma({ nome: tp.nome, professora: tp.professora, periodo: tp.periodo });
-          if (nova?.id) idsUsados.add(nova.id);
+          await api.createTurma({ nome: tp.nome, professora: tp.professora, periodo: tp.periodo });
           criadas++;
         }
       } catch { erros++; }
     }
+    setRestaurando(false);
+    setResultRestaura({ criadas, atualizadas, erros });
+    load();
+  };
 
-    // Remove duplicatas vazias (turmas padrão sem alunos que sobraram de runs anteriores)
-    const normSimpsPadrao = new Set(TURMAS_PADRAO.map(tp => normSimp(tp.nome)));
-    for (const t of atuais) {
-      if (idsUsados.has(t.id)) continue;
-      if (!normSimpsPadrao.has(normSimp((t as any).nome))) continue;
-      if ((qtdPorTurma.get(t.id) ?? 0) === 0) {
-        try { await api.deleteTurma(t.id); } catch {}
+  const reconectarAlunos = async () => {
+    if (role !== 'admin') return;
+    if (!confirm('Reconectar alunos sem turma às turmas pelo nome da professora?\n\nIsso vai restaurar os vínculos perdidos de todos os alunos.')) return;
+    setReconectando(true);
+    setResultReconecta(null);
+
+    const atuais = await api.getTurmas();
+
+    // Busca todos os alunos sem turma (turmaId = null)
+    const { data: semTurma } = await supabase
+      .from('Aluno')
+      .select('id, professora')
+      .is('turmaId', null);
+
+    if (!semTurma?.length) {
+      setReconectando(false);
+      setResultReconecta({ atualizados: 0, semMatch: 0 });
+      return;
+    }
+
+    // Agrupa alunos por professora normalizada
+    const porProfessora = new Map<string, string[]>();
+    let semMatch = 0;
+    for (const aluno of semTurma) {
+      if (!aluno.professora) { semMatch++; continue; }
+      const key = norm(aluno.professora);
+      if (!porProfessora.has(key)) porProfessora.set(key, []);
+      porProfessora.get(key)!.push(aluno.id);
+    }
+
+    let atualizados = 0;
+    for (const [profNorm, ids] of porProfessora) {
+      const turma = atuais.find((t: any) => norm(t.professora || '') === profNorm);
+      if (!turma) { semMatch += ids.length; continue; }
+      // Atualiza em lotes de 100
+      for (let i = 0; i < ids.length; i += 100) {
+        const lote = ids.slice(i, i + 100);
+        const { error } = await supabase.from('Aluno').update({ turmaId: turma.id }).in('id', lote);
+        if (!error) atualizados += lote.length;
+        else semMatch += lote.length;
       }
     }
 
-    setRestaurando(false);
-    setResultRestaura({ criadas, atualizadas, erros });
+    setReconectando(false);
+    setResultReconecta({ atualizados, semMatch });
     load();
   };
 
@@ -275,10 +295,18 @@ export default function Turmas() {
         {role === 'admin' && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button
+              style={btn('danger', { outline: true })}
+              onClick={reconectarAlunos}
+              disabled={reconectando}
+              title="Reconecta alunos sem turma às turmas pelo nome da professora"
+            >
+              {reconectando ? <><Spinner size={14} /> Reconectando...</> : '🔗 Reconectar Alunos'}
+            </button>
+            <button
               style={btn('warning', { outline: true })}
               onClick={restaurarTurmasPadrao}
               disabled={restaurando}
-              title="Restaura as 38 turmas padrão da escola com professoras e períodos"
+              title="Cria ou atualiza as 40 turmas padrão da escola"
             >
               {restaurando ? <><Spinner size={14} /> Restaurando...</> : '🏫 Restaurar Turmas'}
             </button>
@@ -291,6 +319,23 @@ export default function Turmas() {
           </div>
         )}
       </div>
+
+      {/* Resultado da reconexão de alunos */}
+      {resultReconecta && (
+        <div style={{
+          padding: '12px 16px', marginBottom: 12, borderRadius: 8,
+          background: resultReconecta.semMatch > 0 ? '#fff7ed' : '#f0fdf4',
+          border: `1px solid ${resultReconecta.semMatch > 0 ? '#fed7aa' : '#bbf7d0'}`,
+          fontSize: 14, color: resultReconecta.semMatch > 0 ? '#9a3412' : '#166534', fontWeight: 600,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+        }}>
+          <span>
+            🔗 {resultReconecta.atualizados} aluno{resultReconecta.atualizados !== 1 ? 's' : ''} reconectado{resultReconecta.atualizados !== 1 ? 's' : ''} às turmas
+            {resultReconecta.semMatch > 0 && <span style={{ color: '#ea580c' }}> · {resultReconecta.semMatch} sem correspondência (AEE/EJA precisam de reimport)</span>}
+          </span>
+          <button onClick={() => setResultReconecta(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: 'inherit' }}>✕</button>
+        </div>
+      )}
 
       {/* Resultado da restauração de turmas */}
       {resultRestaura && (
