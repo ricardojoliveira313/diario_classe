@@ -142,6 +142,7 @@ export const FERIADOS_MOVEIS: Record<number, Record<string, string>> = {
   2026: {
     '02-16': 'Emenda Carnaval',
     '02-17': 'Carnaval',
+    '02-18': 'Reunião Pedagógica',
     '04-03': 'Sexta-feira Santa',
     '04-20': 'Emenda Tiradentes',
     '06-04': 'Corpus Christi',
@@ -170,9 +171,9 @@ export function getFeriado(ano: number, mes: number, dia: number): string | null
 }
 
 export function isRecesso(ano: number, mes: number, dia: number): string | null {
-  const data = new Date(ano, mes - 1, dia);
+  const dataStr = `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
   for (const r of (RECESSO_ESCOLAR[ano] ?? [])) {
-    if (data >= new Date(r.inicio) && data <= new Date(r.fim)) return r.descricao;
+    if (dataStr >= r.inicio && dataStr <= r.fim) return r.descricao;
   }
   return null;
 }
