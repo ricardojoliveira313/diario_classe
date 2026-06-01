@@ -192,6 +192,7 @@ export default function Importar() {
   const [erro, setErro] = useState('');
   const [sucesso, setSucesso] = useState(false);
   const [fixing, setFixing] = useState(false);
+  const [limpando, setLimpando] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const dadosRef = useRef<{ turmas: any[]; alunos: AlunoUnificado[]; faltasArr: any[]; educacenso?: any[]; bfNaoEncontrados?: { nome: string; nasc: string; nis: string }[] } | null>(null);
 
@@ -206,6 +207,87 @@ export default function Importar() {
       setErro('Execute no SQL Editor do Supabase:\nNOTIFY pgrst, \'reload schema\';');
     } finally {
       setFixing(false);
+    }
+  }, []);
+
+  // ─── LIMPAR DUPLICADOS: ação autônoma, não depende de importar ficheiro ──────
+  // Lê o banco no estado atual e unifica qualquer RA com mais de 1 registro
+  // regular (exclui REMA e AEE, que têm registros legítimos próprios). Para cada
+  // grupo: escolhe o canônico (mais faltas), transfere faltas dos meses ausentes,
+  // apaga faltas duplicadas, preserva CPF/NIS/responsável/bolsa e remove os extras.
+  const limparDuplicados = useCallback(async () => {
+    setLimpando(true);
+    setErro('');
+    setSucesso(false);
+    try {
+      setStatus('🔍 Lendo cadastro...');
+      const { data: turmas } = await supabase.from('Turma').select('id, nome, tipo');
+      const aeeIds = new Set<string>(
+        (turmas ?? [])
+          .filter((t: any) => t.tipo === 'AEE' || /^AEE\b/i.test(t.nome ?? ''))
+          .map((t: any) => t.id)
+      );
+      const { data: alunos } = await supabase
+        .from('Aluno').select('id, ra, nome, situacao, turmaId, cpf, nis, responsavel, bolsa_familia');
+      const grp = new Map<string, any[]>();
+      for (const a of (alunos ?? [])) {
+        if (!a.ra || a.situacao === 'REMA') continue;
+        if (a.turmaId && aeeIds.has(a.turmaId)) continue;
+        const k = String(a.ra);
+        if (!grp.has(k)) grp.set(k, []);
+        grp.get(k)!.push(a);
+      }
+      const dups = Array.from(grp.values()).filter(g => g.length > 1);
+      if (dups.length === 0) {
+        setStatus('✅ Nenhum duplicado encontrado — cadastro está limpo.');
+        setLimpando(false);
+        return;
+      }
+      setStatus(`🧹 Unificando ${dups.length} aluno(s) duplicado(s)...`);
+      const todosIds = dups.flatMap(g => g.map(a => a.id));
+      const ftsPorAluno = new Map<string, any[]>();
+      for (let i = 0; i < todosIds.length; i += 100) {
+        const { data: fts } = await supabase
+          .from('Falta').select('id, alunoId, mes, ano').in('alunoId', todosIds.slice(i, i + 100));
+        for (const f of (fts ?? [])) {
+          if (!ftsPorAluno.has(f.alunoId)) ftsPorAluno.set(f.alunoId, []);
+          ftsPorAluno.get(f.alunoId)!.push(f);
+        }
+      }
+      let removidos = 0;
+      for (const grupo of dups) {
+        const canon = grupo.reduce((best, cur) =>
+          (ftsPorAluno.get(cur.id)?.length ?? 0) > (ftsPorAluno.get(best.id)?.length ?? 0) ? cur : best
+        );
+        const mesesCanon = new Set((ftsPorAluno.get(canon.id) ?? []).map(f => `${f.mes}-${f.ano}`));
+        for (const extra of grupo) {
+          if (extra.id === canon.id) continue;
+          const transferir: string[] = [];
+          const apagar: string[] = [];
+          for (const f of (ftsPorAluno.get(extra.id) ?? [])) {
+            if (mesesCanon.has(`${f.mes}-${f.ano}`)) apagar.push(f.id);
+            else { transferir.push(f.id); mesesCanon.add(`${f.mes}-${f.ano}`); }
+          }
+          if (transferir.length > 0)
+            await supabase.from('Falta').update({ alunoId: canon.id }).in('id', transferir);
+          if (apagar.length > 0)
+            await supabase.from('Falta').delete().in('id', apagar);
+          const up: any = {};
+          if (extra.bolsa_familia && !canon.bolsa_familia) up.bolsa_familia = true;
+          if (extra.cpf && !canon.cpf) up.cpf = extra.cpf;
+          if (extra.nis && !canon.nis) up.nis = extra.nis;
+          if (extra.responsavel && !canon.responsavel) up.responsavel = extra.responsavel;
+          if (Object.keys(up).length > 0)
+            await supabase.from('Aluno').update(up).eq('id', canon.id);
+          await supabase.from('Aluno').delete().eq('id', extra.id);
+          removidos++;
+        }
+      }
+      setStatus(`✅ Limpeza concluída: ${removidos} registro(s) duplicado(s) removido(s). Atualize a página de Alunos.`);
+    } catch (ex: any) {
+      setErro('Erro ao limpar duplicados: ' + (ex?.message ?? String(ex)));
+    } finally {
+      setLimpando(false);
     }
   }, []);
 
@@ -1890,6 +1972,22 @@ export default function Importar() {
         PDFs (Alunos por Classe) + Excels (Diário de Classe, Turmas-Professores) + <strong>TXT do Bolsa Família</strong>.
         O sistema cruza automaticamente por nome, RA e data de nascimento.
       </p>
+
+      {/* Limpar duplicados — ação autônoma, não precisa importar ficheiro */}
+      <div style={{ marginBottom: 16, padding: 14, borderRadius: theme.radiusMd, border: `1.5px solid ${theme.warning}55`, background: theme.warning + '14' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <strong style={{ fontSize: 15 }}>🧹 Limpar alunos duplicados</strong>
+            <p style={{ fontSize: 13, color: theme.textSecondary, margin: '4px 0 0' }}>
+              Unifica registros repetidos com o mesmo RA, preservando as faltas. Não precisa importar nenhum arquivo.
+            </p>
+          </div>
+          <button onClick={limparDuplicados} disabled={limpando}
+            style={{ ...btn('warning'), opacity: limpando ? 0.6 : 1, cursor: limpando ? 'not-allowed' : 'pointer' }}>
+            {limpando ? <Spinner /> : '🧹 Limpar agora'}
+          </button>
+        </div>
+      </div>
 
       {/* Upload zone */}
       <div style={{
