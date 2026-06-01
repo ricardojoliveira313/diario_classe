@@ -193,6 +193,7 @@ export default function Importar() {
   const [sucesso, setSucesso] = useState(false);
   const [fixing, setFixing] = useState(false);
   const [limpando, setLimpando] = useState(false);
+  const [statusLimpeza, setStatusLimpeza] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const dadosRef = useRef<{ turmas: any[]; alunos: AlunoUnificado[]; faltasArr: any[]; educacenso?: any[]; bfNaoEncontrados?: { nome: string; nasc: string; nis: string }[] } | null>(null);
 
@@ -217,10 +218,8 @@ export default function Importar() {
   // apaga faltas duplicadas, preserva CPF/NIS/responsável/bolsa e remove os extras.
   const limparDuplicados = useCallback(async () => {
     setLimpando(true);
-    setErro('');
-    setSucesso(false);
+    setStatusLimpeza('🔍 Lendo cadastro...');
     try {
-      setStatus('🔍 Lendo cadastro...');
       const { data: turmas } = await supabase.from('Turma').select('id, nome, tipo');
       const aeeIds = new Set<string>(
         (turmas ?? [])
@@ -239,11 +238,11 @@ export default function Importar() {
       }
       const dups = Array.from(grp.values()).filter(g => g.length > 1);
       if (dups.length === 0) {
-        setStatus('✅ Nenhum duplicado encontrado — cadastro está limpo.');
+        setStatusLimpeza('✅ Nenhum duplicado encontrado — cadastro está limpo.');
         setLimpando(false);
         return;
       }
-      setStatus(`🧹 Unificando ${dups.length} aluno(s) duplicado(s)...`);
+      setStatusLimpeza(`🧹 Unificando ${dups.length} aluno(s) duplicado(s)...`);
       const todosIds = dups.flatMap(g => g.map(a => a.id));
       const ftsPorAluno = new Map<string, any[]>();
       for (let i = 0; i < todosIds.length; i += 100) {
@@ -283,9 +282,9 @@ export default function Importar() {
           removidos++;
         }
       }
-      setStatus(`✅ Limpeza concluída: ${removidos} registro(s) duplicado(s) removido(s). Atualize a página de Alunos.`);
+      setStatusLimpeza(`✅ Limpeza concluída: ${removidos} registro(s) removido(s). Atualize a página de Alunos.`);
     } catch (ex: any) {
-      setErro('Erro ao limpar duplicados: ' + (ex?.message ?? String(ex)));
+      setStatusLimpeza('❌ Erro: ' + (ex?.message ?? String(ex)));
     } finally {
       setLimpando(false);
     }
@@ -1987,6 +1986,9 @@ export default function Importar() {
             {limpando ? <Spinner /> : '🧹 Limpar agora'}
           </button>
         </div>
+        {statusLimpeza && (
+          <p style={{ marginTop: 10, fontSize: 13, color: theme.textSecondary }}>{statusLimpeza}</p>
+        )}
       </div>
 
       {/* Upload zone */}
