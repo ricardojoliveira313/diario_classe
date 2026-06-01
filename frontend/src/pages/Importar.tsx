@@ -1393,6 +1393,9 @@ export default function Importar() {
 
       // ─── PRÉ-LIMPEZA: remove duplicatas de RA em TODO o banco antes de importar ──
       // Roda em toda importação, independente do arquivo — garante banco sempre limpo
+      // idsRemovidosPreLimpeza: declarado FORA do bloco para que o loop de mapas abaixo
+      // pule esses IDs — evita que o upsert recrie registros que acabaram de ser apagados
+      const idsRemovidosPreLimpeza = new Set<string>();
       {
         const raGrupos = new Map<string, Array<{ id: string; cpf?: string; nis?: string; responsavel?: string; bolsa_familia?: boolean }>>();
         for (const e of (existentes ?? [])) {
@@ -1439,6 +1442,7 @@ export default function Importar() {
               if (Object.keys(up).length > 0)
                 await supabase.from('Aluno').update(up).eq('id', canonico.id);
               await supabase.from('Aluno').delete().eq('id', extra.id);
+              idsRemovidosPreLimpeza.add(extra.id); // marca para ignorar nos mapas abaixo
             }
           }
         }
@@ -1455,6 +1459,7 @@ export default function Importar() {
       const idToCorRaca = new Map<string, string>();
       const idToDefi = new Map<string, string>();
       for (const e of (existentes ?? [])) {
+        if (idsRemovidosPreLimpeza.has(e.id)) continue; // ignora registros já eliminados na pré-limpeza
         if (e.ra) {
           if (e.situacao === 'REMA') {
             remaToId.set(String(e.ra), e.id);
