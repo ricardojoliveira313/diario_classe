@@ -1485,7 +1485,16 @@ export default function Importar() {
             // Se o RA já existe como REMA no banco, NÃO usa nomeToExistingId como fallback
             // (evita que ATIVO e REMA do mesmo aluno partilhem o mesmo ID)
             : (raToExistingId.get(raKey) ?? (remaToId.has(raKey) ? undefined : nomeToExistingId.get(a.nomeNorm)));
-        const alunoId = existingId ?? crypto.randomUUID();
+        // Segurança: se o aluno tem RA mas existingId ficou undefined por qualquer razão,
+        // faz scan direto de existentes para nunca gerar UUID novo para um RA já cadastrado
+        const safeId = (!existingId && a.ra)
+          ? (existentes ?? []).find(e =>
+              String(e.ra) === raKey &&
+              e.situacao !== 'REMA' &&
+              !(e.turmaId && aeeturmaIds.has(e.turmaId))
+            )?.id
+          : existingId;
+        const alunoId = safeId ?? crypto.randomUUID();
         return {
           id: alunoId,
           nome: a.nome,
@@ -1582,6 +1591,43 @@ export default function Importar() {
             const ghostIds = fantasmas.map(g => g.id);
             for (let i = 0; i < ghostIds.length; i += 100) {
               await supabase.from('Aluno').delete().in('id', ghostIds.slice(i, i + 100));
+            }
+          }
+          // ─── Duplicatas COM faltas: transfere meses em falta e elimina ────────────
+          const duplicatasComFaltas = candidatos.filter(c => idsComFaltas.has(c.id));
+          if (duplicatasComFaltas.length > 0) {
+            setStatus(`🔧 Unificando ${duplicatasComFaltas.length} aluno(s) duplicado(s) com histórico...`);
+            for (const dup of duplicatasComFaltas) {
+              const canonIds = batchIdsByRA.get(String(dup.ra)) ?? [];
+              if (canonIds.length !== 1) continue;
+              const canonId = canonIds[0];
+              // Meses que o canônico já tem (não transferir)
+              const { data: faltasCanon } = await supabase
+                .from('Falta').select('mes, ano').eq('alunoId', canonId);
+              const mesesCanon = new Set((faltasCanon ?? []).map((f: any) => `${f.mes}-${f.ano}`));
+              // Faltas do duplicado
+              const { data: faltasDup } = await supabase
+                .from('Falta').select('id, mes, ano').eq('alunoId', dup.id);
+              const paraTransferir: string[] = [];
+              const paraApagar: string[] = [];
+              for (const f of (faltasDup ?? [])) {
+                if (mesesCanon.has(`${f.mes}-${f.ano}`)) paraApagar.push(f.id);
+                else paraTransferir.push(f.id);
+              }
+              if (paraTransferir.length > 0)
+                await supabase.from('Falta').update({ alunoId: canonId }).in('id', paraTransferir);
+              if (paraApagar.length > 0)
+                await supabase.from('Falta').delete().in('id', paraApagar);
+              // Preserva dados manuais do duplicado no canônico
+              const upD: any = {};
+              if (dup.bolsa_familia && !idToBolsaFamilia.get(canonId)) upD.bolsa_familia = true;
+              if (dup.cpf && !idToCpf.get(canonId)) upD.cpf = dup.cpf;
+              if (dup.nis && !idToNis.get(canonId)) upD.nis = dup.nis;
+              if (dup.responsavel && !idToResponsavel.get(canonId)) upD.responsavel = dup.responsavel;
+              if (Object.keys(upD).length > 0)
+                await supabase.from('Aluno').update(upD).eq('id', canonId);
+              // Remove o duplicado
+              await supabase.from('Aluno').delete().eq('id', dup.id);
             }
           }
         }
