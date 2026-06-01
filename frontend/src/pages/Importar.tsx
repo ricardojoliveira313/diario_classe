@@ -1755,6 +1755,66 @@ export default function Importar() {
         }
       }
 
+      // ─── PASSO 2.9: DEDUPLICAÇÃO FINAL AUTO-CURATIVA ──────────────────────────
+      // Relê o banco no estado FINAL (sem dados em memória obsoletos) e unifica
+      // qualquer RA que ainda tenha mais de 1 registro regular. Roda sempre e é
+      // idempotente: independentemente de como o duplicado surgiu (bug antigo,
+      // RA repetido no PDF, importação interrompida), aqui o banco fica limpo.
+      {
+        const { data: todosAlunos } = await supabase
+          .from('Aluno').select('id, ra, situacao, turmaId, cpf, nis, responsavel, bolsa_familia');
+        const grpRA = new Map<string, any[]>();
+        for (const a of (todosAlunos ?? [])) {
+          if (!a.ra || a.situacao === 'REMA') continue;          // REMA tem registro próprio
+          if (a.turmaId && aeeturmaIds.has(a.turmaId)) continue; // AEE tem registro próprio
+          const k = String(a.ra);
+          if (!grpRA.has(k)) grpRA.set(k, []);
+          grpRA.get(k)!.push(a);
+        }
+        const dups = Array.from(grpRA.values()).filter(g => g.length > 1);
+        if (dups.length > 0) {
+          setStatus(`🧹 Limpeza final: unificando ${dups.length} aluno(s) duplicado(s)...`);
+          const todosIds = dups.flatMap(g => g.map(a => a.id));
+          const { data: fts } = await supabase
+            .from('Falta').select('id, alunoId, mes, ano').in('alunoId', todosIds);
+          const ftsPorAluno = new Map<string, any[]>();
+          for (const f of (fts ?? [])) {
+            if (!ftsPorAluno.has(f.alunoId)) ftsPorAluno.set(f.alunoId, []);
+            ftsPorAluno.get(f.alunoId)!.push(f);
+          }
+          for (const grupo of dups) {
+            // Canônico = mais faltas; empate → primeiro
+            const canon = grupo.reduce((best, cur) =>
+              (ftsPorAluno.get(cur.id)?.length ?? 0) > (ftsPorAluno.get(best.id)?.length ?? 0) ? cur : best
+            );
+            const mesesCanon = new Set((ftsPorAluno.get(canon.id) ?? []).map(f => `${f.mes}-${f.ano}`));
+            for (const extra of grupo) {
+              if (extra.id === canon.id) continue;
+              // Transfere faltas de meses que o canônico não tem; apaga as duplicadas
+              const transferir: string[] = [];
+              const apagar: string[] = [];
+              for (const f of (ftsPorAluno.get(extra.id) ?? [])) {
+                if (mesesCanon.has(`${f.mes}-${f.ano}`)) apagar.push(f.id);
+                else { transferir.push(f.id); mesesCanon.add(`${f.mes}-${f.ano}`); }
+              }
+              if (transferir.length > 0)
+                await supabase.from('Falta').update({ alunoId: canon.id }).in('id', transferir);
+              if (apagar.length > 0)
+                await supabase.from('Falta').delete().in('id', apagar);
+              // Preserva dados manuais do extra no canônico
+              const up: any = {};
+              if (extra.bolsa_familia && !canon.bolsa_familia) up.bolsa_familia = true;
+              if (extra.cpf && !canon.cpf) up.cpf = extra.cpf;
+              if (extra.nis && !canon.nis) up.nis = extra.nis;
+              if (extra.responsavel && !canon.responsavel) up.responsavel = extra.responsavel;
+              if (Object.keys(up).length > 0)
+                await supabase.from('Aluno').update(up).eq('id', canon.id);
+              await supabase.from('Aluno').delete().eq('id', extra.id);
+            }
+          }
+        }
+      }
+
       // ─── PASSO 3: Re-ler IDs dos alunos ───
       const { data: alunosDb } = await supabase.from('Aluno').select('id, ra, nome');
       const raToId = new Map<string, string>();
