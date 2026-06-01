@@ -1628,6 +1628,7 @@ export default function Importar() {
         // faz scan direto de existentes para nunca gerar UUID novo para um RA já cadastrado
         const safeId = (!existingId && a.ra)
           ? (existentes ?? []).find(e =>
+              !idsRemovidosPreLimpeza.has(e.id) &&
               String(e.ra) === raKey &&
               e.situacao !== 'REMA' &&
               !(e.turmaId && aeeturmaIds.has(e.turmaId))
