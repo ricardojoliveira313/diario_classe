@@ -1390,6 +1390,59 @@ export default function Importar() {
       setStatus('Atualizando cadastro de alunos...');
       const { data: existentes } = await supabase
         .from('Aluno').select('id, ra, nome, situacao, cpf, nis, responsavel, bolsa_familia, turmaId, data_nascimento, cor_raca, deficiencia');
+
+      // ─── PRÉ-LIMPEZA: remove duplicatas de RA em TODO o banco antes de importar ──
+      // Roda em toda importação, independente do arquivo — garante banco sempre limpo
+      {
+        const raGrupos = new Map<string, Array<{ id: string; cpf?: string; nis?: string; responsavel?: string; bolsa_familia?: boolean }>>();
+        for (const e of (existentes ?? [])) {
+          if (!e.ra || e.situacao === 'REMA') continue;
+          if (e.turmaId && aeeturmaIds.has(e.turmaId)) continue;
+          const k = String(e.ra);
+          if (!raGrupos.has(k)) raGrupos.set(k, []);
+          raGrupos.get(k)!.push(e);
+        }
+        const grupos = Array.from(raGrupos.values()).filter(g => g.length > 1);
+        if (grupos.length > 0) {
+          setStatus(`🔧 Encontradas ${grupos.length} duplicata(s) — unificando...`);
+          const todosDupIds = grupos.flatMap(g => g.map(e => e.id));
+          const { data: faltasGrupos } = await supabase
+            .from('Falta').select('id, alunoId, mes, ano').in('alunoId', todosDupIds);
+          const faltasPorAluno = new Map<string, Array<{ id: string; mes: number; ano: number }>>();
+          for (const f of (faltasGrupos ?? [])) {
+            if (!faltasPorAluno.has(f.alunoId)) faltasPorAluno.set(f.alunoId, []);
+            faltasPorAluno.get(f.alunoId)!.push(f);
+          }
+          for (const grupo of grupos) {
+            // Canônico = o que tem mais faltas; empate → primeiro da lista
+            const canonico = grupo.reduce((best, cur) =>
+              (faltasPorAluno.get(cur.id)?.length ?? 0) > (faltasPorAluno.get(best.id)?.length ?? 0) ? cur : best
+            );
+            const extras = grupo.filter(e => e.id !== canonico.id);
+            const mesesCanon = new Set(
+              (faltasPorAluno.get(canonico.id) ?? []).map(f => `${f.mes}-${f.ano}`)
+            );
+            for (const extra of extras) {
+              const faltasExtra = faltasPorAluno.get(extra.id) ?? [];
+              const transferir = faltasExtra.filter(f => !mesesCanon.has(`${f.mes}-${f.ano}`)).map(f => f.id);
+              const apagar = faltasExtra.filter(f => mesesCanon.has(`${f.mes}-${f.ano}`)).map(f => f.id);
+              if (transferir.length > 0)
+                await supabase.from('Falta').update({ alunoId: canonico.id }).in('id', transferir);
+              if (apagar.length > 0)
+                await supabase.from('Falta').delete().in('id', apagar);
+              // Preserva dados manuais do extra no canônico
+              const up: any = {};
+              if (extra.bolsa_familia && !canonico.bolsa_familia) up.bolsa_familia = true;
+              if (extra.cpf && !canonico.cpf) up.cpf = extra.cpf;
+              if (extra.nis && !canonico.nis) up.nis = extra.nis;
+              if (extra.responsavel && !canonico.responsavel) up.responsavel = extra.responsavel;
+              if (Object.keys(up).length > 0)
+                await supabase.from('Aluno').update(up).eq('id', canonico.id);
+              await supabase.from('Aluno').delete().eq('id', extra.id);
+            }
+          }
+        }
+      }
       const raToExistingId = new Map<string, string>();
       const nomeToExistingId = new Map<string, string>();
       const remaToId = new Map<string, string>(); // RA → ID do registro REMA
