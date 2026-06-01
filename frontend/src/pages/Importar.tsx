@@ -1580,22 +1580,26 @@ export default function Importar() {
         };
       });
 
-      for (let i = 0; i < alunosParaUpsert.length; i += 80) {
+      // Garante que não há IDs duplicados no batch (mesmo RA → mesmo existingId → conflito no upsert)
+      const upsertDedup = Array.from(
+        alunosParaUpsert.reduce((m, a) => { m.set(a.id, a); return m; }, new Map<string, typeof alunosParaUpsert[0]>()).values()
+      );
+      for (let i = 0; i < upsertDedup.length; i += 80) {
         const { error } = await supabase
           .from('Aluno')
-          .upsert(alunosParaUpsert.slice(i, i + 80), { onConflict: 'id' });
+          .upsert(upsertDedup.slice(i, i + 80), { onConflict: 'id' });
         if (error) throw error;
-        setProgresso(Math.min(i + 80, alunosParaUpsert.length));
-        setStatus(`Atualizando alunos... ${Math.min(i + 80, alunosParaUpsert.length)}/${alunosParaUpsert.length}`);
+        setProgresso(Math.min(i + 80, upsertDedup.length));
+        setStatus(`Atualizando alunos... ${Math.min(i + 80, upsertDedup.length)}/${upsertDedup.length}`);
       }
 
       // ─── DEDUPLICAÇÃO CONSERVADORA: só remove fantasmas sem histórico de faltas ───
       // Alunos AEE têm 2 registos legítimos (turma regular + AEE) com mesmo RA → não apagar
       // Apenas apaga registos que: mesmo RA que um registo do batch + ZERO faltas associadas
       {
-        const batchIds = new Set(alunosParaUpsert.map(a => a.id));
+        const batchIds = new Set(upsertDedup.map(a => a.id));
         const batchIdsByRA = new Map<string, string[]>();
-        for (const a of alunosParaUpsert) {
+        for (const a of upsertDedup) {
           if (!a.ra) continue;
           const raStr = String(a.ra);
           if (!batchIdsByRA.has(raStr)) batchIdsByRA.set(raStr, []);
@@ -1612,14 +1616,14 @@ export default function Importar() {
           if (batchIdsForRA.length === 0) return false;
           // Nunca apaga registo regular se o batch importou AEE para este RA
           const batchTemAEE = batchIdsForRA.some(bid => {
-            const br = alunosParaUpsert.find(x => x.id === bid);
+            const br = upsertDedup.find(x => x.id === bid);
             return br?.turmaId && aeeturmaIds.has(br.turmaId);
           });
           if (batchTemAEE) return false;
           // Nunca apaga registo com turmaId válido quando o batch NÃO encontrou turma
           // (turmaId=null no batch = falha de matching, não uma mudança real do aluno)
           const batchSemTurma = batchIdsForRA.every(bid => {
-            const br = alunosParaUpsert.find(x => x.id === bid);
+            const br = upsertDedup.find(x => x.id === bid);
             return !br?.turmaId;
           });
           if (batchSemTurma && e.turmaId) return false;
