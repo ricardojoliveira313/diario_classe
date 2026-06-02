@@ -1958,6 +1958,52 @@ export default function Importar() {
         if (error) throw error;
       }
 
+      // ─── LIMPEZA FINAL: garante máximo 1 ATIVO por RA ─────────────────────────
+      // Regra: nunca pode haver 2 registros ATIVO com o mesmo RA.
+      // Roda sempre ao final do import, usando dados frescos do banco.
+      // Se o import criou duplicados por qualquer motivo, aqui são eliminados.
+      {
+        setStatus('🧹 Verificando duplicados...');
+        const { data: todosParaLimpar } = await supabase
+          .from('Aluno').select('id, ra, situacao, turmaId, cpf, nis, responsavel, bolsa_familia');
+        const grpLimpar = new Map<string, any[]>();
+        for (const a of (todosParaLimpar ?? [])) {
+          if (!a.ra || a.situacao === 'REMA') continue;
+          if (a.turmaId && aeeturmaIds.has(a.turmaId)) continue;
+          const k = String(a.ra);
+          if (!grpLimpar.has(k)) grpLimpar.set(k, []);
+          grpLimpar.get(k)!.push(a);
+        }
+        const dupsLimpar = Array.from(grpLimpar.values()).filter(g => g.length > 1);
+        if (dupsLimpar.length > 0) {
+          // IDs dos alunos que vieram neste import — o canônico deve ser um deles
+          const idsDesteBatch = new Set(upsertDedup.map((a: any) => a.id));
+          for (const grupo of dupsLimpar) {
+            // Prefere o registro que veio do batch atual; caso contrário, o com mais faltas
+            let canon = grupo.find(a => idsDesteBatch.has(a.id));
+            if (!canon) {
+              const { data: ftsGrp } = await supabase
+                .from('Falta').select('alunoId').in('alunoId', grupo.map(a => a.id));
+              const contagem = new Map<string, number>();
+              for (const f of (ftsGrp ?? [])) contagem.set(f.alunoId, (contagem.get(f.alunoId) ?? 0) + 1);
+              canon = grupo.reduce((best, cur) => (contagem.get(cur.id) ?? 0) > (contagem.get(best.id) ?? 0) ? cur : best);
+            }
+            for (const extra of grupo) {
+              if (extra.id === canon!.id) continue;
+              // Preserva dados manuais do extra no canônico
+              const up: any = {};
+              if (extra.bolsa_familia && !canon!.bolsa_familia) up.bolsa_familia = true;
+              if (extra.cpf && !canon!.cpf) up.cpf = extra.cpf;
+              if (extra.nis && !canon!.nis) up.nis = extra.nis;
+              if (extra.responsavel && !canon!.responsavel) up.responsavel = extra.responsavel;
+              if (Object.keys(up).length > 0)
+                await supabase.from('Aluno').update(up).eq('id', canon!.id);
+              await supabase.from('Aluno').delete().eq('id', extra.id);
+            }
+          }
+        }
+      }
+
       setStatus('');
       setSucesso(true);
     } catch (ex: any) {
