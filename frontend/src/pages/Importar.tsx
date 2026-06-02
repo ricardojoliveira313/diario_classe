@@ -260,7 +260,7 @@ export default function Importar() {
           .map((t: any) => t.id)
       );
       const { data: alunos } = await supabase
-        .from('Aluno').select('id, ra, nome, situacao, turmaId, cpf, nis, responsavel, bolsa_familia, data_nascimento');
+        .from('Aluno').select('id, ra, nome, situacao, turmaId, cpf, nis, responsavel, bolsa_familia, data_nascimento').limit(100000);
 
       if (!alunos || alunos.length === 0) {
         setStatusLimpeza('⚠️ Nenhum aluno encontrado no banco.');
@@ -1511,7 +1511,7 @@ export default function Importar() {
       // AEE: alunos têm 2 registros separados (turma regular + turma AEE) — mesmo padrão que REMA
       setStatus('Atualizando cadastro de alunos...');
       const { data: existentes } = await supabase
-        .from('Aluno').select('id, ra, nome, situacao, cpf, nis, responsavel, bolsa_familia, turmaId, data_nascimento, cor_raca, deficiencia');
+        .from('Aluno').select('id, ra, nome, situacao, cpf, nis, responsavel, bolsa_familia, turmaId, data_nascimento, cor_raca, deficiencia').limit(100000);
 
       // ─── PRÉ-LIMPEZA: remove duplicatas de RA em TODO o banco antes de importar ──
       // Roda em toda importação, independente do arquivo — garante banco sempre limpo
@@ -1572,7 +1572,7 @@ export default function Importar() {
       // Recarrega existentes do banco após a pré-limpeza — garante dados frescos
       // (o array carregado no início do PASSO 2 ficou obsoleto após as deleções)
       const { data: existentesAtualizados } = await supabase
-        .from('Aluno').select('id, ra, nome, situacao, cpf, nis, responsavel, bolsa_familia, turmaId, data_nascimento, cor_raca, deficiencia');
+        .from('Aluno').select('id, ra, nome, situacao, cpf, nis, responsavel, bolsa_familia, turmaId, data_nascimento, cor_raca, deficiencia').limit(100000);
       const existentesFrescos = existentesAtualizados ?? existentes ?? [];
       const raToExistingId = new Map<string, string>();
       const nomeToExistingId = new Map<string, string>();
@@ -1888,7 +1888,7 @@ export default function Importar() {
       // RA repetido no PDF, importação interrompida), aqui o banco fica limpo.
       {
         const { data: todosAlunos } = await supabase
-          .from('Aluno').select('id, ra, situacao, turmaId, cpf, nis, responsavel, bolsa_familia');
+          .from('Aluno').select('id, ra, situacao, turmaId, cpf, nis, responsavel, bolsa_familia').limit(100000);
         const grpRA = new Map<string, any[]>();
         for (const a of (todosAlunos ?? [])) {
           if (!a.ra || a.situacao === 'REMA') continue;          // REMA tem registro próprio
@@ -2006,7 +2006,7 @@ export default function Importar() {
       {
         setStatus('🧹 Verificando duplicados...');
         const { data: todosParaLimpar } = await supabase
-          .from('Aluno').select('id, ra, situacao, turmaId, cpf, nis, responsavel, bolsa_familia');
+          .from('Aluno').select('id, ra, situacao, turmaId, cpf, nis, responsavel, bolsa_familia').limit(100000);
         const grpLimpar = new Map<string, any[]>();
         for (const a of (todosParaLimpar ?? [])) {
           if (!a.ra || a.situacao === 'REMA') continue;
