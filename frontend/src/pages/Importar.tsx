@@ -1528,6 +1528,11 @@ export default function Importar() {
           }
         }
       }
+      // Recarrega existentes do banco após a pré-limpeza — garante dados frescos
+      // (o array carregado no início do PASSO 2 ficou obsoleto após as deleções)
+      const { data: existentesAtualizados } = await supabase
+        .from('Aluno').select('id, ra, nome, situacao, cpf, nis, responsavel, bolsa_familia, turmaId, data_nascimento, cor_raca, deficiencia');
+      const existentesFrescos = existentesAtualizados ?? existentes ?? [];
       const raToExistingId = new Map<string, string>();
       const nomeToExistingId = new Map<string, string>();
       const remaToId = new Map<string, string>(); // RA → ID do registro REMA
@@ -1539,8 +1544,7 @@ export default function Importar() {
       const idToBolsaFamilia = new Map<string, boolean>();
       const idToCorRaca = new Map<string, string>();
       const idToDefi = new Map<string, string>();
-      for (const e of (existentes ?? [])) {
-        if (idsRemovidosPreLimpeza.has(e.id)) continue; // ignora registros já eliminados na pré-limpeza
+      for (const e of existentesFrescos) {
         if (e.ra) {
           if (e.situacao === 'REMA') {
             remaToId.set(String(e.ra), e.id);
@@ -1627,8 +1631,7 @@ export default function Importar() {
         // Segurança: se o aluno tem RA mas existingId ficou undefined por qualquer razão,
         // faz scan direto de existentes para nunca gerar UUID novo para um RA já cadastrado
         const safeId = (!existingId && a.ra)
-          ? (existentes ?? []).find(e =>
-              !idsRemovidosPreLimpeza.has(e.id) &&
+          ? existentesFrescos.find(e =>
               String(e.ra) === raKey &&
               e.situacao !== 'REMA' &&
               !(e.turmaId && aeeturmaIds.has(e.turmaId))
