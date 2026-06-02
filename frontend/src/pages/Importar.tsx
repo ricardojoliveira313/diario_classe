@@ -215,7 +215,40 @@ export default function Importar() {
   // Lê o banco no estado atual e unifica qualquer RA com mais de 1 registro
   // regular (exclui REMA e AEE, que têm registros legítimos próprios). Para cada
   // grupo: escolhe o canônico (mais faltas), transfere faltas dos meses ausentes,
-  // apaga faltas duplicadas, preserva CPF/NIS/responsável/bolsa e remove os extras.
+  const normalizarNome = (s: string) =>
+    (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
+
+  const limparGrupo = async (grupo: any[], ftsPorAluno: Map<string, any[]>) => {
+    const canon = grupo.reduce((best, cur) =>
+      (ftsPorAluno.get(cur.id)?.length ?? 0) > (ftsPorAluno.get(best.id)?.length ?? 0) ? cur : best
+    );
+    const mesesCanon = new Set((ftsPorAluno.get(canon.id) ?? []).map((f: any) => `${f.mes}-${f.ano}`));
+    let removidos = 0;
+    for (const extra of grupo) {
+      if (extra.id === canon.id) continue;
+      const transferir: string[] = [];
+      const apagar: string[] = [];
+      for (const f of (ftsPorAluno.get(extra.id) ?? [])) {
+        if (mesesCanon.has(`${f.mes}-${f.ano}`)) apagar.push(f.id);
+        else { transferir.push(f.id); mesesCanon.add(`${f.mes}-${f.ano}`); }
+      }
+      if (transferir.length > 0)
+        await supabase.from('Falta').update({ alunoId: canon.id }).in('id', transferir);
+      if (apagar.length > 0)
+        await supabase.from('Falta').delete().in('id', apagar);
+      const up: any = {};
+      if (extra.bolsa_familia && !canon.bolsa_familia) up.bolsa_familia = true;
+      if (extra.cpf && !canon.cpf) up.cpf = extra.cpf;
+      if (extra.nis && !canon.nis) up.nis = extra.nis;
+      if (extra.responsavel && !canon.responsavel) up.responsavel = extra.responsavel;
+      if (Object.keys(up).length > 0)
+        await supabase.from('Aluno').update(up).eq('id', canon.id);
+      await supabase.from('Aluno').delete().eq('id', extra.id);
+      removidos++;
+    }
+    return removidos;
+  };
+
   const limparDuplicados = useCallback(async () => {
     setLimpando(true);
     setStatusLimpeza('🔍 Lendo cadastro...');
@@ -227,23 +260,54 @@ export default function Importar() {
           .map((t: any) => t.id)
       );
       const { data: alunos } = await supabase
-        .from('Aluno').select('id, ra, nome, situacao, turmaId, cpf, nis, responsavel, bolsa_familia');
-      const grp = new Map<string, any[]>();
-      for (const a of (alunos ?? [])) {
-        if (!a.ra || a.situacao === 'REMA') continue;
-        if (a.turmaId && aeeIds.has(a.turmaId)) continue;
-        const k = String(a.ra);
-        if (!grp.has(k)) grp.set(k, []);
-        grp.get(k)!.push(a);
-      }
-      const dups = Array.from(grp.values()).filter(g => g.length > 1);
-      if (dups.length === 0) {
-        setStatusLimpeza('✅ Nenhum duplicado encontrado — cadastro está limpo.');
+        .from('Aluno').select('id, ra, nome, situacao, turmaId, cpf, nis, responsavel, bolsa_familia, data_nascimento');
+
+      if (!alunos || alunos.length === 0) {
+        setStatusLimpeza('⚠️ Nenhum aluno encontrado no banco.');
         setLimpando(false);
         return;
       }
-      setStatusLimpeza(`🧹 Unificando ${dups.length} aluno(s) duplicado(s)...`);
-      const todosIds = dups.flatMap(g => g.map(a => a.id));
+
+      // 1) Agrupa por RA
+      const grpRA = new Map<string, any[]>();
+      const idsPorRA = new Set<string>();
+      for (const a of alunos) {
+        if (!a.ra || a.situacao === 'REMA') continue;
+        if (a.turmaId && aeeIds.has(a.turmaId)) continue;
+        const k = String(a.ra).trim();
+        if (!grpRA.has(k)) grpRA.set(k, []);
+        grpRA.get(k)!.push(a);
+        idsPorRA.add(a.id);
+      }
+
+      // 2) Agrupa por nome + nascimento (para alunos sem RA ou com RA diferente)
+      const grpNome = new Map<string, any[]>();
+      for (const a of alunos) {
+        if (idsPorRA.has(a.id)) continue;
+        if (a.situacao === 'REMA') continue;
+        if (a.turmaId && aeeIds.has(a.turmaId)) continue;
+        const nn = normalizarNome(a.nome);
+        const dn = (a.data_nascimento || '').replace(/[^0-9]/g, '');
+        if (!nn) continue;
+        const k = `${nn}|${dn}`;
+        if (!grpNome.has(k)) grpNome.set(k, []);
+        grpNome.get(k)!.push(a);
+      }
+
+      const dupsRA = Array.from(grpRA.values()).filter(g => g.length > 1);
+      const dupsNome = Array.from(grpNome.values()).filter(g => g.length > 1);
+      const totalDups = dupsRA.length + dupsNome.length;
+
+      if (totalDups === 0) {
+        setStatusLimpeza(`✅ Nenhum duplicado encontrado (${alunos.length} alunos lidos).`);
+        setLimpando(false);
+        return;
+      }
+
+      setStatusLimpeza(`🧹 Unificando ${totalDups} grupo(s) duplicado(s)...`);
+      const todosDups = [...dupsRA, ...dupsNome];
+
+      const todosIds = todosDups.flatMap(g => g.map((a: any) => a.id));
       const ftsPorAluno = new Map<string, any[]>();
       for (let i = 0; i < todosIds.length; i += 100) {
         const { data: fts } = await supabase
@@ -253,35 +317,12 @@ export default function Importar() {
           ftsPorAluno.get(f.alunoId)!.push(f);
         }
       }
+
       let removidos = 0;
-      for (const grupo of dups) {
-        const canon = grupo.reduce((best, cur) =>
-          (ftsPorAluno.get(cur.id)?.length ?? 0) > (ftsPorAluno.get(best.id)?.length ?? 0) ? cur : best
-        );
-        const mesesCanon = new Set((ftsPorAluno.get(canon.id) ?? []).map(f => `${f.mes}-${f.ano}`));
-        for (const extra of grupo) {
-          if (extra.id === canon.id) continue;
-          const transferir: string[] = [];
-          const apagar: string[] = [];
-          for (const f of (ftsPorAluno.get(extra.id) ?? [])) {
-            if (mesesCanon.has(`${f.mes}-${f.ano}`)) apagar.push(f.id);
-            else { transferir.push(f.id); mesesCanon.add(`${f.mes}-${f.ano}`); }
-          }
-          if (transferir.length > 0)
-            await supabase.from('Falta').update({ alunoId: canon.id }).in('id', transferir);
-          if (apagar.length > 0)
-            await supabase.from('Falta').delete().in('id', apagar);
-          const up: any = {};
-          if (extra.bolsa_familia && !canon.bolsa_familia) up.bolsa_familia = true;
-          if (extra.cpf && !canon.cpf) up.cpf = extra.cpf;
-          if (extra.nis && !canon.nis) up.nis = extra.nis;
-          if (extra.responsavel && !canon.responsavel) up.responsavel = extra.responsavel;
-          if (Object.keys(up).length > 0)
-            await supabase.from('Aluno').update(up).eq('id', canon.id);
-          await supabase.from('Aluno').delete().eq('id', extra.id);
-          removidos++;
-        }
+      for (const grupo of todosDups) {
+        removidos += await limparGrupo(grupo, ftsPorAluno);
       }
+
       setStatusLimpeza(`✅ Limpeza concluída: ${removidos} registro(s) removido(s). Atualize a página de Alunos.`);
     } catch (ex: any) {
       setStatusLimpeza('❌ Erro: ' + (ex?.message ?? String(ex)));
