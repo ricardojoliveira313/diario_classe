@@ -211,12 +211,21 @@ export default function Importar() {
     }
   }, []);
 
+  /** Normaliza data para dígitos (YYYYMMDD) independente do formato de entrada */
+  const normalizarData = (d: string): string => {
+    const digs = (d || '').replace(/[^0-9]/g, '');
+    if (digs.length !== 8) return digs;
+    // Se começa com ano (19xx ou 20xx) → já YYYYMMDD
+    const pre = parseInt(digs.slice(0, 4), 10);
+    if (pre >= 1900 && pre <= 2100) return digs;
+    // Senão é DDMMYYYY → converte para YYYYMMDD
+    return `${digs.slice(4)}${digs.slice(2, 4)}${digs.slice(0, 2)}`;
+  };
+
   // ─── LIMPAR DUPLICADOS: ação autônoma, não depende de importar ficheiro ──────
   // Lê o banco no estado atual e unifica qualquer RA com mais de 1 registro
   // regular (exclui REMA e AEE, que têm registros legítimos próprios). Para cada
   // grupo: escolhe o canônico (mais faltas), transfere faltas dos meses ausentes,
-  const normalizarNome = (s: string) =>
-    (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
 
   const limparGrupo = async (grupo: any[], ftsPorAluno: Map<string, any[]>) => {
     const canon = grupo.reduce((best, cur) =>
@@ -286,8 +295,8 @@ export default function Importar() {
         if (idsPorRA.has(a.id)) continue;
         if (a.situacao === 'REMA') continue;
         if (a.turmaId && aeeIds.has(a.turmaId)) continue;
-        const nn = normalizarNome(a.nome);
-        const dn = (a.data_nascimento || '').replace(/[^0-9]/g, '');
+        const nn = normalizeNome(a.nome);
+        const dn = normalizarData(a.data_nascimento || '');
         if (!nn) continue;
         const k = `${nn}|${dn}`;
         if (!grpNome.has(k)) grpNome.set(k, []);
@@ -1888,54 +1897,115 @@ export default function Importar() {
       // RA repetido no PDF, importação interrompida), aqui o banco fica limpo.
       {
         const { data: todosAlunos } = await supabase
-          .from('Aluno').select('id, ra, situacao, turmaId, cpf, nis, responsavel, bolsa_familia').limit(100000);
-        const grpRA = new Map<string, any[]>();
-        for (const a of (todosAlunos ?? [])) {
-          if (!a.ra || a.situacao === 'REMA') continue;          // REMA tem registro próprio
-          if (a.turmaId && aeeturmaIds.has(a.turmaId)) continue; // AEE tem registro próprio
-          const k = String(a.ra);
-          if (!grpRA.has(k)) grpRA.set(k, []);
-          grpRA.get(k)!.push(a);
-        }
-        const dups = Array.from(grpRA.values()).filter(g => g.length > 1);
-        if (dups.length > 0) {
-          setStatus(`🧹 Limpeza final: unificando ${dups.length} aluno(s) duplicado(s)...`);
-          const todosIds = dups.flatMap(g => g.map(a => a.id));
-          const { data: fts } = await supabase
-            .from('Falta').select('id, alunoId, mes, ano').in('alunoId', todosIds);
-          const ftsPorAluno = new Map<string, any[]>();
-          for (const f of (fts ?? [])) {
-            if (!ftsPorAluno.has(f.alunoId)) ftsPorAluno.set(f.alunoId, []);
-            ftsPorAluno.get(f.alunoId)!.push(f);
+          .from('Aluno').select('id, ra, nome, situacao, turmaId, cpf, nis, responsavel, bolsa_familia, data_nascimento').limit(100000);
+
+        const idsLimposRA = new Set<string>();
+
+        // ── 2.9.1: Dedup por RA ────────────────────────────────────────────────
+        {
+          const grpRA = new Map<string, any[]>();
+          for (const a of (todosAlunos ?? [])) {
+            if (!a.ra || a.situacao === 'REMA') continue;
+            if (a.turmaId && aeeturmaIds.has(a.turmaId)) continue;
+            const k = String(a.ra);
+            if (!grpRA.has(k)) grpRA.set(k, []);
+            grpRA.get(k)!.push(a);
           }
-          for (const grupo of dups) {
-            // Canônico = mais faltas; empate → primeiro
-            const canon = grupo.reduce((best, cur) =>
-              (ftsPorAluno.get(cur.id)?.length ?? 0) > (ftsPorAluno.get(best.id)?.length ?? 0) ? cur : best
-            );
-            const mesesCanon = new Set((ftsPorAluno.get(canon.id) ?? []).map(f => `${f.mes}-${f.ano}`));
-            for (const extra of grupo) {
-              if (extra.id === canon.id) continue;
-              // Transfere faltas de meses que o canônico não tem; apaga as duplicadas
-              const transferir: string[] = [];
-              const apagar: string[] = [];
-              for (const f of (ftsPorAluno.get(extra.id) ?? [])) {
-                if (mesesCanon.has(`${f.mes}-${f.ano}`)) apagar.push(f.id);
-                else { transferir.push(f.id); mesesCanon.add(`${f.mes}-${f.ano}`); }
+          const dupsRA = Array.from(grpRA.values()).filter(g => g.length > 1);
+          if (dupsRA.length > 0) {
+            setStatus(`🧹 Limpeza final: unificando ${dupsRA.length} aluno(s) duplicado(s) por RA...`);
+            const todosIds = dupsRA.flatMap(g => g.map(a => a.id));
+            for (const id of todosIds) idsLimposRA.add(id);
+            const { data: fts } = await supabase
+              .from('Falta').select('id, alunoId, mes, ano').in('alunoId', todosIds);
+            const ftsPorAluno = new Map<string, any[]>();
+            for (const f of (fts ?? [])) {
+              if (!ftsPorAluno.has(f.alunoId)) ftsPorAluno.set(f.alunoId, []);
+              ftsPorAluno.get(f.alunoId)!.push(f);
+            }
+            for (const grupo of dupsRA) {
+              const canon = grupo.reduce((best, cur) =>
+                (ftsPorAluno.get(cur.id)?.length ?? 0) > (ftsPorAluno.get(best.id)?.length ?? 0) ? cur : best
+              );
+              const mesesCanon = new Set((ftsPorAluno.get(canon.id) ?? []).map(f => `${f.mes}-${f.ano}`));
+              for (const extra of grupo) {
+                if (extra.id === canon.id) continue;
+                const transferir: string[] = [];
+                const apagar: string[] = [];
+                for (const f of (ftsPorAluno.get(extra.id) ?? [])) {
+                  if (mesesCanon.has(`${f.mes}-${f.ano}`)) apagar.push(f.id);
+                  else { transferir.push(f.id); mesesCanon.add(`${f.mes}-${f.ano}`); }
+                }
+                if (transferir.length > 0)
+                  await supabase.from('Falta').update({ alunoId: canon.id }).in('id', transferir);
+                if (apagar.length > 0)
+                  await supabase.from('Falta').delete().in('id', apagar);
+                const up: any = {};
+                if (extra.bolsa_familia && !canon.bolsa_familia) up.bolsa_familia = true;
+                if (extra.cpf && !canon.cpf) up.cpf = extra.cpf;
+                if (extra.nis && !canon.nis) up.nis = extra.nis;
+                if (extra.responsavel && !canon.responsavel) up.responsavel = extra.responsavel;
+                if (Object.keys(up).length > 0)
+                  await supabase.from('Aluno').update(up).eq('id', canon.id);
+                await supabase.from('Aluno').delete().eq('id', extra.id);
               }
-              if (transferir.length > 0)
-                await supabase.from('Falta').update({ alunoId: canon.id }).in('id', transferir);
-              if (apagar.length > 0)
-                await supabase.from('Falta').delete().in('id', apagar);
-              // Preserva dados manuais do extra no canônico
-              const up: any = {};
-              if (extra.bolsa_familia && !canon.bolsa_familia) up.bolsa_familia = true;
-              if (extra.cpf && !canon.cpf) up.cpf = extra.cpf;
-              if (extra.nis && !canon.nis) up.nis = extra.nis;
-              if (extra.responsavel && !canon.responsavel) up.responsavel = extra.responsavel;
-              if (Object.keys(up).length > 0)
-                await supabase.from('Aluno').update(up).eq('id', canon.id);
-              await supabase.from('Aluno').delete().eq('id', extra.id);
+            }
+          }
+        }
+
+        // ── 2.9.2: Dedup por nome + data de nascimento ────────────────────────
+        // Captura alunos sem RA (ou com RA único mas mesmo nome+nasc de outro)
+        {
+          const grpNome = new Map<string, any[]>();
+          for (const a of (todosAlunos ?? [])) {
+            if (!a.nome || a.situacao === 'REMA') continue;
+            if (a.turmaId && aeeturmaIds.has(a.turmaId)) continue;
+            // Pula alunos com RA que já foram tratados na etapa 2.9.1
+            if (a.ra && idsLimposRA.has(a.id)) continue;
+            const nn = normalizeNome(a.nome);
+            const dn = normalizarData(a.data_nascimento || '');
+            if (!nn) continue;
+            const k = `${nn}|${dn}`;
+            if (!grpNome.has(k)) grpNome.set(k, []);
+            grpNome.get(k)!.push(a);
+          }
+          const dupsNome = Array.from(grpNome.values()).filter(g => g.length > 1);
+          if (dupsNome.length > 0) {
+            setStatus(`🧹 Limpeza final: unificando ${dupsNome.length} aluno(s) duplicado(s) por nome...`);
+            const todosIds = dupsNome.flatMap(g => g.map(a => a.id));
+            const { data: fts } = await supabase
+              .from('Falta').select('id, alunoId, mes, ano').in('alunoId', todosIds);
+            const ftsPorAluno = new Map<string, any[]>();
+            for (const f of (fts ?? [])) {
+              if (!ftsPorAluno.has(f.alunoId)) ftsPorAluno.set(f.alunoId, []);
+              ftsPorAluno.get(f.alunoId)!.push(f);
+            }
+            for (const grupo of dupsNome) {
+              const canon = grupo.reduce((best, cur) =>
+                (ftsPorAluno.get(cur.id)?.length ?? 0) > (ftsPorAluno.get(best.id)?.length ?? 0) ? cur : best
+              );
+              const mesesCanon = new Set((ftsPorAluno.get(canon.id) ?? []).map(f => `${f.mes}-${f.ano}`));
+              for (const extra of grupo) {
+                if (extra.id === canon.id) continue;
+                const transferir: string[] = [];
+                const apagar: string[] = [];
+                for (const f of (ftsPorAluno.get(extra.id) ?? [])) {
+                  if (mesesCanon.has(`${f.mes}-${f.ano}`)) apagar.push(f.id);
+                  else { transferir.push(f.id); mesesCanon.add(`${f.mes}-${f.ano}`); }
+                }
+                if (transferir.length > 0)
+                  await supabase.from('Falta').update({ alunoId: canon.id }).in('id', transferir);
+                if (apagar.length > 0)
+                  await supabase.from('Falta').delete().in('id', apagar);
+                const up: any = {};
+                if (extra.bolsa_familia && !canon.bolsa_familia) up.bolsa_familia = true;
+                if (extra.cpf && !canon.cpf) up.cpf = extra.cpf;
+                if (extra.nis && !canon.nis) up.nis = extra.nis;
+                if (extra.responsavel && !canon.responsavel) up.responsavel = extra.responsavel;
+                if (Object.keys(up).length > 0)
+                  await supabase.from('Aluno').update(up).eq('id', canon.id);
+                await supabase.from('Aluno').delete().eq('id', extra.id);
+              }
             }
           }
         }
@@ -1999,49 +2069,75 @@ export default function Importar() {
         if (error) throw error;
       }
 
-      // ─── LIMPEZA FINAL: garante máximo 1 ATIVO por RA ─────────────────────────
-      // Regra: nunca pode haver 2 registros ATIVO com o mesmo RA.
+      // ─── LIMPEZA FINAL: garante máximo 1 ATIVO por RA ou nome+nasc ──────────
       // Roda sempre ao final do import, usando dados frescos do banco.
       // Se o import criou duplicados por qualquer motivo, aqui são eliminados.
       {
         setStatus('🧹 Verificando duplicados...');
         const { data: todosParaLimpar } = await supabase
-          .from('Aluno').select('id, ra, situacao, turmaId, cpf, nis, responsavel, bolsa_familia').limit(100000);
-        const grpLimpar = new Map<string, any[]>();
-        for (const a of (todosParaLimpar ?? [])) {
-          if (!a.ra || a.situacao === 'REMA') continue;
-          if (a.turmaId && aeeturmaIds.has(a.turmaId)) continue;
-          const k = String(a.ra);
-          if (!grpLimpar.has(k)) grpLimpar.set(k, []);
-          grpLimpar.get(k)!.push(a);
-        }
-        const dupsLimpar = Array.from(grpLimpar.values()).filter(g => g.length > 1);
-        if (dupsLimpar.length > 0) {
-          // IDs dos alunos que vieram neste import — o canônico deve ser um deles
-          const idsDesteBatch = new Set(upsertDedup.map((a: any) => a.id));
-          for (const grupo of dupsLimpar) {
-            // Prefere o registro que veio do batch atual; caso contrário, o com mais faltas
-            let canon = grupo.find(a => idsDesteBatch.has(a.id));
-            if (!canon) {
-              const { data: ftsGrp } = await supabase
-                .from('Falta').select('alunoId').in('alunoId', grupo.map(a => a.id));
-              const contagem = new Map<string, number>();
-              for (const f of (ftsGrp ?? [])) contagem.set(f.alunoId, (contagem.get(f.alunoId) ?? 0) + 1);
-              canon = grupo.reduce((best, cur) => (contagem.get(cur.id) ?? 0) > (contagem.get(best.id) ?? 0) ? cur : best);
-            }
-            for (const extra of grupo) {
-              if (extra.id === canon!.id) continue;
-              // Preserva dados manuais do extra no canônico
-              const up: any = {};
-              if (extra.bolsa_familia && !canon!.bolsa_familia) up.bolsa_familia = true;
-              if (extra.cpf && !canon!.cpf) up.cpf = extra.cpf;
-              if (extra.nis && !canon!.nis) up.nis = extra.nis;
-              if (extra.responsavel && !canon!.responsavel) up.responsavel = extra.responsavel;
-              if (Object.keys(up).length > 0)
-                await supabase.from('Aluno').update(up).eq('id', canon!.id);
-              await supabase.from('Aluno').delete().eq('id', extra.id);
-            }
+          .from('Aluno').select('id, ra, nome, situacao, turmaId, cpf, nis, responsavel, bolsa_familia, data_nascimento').limit(100000);
+        const idsDesteBatch = new Set(upsertDedup.map((a: any) => a.id));
+        const idsRemovidosAgora = new Set<string>();
+
+        // Função auxiliar: unifica grupo preservando dados manuais
+        const unificarGrupo = async (grupo: any[]) => {
+          let canon = grupo.find(a => idsDesteBatch.has(a.id) && !idsRemovidosAgora.has(a.id));
+          if (!canon) {
+            const ids = grupo.map(a => a.id).filter(id => !idsRemovidosAgora.has(id));
+            if (ids.length < 2) return;
+            const { data: ftsGrp } = await supabase
+              .from('Falta').select('alunoId').in('alunoId', ids);
+            const contagem = new Map<string, number>();
+            for (const f of (ftsGrp ?? [])) contagem.set(f.alunoId, (contagem.get(f.alunoId) ?? 0) + 1);
+            canon = grupo.reduce((best, cur) =>
+              (contagem.get(cur.id) ?? 0) > (contagem.get(best.id) ?? 0) ? cur : best
+            );
           }
+          for (const extra of grupo) {
+            if (extra.id === canon!.id || idsRemovidosAgora.has(extra.id)) continue;
+            const up: any = {};
+            if (extra.bolsa_familia && !canon!.bolsa_familia) up.bolsa_familia = true;
+            if (extra.cpf && !canon!.cpf) up.cpf = extra.cpf;
+            if (extra.nis && !canon!.nis) up.nis = extra.nis;
+            if (extra.responsavel && !canon!.responsavel) up.responsavel = extra.responsavel;
+            if (Object.keys(up).length > 0)
+              await supabase.from('Aluno').update(up).eq('id', canon!.id);
+            await supabase.from('Aluno').delete().eq('id', extra.id);
+            idsRemovidosAgora.add(extra.id);
+          }
+        };
+
+        // RA-based
+        {
+          const grp = new Map<string, any[]>();
+          for (const a of (todosParaLimpar ?? [])) {
+            if (!a.ra || a.situacao === 'REMA') continue;
+            if (a.turmaId && aeeturmaIds.has(a.turmaId)) continue;
+            const k = String(a.ra);
+            if (!grp.has(k)) grp.set(k, []);
+            grp.get(k)!.push(a);
+          }
+          for (const grupo of Array.from(grp.values()).filter(g => g.length > 1))
+            await unificarGrupo(grupo);
+        }
+
+        // Name-based
+        {
+          const grp = new Map<string, any[]>();
+          for (const a of (todosParaLimpar ?? [])) {
+            if (idsRemovidosAgora.has(a.id)) continue;
+            if (a.situacao === 'REMA') continue;
+            if (a.turmaId && aeeturmaIds.has(a.turmaId)) continue;
+            if (!a.nome) continue;
+            const nn = normalizeNome(a.nome);
+            const dn = normalizarData(a.data_nascimento || '');
+            if (!nn) continue;
+            const k = `${nn}|${dn}`;
+            if (!grp.has(k)) grp.set(k, []);
+            grp.get(k)!.push(a);
+          }
+          for (const grupo of Array.from(grp.values()).filter(g => g.length > 1))
+            await unificarGrupo(grupo);
         }
       }
 
