@@ -1125,8 +1125,9 @@ export default function Importar() {
             }
             todosAlunos.set(key, ativo);           // destino (ATIVO) — chave principal
 
-            // Preservar datas do REMA já armazenado (não sobrescrever com vazio)
-            const remaKey = `${key}|REMA`;
+            // Armazena o REMA com chave que inclui a turma de origem
+            // Isso permite múltiplos REMAs para o mesmo RA (ex: A→B→C)
+            const remaKey = `${key}|REMA|${normalizeStr(rema.serie)}`;
             const existRema = todosAlunos.get(remaKey);
             if (existRema) {
               if (!rema.dataInicioMatricula && existRema.dataInicioMatricula)
@@ -1140,7 +1141,30 @@ export default function Importar() {
               if (!rema.professoraDestino && existRema.professoraDestino)
                 rema.professoraDestino = existRema.professoraDestino;
             }
-            todosAlunos.set(remaKey, rema);  // origem (REMA) — chave separada
+            todosAlunos.set(remaKey, rema);
+            return;
+          }
+
+          // ─── Múltiplos REMAs: mesmo RA, turmas diferentes, ambos REMA ──────────
+          // Cenário: aluno saiu da turma A → B, depois B → C
+          // No SED aparece: REMA em A, REMA em B (e ATIVO em C)
+          // Cada REMA deve virar um registro separado no banco
+          if (seriesDiferentes && existente.situacao === 'REMA' && a.situacao === 'REMA') {
+            const remaKey = `${key}|REMA|${normalizeStr(a.serie)}`;
+            if (todosAlunos.has(remaKey)) {
+              const existRema = todosAlunos.get(remaKey)!;
+              Object.assign(existRema.faltas, a.faltas);
+              if (!existRema.dataInicioMatricula && a.dataInicioMatricula)
+                existRema.dataInicioMatricula = a.dataInicioMatricula;
+              if (!existRema.dataMovimentacao && a.dataMovimentacao)
+                existRema.dataMovimentacao = a.dataMovimentacao;
+              if (!existRema.turmaDestino && a.turmaDestino)
+                existRema.turmaDestino = a.turmaDestino;
+              if (!existRema.professoraDestino && a.professoraDestino)
+                existRema.professoraDestino = a.professoraDestino;
+            } else {
+              todosAlunos.set(remaKey, { ...a, situacao: 'REMA' });
+            }
             return;
           }
 
@@ -1536,6 +1560,8 @@ export default function Importar() {
 
       // Reconstrói resolveId com turmas atualizadas do DB (inclui novas)
       const { data: todasTurmas } = await supabase.from('Turma').select('id, nome, professora');
+      const turmaIdToNome = new Map<string, string>();
+      for (const t of (todasTurmas ?? [])) turmaIdToNome.set(t.id, t.nome);
       const resolveIdAtualizado = buildResolveId(todasTurmas ?? []);
 
       // IDs das turmas AEE — detecta pelo nome (robusto) e pelo campo tipo
@@ -1615,7 +1641,8 @@ export default function Importar() {
       const existentesFrescos = existentesAtualizados ?? existentes ?? [];
       const raToExistingId = new Map<string, string>();
       const nomeToExistingId = new Map<string, string>();
-      const remaToId = new Map<string, string>(); // RA → ID do registro REMA
+      const remaToId = new Map<string, string>(); // RA|turma → ID do registro REMA (suporta múltiplos REMAs por RA)
+      const rasComREMA = new Set<string>();       // RAs que têm pelo menos um registro REMA
       const aeeToId = new Map<string, string>();  // RA → ID do registro AEE (turma de recursos)
       // Preserva campos cadastrados manualmente — não sobrescreve com null na importação
       const idToCpf = new Map<string, string>();
@@ -1627,7 +1654,9 @@ export default function Importar() {
       for (const e of existentesFrescos) {
         if (e.ra) {
           if (e.situacao === 'REMA') {
-            remaToId.set(String(e.ra), e.id);
+            const turmaNome = e.turmaId ? (turmaIdToNome.get(e.turmaId) ?? '') : '';
+            remaToId.set(`${String(e.ra)}|${normalizeStr(turmaNome)}`, e.id);
+            rasComREMA.add(String(e.ra));
           } else if (e.turmaId && aeeturmaIds.has(e.turmaId)) {
             // Registo AEE: mantém em mapa próprio, NÃO em raToExistingId
             // Assim importações de turmas regulares nunca sobrescrevem registros AEE
@@ -1697,7 +1726,7 @@ export default function Importar() {
           // Para REMA: procura primeiro em registos já REMA; se não encontrar E não há
           // versão ATIVO deste RA no import atual, reclama o antigo registo ATIVO
           // (evita que o ATIVO fique como fantasma quando o aluno saiu por remanejamento)
-          ? (remaToId.get(raKey) ??
+          ? (remaToId.get(`${raKey}|${normalizeStr(a.serie)}`) ??
              (!ativosRAsNoImport.has(raKey)
                ? (raToExistingId.get(raKey) ?? nomeToExistingId.get(`${a.nomeNorm}|${normalizarData(a.nascimento || '')}`))
                : undefined))
@@ -1708,7 +1737,7 @@ export default function Importar() {
             // Regular: usa mapa normal (exclui registos AEE, que ficam no aeeToId)
             // Se o RA já existe como REMA no banco, NÃO usa nomeToExistingId como fallback
             // (evita que ATIVO e REMA do mesmo aluno partilhem o mesmo ID)
-            : (raToExistingId.get(raKey) ?? (remaToId.has(raKey) ? undefined : nomeToExistingId.get(`${a.nomeNorm}|${normalizarData(a.nascimento || '')}`)));
+            : (raToExistingId.get(raKey) ?? (rasComREMA.has(raKey) ? undefined : nomeToExistingId.get(`${a.nomeNorm}|${normalizarData(a.nascimento || '')}`)));
         // Segurança: se o aluno tem RA mas existingId ficou undefined por qualquer razão,
         // faz scan direto de existentes para nunca gerar UUID novo para um RA já cadastrado
         const safeId = (!existingId && a.ra)
