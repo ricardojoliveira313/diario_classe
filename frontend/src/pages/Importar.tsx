@@ -1775,7 +1775,16 @@ export default function Importar() {
         };
       });
 
-      // Garante que não há IDs duplicados no batch (mesmo RA → mesmo existingId → conflito no upsert)
+      // Garante IDs únicos: se REMA e ATIVO do mesmo RA resolveram pro mesmo ID
+      // (ex: REMA fallback reusou ID do ATIVO antigo, e ATIVO também achou esse ID),
+      // o segundo registro ganha UUID novo para não ser engolido pelo upsertDedup
+      const idSet = new Set<string>();
+      for (const a of alunosParaUpsert) {
+        if (idSet.has(a.id)) {
+          a.id = crypto.randomUUID();
+        }
+        idSet.add(a.id);
+      }
       const upsertDedup = Array.from(
         alunosParaUpsert.reduce((m, a) => { m.set(a.id, a); return m; }, new Map<string, typeof alunosParaUpsert[0]>()).values()
       );
