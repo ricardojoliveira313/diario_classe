@@ -1074,8 +1074,9 @@ export default function Importar() {
       // ─── Cruzamento ───
       const todosAlunos = new Map<string, AlunoUnificado>();
       // Chave: RA (quando disponível) para cruzar PDF + Excel mesmo sem data de nascimento
+      // Usa normalizarData para garantir formato YYYYMMDD consistente com a dedup
       const mkKey = (a: AlunoUnificado) =>
-        a.ra ? `RA:${a.ra}` : `${a.nomeNorm}|${a.nascimento}`;
+        a.ra ? `RA:${a.ra}` : `${a.nomeNorm}|${normalizarData(a.nascimento)}`;
       // Prioridade: Excel primeiro (dados mais completos), depois PDF
       const mergeAluno = (a: AlunoUnificado) => {
         const key = mkKey(a);
@@ -1166,6 +1167,35 @@ export default function Importar() {
       alunosExcel.forEach(mergeAluno);
       alunosHTML.forEach(mergeAluno);
       alunosPDF.forEach(mergeAluno);
+
+      // ─── Reconciliação pós-merge: mesmo aluno com RA num arquivo e sem RA noutro ──
+      // Ex: PDF extrai RA mas Excel não tem coluna RA → dois keys diferentes (RA:xxx vs NOME|data)
+      // Varredura: entradas sem RA que tenham nome+data idênticos a uma entrada COM RA
+      const alunosSemRA = Array.from(todosAlunos.entries()).filter(([, a]) => !a.ra);
+      for (const [key, semRA] of alunosSemRA) {
+        if (!todosAlunos.has(key)) continue; // já foi removido por reconciliação anterior
+        for (const [otherKey, comRA] of todosAlunos) {
+          if (comRA === semRA || !comRA.ra) continue;
+          if (comRA.nomeNorm !== semRA.nomeNorm) continue;
+          if (normalizarData(comRA.nascimento) !== normalizarData(semRA.nascimento)) continue;
+          // Merge: dados do semRA → comRA
+          comRA.bolsaFamilia  = comRA.bolsaFamilia  || semRA.bolsaFamilia;
+          comRA.nis           = comRA.nis           || semRA.nis;
+          comRA.responsavel   = comRA.responsavel   || semRA.responsavel;
+          comRA.cpf           = comRA.cpf           || semRA.cpf;
+          comRA.deficiencia   = comRA.deficiencia   || semRA.deficiencia;
+          comRA.corRaca       = comRA.corRaca       || semRA.corRaca;
+          if (!comRA.numero && semRA.numero) comRA.numero = semRA.numero;
+          if (!comRA.dataInicioMatricula && semRA.dataInicioMatricula) comRA.dataInicioMatricula = semRA.dataInicioMatricula;
+          if (!comRA.dataFimMatricula && semRA.dataFimMatricula) comRA.dataFimMatricula = semRA.dataFimMatricula;
+          if (!comRA.dataMovimentacao && semRA.dataMovimentacao) comRA.dataMovimentacao = semRA.dataMovimentacao;
+          if (!comRA.serie && semRA.serie) comRA.serie = semRA.serie;
+          if (!comRA.professora && semRA.professora) comRA.professora = semRA.professora;
+          Object.assign(comRA.faltas, semRA.faltas);
+          todosAlunos.delete(key);
+          break;
+        }
+      }
 
       // Enriquece com professor da tabela TURMA-PROFESSORES
       const alunosArr = Array.from(todosAlunos.values());
@@ -1606,7 +1636,8 @@ export default function Importar() {
             raToExistingId.set(String(e.ra), e.id);
           }
         }
-        nomeToExistingId.set(normalizeNome(e.nome), e.id);  // normalizeNome (mesma fn que a.nomeNorm)
+        // Chave composta nome+data para evitar sobrescrita entre alunos homônimos
+        nomeToExistingId.set(`${normalizeNome(e.nome)}|${normalizarData(e.data_nascimento || '')}`, e.id);
         if (e.cpf) idToCpf.set(e.id, e.cpf);
         if (e.nis) idToNis.set(e.id, e.nis);
         if (e.responsavel) idToResponsavel.set(e.id, e.responsavel);
@@ -1668,7 +1699,7 @@ export default function Importar() {
           // (evita que o ATIVO fique como fantasma quando o aluno saiu por remanejamento)
           ? (remaToId.get(raKey) ??
              (!ativosRAsNoImport.has(raKey)
-               ? (raToExistingId.get(raKey) ?? nomeToExistingId.get(a.nomeNorm))
+               ? (raToExistingId.get(raKey) ?? nomeToExistingId.get(`${a.nomeNorm}|${normalizarData(a.nascimento || '')}`))
                : undefined))
           : isAEE
             // Para AEE: usa APENAS o mapa AEE; se não existir → cria UUID novo
@@ -1677,7 +1708,7 @@ export default function Importar() {
             // Regular: usa mapa normal (exclui registos AEE, que ficam no aeeToId)
             // Se o RA já existe como REMA no banco, NÃO usa nomeToExistingId como fallback
             // (evita que ATIVO e REMA do mesmo aluno partilhem o mesmo ID)
-            : (raToExistingId.get(raKey) ?? (remaToId.has(raKey) ? undefined : nomeToExistingId.get(a.nomeNorm)));
+            : (raToExistingId.get(raKey) ?? (remaToId.has(raKey) ? undefined : nomeToExistingId.get(`${a.nomeNorm}|${normalizarData(a.nascimento || '')}`)));
         // Segurança: se o aluno tem RA mas existingId ficou undefined por qualquer razão,
         // faz scan direto de existentes para nunca gerar UUID novo para um RA já cadastrado
         const safeId = (!existingId && a.ra)
