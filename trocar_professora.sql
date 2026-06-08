@@ -1,9 +1,11 @@
--- Troca professora Débora → ALINE APARECIDA na 1ª ETAPA E
-UPDATE "Turma" SET professora = 'ALINE APARECIDA'
-WHERE nome ILIKE '%1%ETAPA%E%' AND professora ILIKE '%DEBORA%';
+-- PASSO 1: Descobrir nome exato da turma
+SELECT id, nome, professora FROM "Turma" ORDER BY nome;
 
-UPDATE "Aluno" SET professora = 'ALINE APARECIDA'
-WHERE "turmaId" IN (
-  SELECT id FROM "Turma"
-  WHERE nome ILIKE '%1%ETAPA%E%'
-) AND professora ILIKE '%DEBORA%';
+-- PASSO 2 (rode DEPOIS de ver o resultado acima):
+-- Troca Débora → ALINE APARECIDA em todas as turmas com professora Débora
+--
+-- UPDATE "Turma" SET professora = 'ALINE APARECIDA'
+-- WHERE professora ILIKE '%DEBORA%';
+--
+-- UPDATE "Aluno" SET professora = 'ALINE APARECIDA'
+-- WHERE professora ILIKE '%DEBORA%';
