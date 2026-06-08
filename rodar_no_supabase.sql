@@ -1,7 +1,9 @@
--- Remove o índice único de Aluno (causa conflito com AEE+regular)
+-- RODE NO SQL EDITOR DO SUPABASE
+-- Remove índice único de Aluno(ra) — conflita com AEE+regular
+-- Mantém índice único de Turma(nome)
+
 DROP INDEX IF EXISTS aluno_ra_uniq;
 
--- Mantém só o de Turma (esse sim não tem exceção)
 CREATE UNIQUE INDEX IF NOT EXISTS turma_nome_uniq
   ON "Turma" (nome) WHERE nome <> '';
 
