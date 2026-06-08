@@ -38,6 +38,7 @@ model Aluno {
   professora          String   @default("")
   nis                 String?
   responsavel         String?
+  aee                 Boolean  @default(false)
   createdAt           DateTime @default(now()) @map("created_at")
   turma               Turma?   @relation(fields: [turmaId], references: [id], onDelete: Cascade)
   faltas              Falta[]

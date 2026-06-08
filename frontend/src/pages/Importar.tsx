@@ -1788,6 +1788,7 @@ export default function Importar() {
           professora_origem: a.professoraOrigem || '',
           turma_destino: a.turmaDestino || '',
           professora_destino: a.professoraDestino || '',
+          aee: isAEE,
         };
       });
 

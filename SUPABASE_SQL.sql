@@ -115,6 +115,9 @@ CREATE TABLE IF NOT EXISTS "Educacenso" (
 -- Cor/Raça no Aluno
 ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS cor_raca TEXT DEFAULT '';
 
+-- Sinaliza se o aluno é da Sala de Recursos (AEE) — usado pelo índice único
+ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS aee BOOLEAN DEFAULT FALSE;
+
 -- Índice único em CPF (parcial: só alunos com CPF) para upsert da Educacenso
 CREATE UNIQUE INDEX IF NOT EXISTS educacenso_cpf_uniq ON "Educacenso" (cpf) WHERE cpf <> '';
 
