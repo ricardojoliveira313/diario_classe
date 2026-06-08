@@ -1090,9 +1090,24 @@ export default function Importar() {
           //   • REMA  na turma de ORIGEM (aluno que saiu)
           //   • ATIVO na turma de DESTINO (aluno que chegou)
           // Ambos devem existir no sistema → mantemos as duas entradas separadas.
+          // ⚠️ Só vale se as turmas forem da MESMA modalidade:
+          //    Regular→Regular, AEE→AEE, EJA→EJA, Infantil→Infantil
+          //    NUNCA cruzando modalidades (ex: AEE→Regular)
           const seriesDiferentes = existente.serie && a.serie
             && normalizeStr(existente.serie) !== normalizeStr(a.serie);
-          const ehRemaDuplo = seriesDiferentes && (
+
+          const detectarModalidade = (serie: string): string => {
+            const n = normalizeStr(serie);
+            if (/^AEE\b/.test(n) || n.includes('ATENDIMENTO EDUCACIONAL')) return 'AEE';
+            if (/\bEJA\b/.test(n) || /\bALFABETIZACAO\b/.test(n) || /\bMULTISSERIADA\b/.test(n) || /\bTERMO\b/.test(n)) return 'EJA';
+            if (/\bETAPA\b/.test(n) || /\bPRE\s*ESCOLA\b/.test(n) || /\bMATERNAL\b/.test(n) || /\bBERCARIO\b/.test(n)) return 'INFANTIL';
+            return 'REGULAR';
+          };
+
+          const mesmaModalidade = seriesDiferentes
+            && detectarModalidade(existente.serie) === detectarModalidade(a.serie);
+
+          const ehRemaDuplo = seriesDiferentes && mesmaModalidade && (
             (existente.situacao === 'REMA' && a.situacao === 'ATIVO') ||
             (existente.situacao === 'ATIVO' && a.situacao === 'REMA')
           );
