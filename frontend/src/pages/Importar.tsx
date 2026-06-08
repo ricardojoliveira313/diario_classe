@@ -1596,7 +1596,7 @@ export default function Importar() {
       // AEE: alunos têm 2 registros separados (turma regular + turma AEE) — mesmo padrão que REMA
       setStatus('Atualizando cadastro de alunos...');
       const { data: existentes } = await supabase
-        .from('Aluno').select('id, ra, nome, situacao, cpf, nis, responsavel, bolsa_familia, turmaId, data_nascimento, cor_raca, deficiencia').range(0, 99999);
+        .from('Aluno').select('id, ra, nome, situacao, cpf, nis, responsavel, bolsa_familia, turmaId, data_nascimento, cor_raca, deficiencia, aee').range(0, 99999);
 
       // ─── PRÉ-LIMPEZA: remove duplicatas de RA em TODO o banco antes de importar ──
       // Roda em toda importação, independente do arquivo — garante banco sempre limpo
@@ -1608,7 +1608,8 @@ export default function Importar() {
         const raGrupos = new Map<string, Array<{ id: string; cpf?: string; nis?: string; responsavel?: string; bolsa_familia?: boolean }>>();
         for (const e of (existentes ?? [])) {
           if (!e.ra || e.situacao === 'REMA') continue;
-          if (e.turmaId && aeeturmaIds.has(e.turmaId)) continue;
+          // Exclui registos AEE: usa coluna aee como fonte primária (alinha com o índice do banco)
+          if (e.aee === true || (e.turmaId && aeeturmaIds.has(e.turmaId))) continue;
           const k = String(e.ra);
           if (!raGrupos.has(k)) raGrupos.set(k, []);
           raGrupos.get(k)!.push(e);
@@ -1659,7 +1660,7 @@ export default function Importar() {
       // Recarrega existentes do banco após a pré-limpeza — garante dados frescos
       // (o array carregado no início do PASSO 2 ficou obsoleto após as deleções)
       const { data: existentesAtualizados } = await supabase
-        .from('Aluno').select('id, ra, nome, situacao, cpf, nis, responsavel, bolsa_familia, turmaId, data_nascimento, cor_raca, deficiencia').range(0, 99999);
+        .from('Aluno').select('id, ra, nome, situacao, cpf, nis, responsavel, bolsa_familia, turmaId, data_nascimento, cor_raca, deficiencia, aee').range(0, 99999);
       const existentesFrescos = existentesAtualizados ?? existentes ?? [];
       const raToExistingId = new Map<string, string>();
       const nomeToExistingId = new Map<string, string[]>();
@@ -1679,9 +1680,9 @@ export default function Importar() {
             const turmaNome = e.turmaId ? (turmaIdToNome.get(e.turmaId) ?? '') : '';
             remaToId.set(`${String(e.ra)}|${normalizeStr(turmaNome)}`, e.id);
             rasComREMA.add(String(e.ra));
-          } else if (e.turmaId && aeeturmaIds.has(e.turmaId)) {
+          } else if (e.aee === true || (e.turmaId && aeeturmaIds.has(e.turmaId))) {
             // Registo AEE: mantém em mapa próprio, NÃO em raToExistingId
-            // Assim importações de turmas regulares nunca sobrescrevem registros AEE
+            // Usa coluna aee como fonte primária (alinha com aluno_ra_uniq que usa aee IS NOT TRUE)
             aeeToId.set(String(e.ra), e.id);
           } else {
             raToExistingId.set(String(e.ra), e.id);
@@ -1775,6 +1776,7 @@ export default function Importar() {
           ? existentesFrescos.find(e =>
               String(e.ra) === raKey &&
               e.situacao !== 'REMA' &&
+              e.aee !== true &&
               !(e.turmaId && aeeturmaIds.has(e.turmaId))
             )?.id
           : existingId;
@@ -1830,16 +1832,17 @@ export default function Importar() {
         if (rasNoBatch.length > 0) {
           const { data: existentesPorRA } = await supabase
             .from('Aluno')
-            .select('id, ra, situacao, turmaId')
+            .select('id, ra, situacao, turmaId, aee')
             .in('ra', rasNoBatch);
           if (existentesPorRA) {
-            // Mapas separados para regular e AEE — evita cruzamento quando AEE vem
-            // primeiro na query e o match.isAEE=true pula incorrectamente um ATIVO regular
+            // Mapas separados para regular e AEE.
+            // Usa coluna aee como fonte primária (alinha com aluno_ra_uniq: aee IS NOT TRUE).
+            // Fallback via aeeturmaIds para registos com aee=NULL cujo turmaId é AEE.
             const raParaIdRegular = new Map<string, string>();
             const raParaIdAEE = new Map<string, string>();
             for (const e of existentesPorRA) {
               if (!e.ra || e.situacao === 'REMA') continue;
-              const ehAEE = e.turmaId ? aeeturmaIds.has(e.turmaId) : false;
+              const ehAEE = e.aee === true || (e.turmaId ? aeeturmaIds.has(e.turmaId) : false);
               const key = String(e.ra);
               if (ehAEE) {
                 if (!raParaIdAEE.has(key)) raParaIdAEE.set(key, e.id);
