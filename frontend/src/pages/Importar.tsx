@@ -1595,6 +1595,17 @@ export default function Importar() {
       // ─── PASSO 2: Alunos — upsert por RA (preserva UUIDs → preserva faltas) ───
       // AEE: alunos têm 2 registros separados (turma regular + turma AEE) — mesmo padrão que REMA
       setStatus('Atualizando cadastro de alunos...');
+
+      // Garante coluna aee consistente antes de construir os mapas.
+      // Registos em turmas AEE com aee=NULL/FALSE conflituam com aluno_ra_uniq
+      // (o índice inclui aee IS NOT TRUE). Corrigir antes do import previne a violação.
+      {
+        const aeeIds = Array.from(aeeturmaIds);
+        if (aeeIds.length > 0) {
+          await supabase.from('Aluno').update({ aee: true }).in('turmaId', aeeIds).neq('aee', true);
+        }
+      }
+
       const { data: existentes } = await supabase
         .from('Aluno').select('id, ra, nome, situacao, cpf, nis, responsavel, bolsa_familia, turmaId, data_nascimento, cor_raca, deficiencia, aee').range(0, 99999);
 
@@ -1608,8 +1619,8 @@ export default function Importar() {
         const raGrupos = new Map<string, Array<{ id: string; cpf?: string; nis?: string; responsavel?: string; bolsa_familia?: boolean }>>();
         for (const e of (existentes ?? [])) {
           if (!e.ra || e.situacao === 'REMA') continue;
-          // Exclui registos AEE: usa coluna aee como fonte primária (alinha com o índice do banco)
-          if (e.aee === true || (e.turmaId && aeeturmaIds.has(e.turmaId))) continue;
+          // Alinha com aluno_ra_uniq: só exclui registos com aee=TRUE (coluna, não turmaId)
+          if (e.aee === true) continue;
           const k = String(e.ra);
           if (!raGrupos.has(k)) raGrupos.set(k, []);
           raGrupos.get(k)!.push(e);
@@ -1680,11 +1691,12 @@ export default function Importar() {
             const turmaNome = e.turmaId ? (turmaIdToNome.get(e.turmaId) ?? '') : '';
             remaToId.set(`${String(e.ra)}|${normalizeStr(turmaNome)}`, e.id);
             rasComREMA.add(String(e.ra));
-          } else if (e.aee === true || (e.turmaId && aeeturmaIds.has(e.turmaId))) {
-            // Registo AEE: mantém em mapa próprio, NÃO em raToExistingId
-            // Usa coluna aee como fonte primária (alinha com aluno_ra_uniq que usa aee IS NOT TRUE)
+          } else if (e.aee === true) {
+            // Registo AEE (coluna aee=TRUE, alinha com aluno_ra_uniq: WHERE aee IS NOT TRUE)
+            // Usa apenas a coluna — turmaId sozinho não é suficiente porque o índice usa aee
             aeeToId.set(String(e.ra), e.id);
           } else {
+            // aee=FALSE ou aee=NULL: está no scope do índice único → raToExistingId
             raToExistingId.set(String(e.ra), e.id);
           }
         }
@@ -1842,7 +1854,7 @@ export default function Importar() {
             const raParaIdAEE = new Map<string, string>();
             for (const e of existentesPorRA) {
               if (!e.ra || e.situacao === 'REMA') continue;
-              const ehAEE = e.aee === true || (e.turmaId ? aeeturmaIds.has(e.turmaId) : false);
+              const ehAEE = e.aee === true; // só coluna, alinha com aluno_ra_uniq
               const key = String(e.ra);
               if (ehAEE) {
                 if (!raParaIdAEE.has(key)) raParaIdAEE.set(key, e.id);
