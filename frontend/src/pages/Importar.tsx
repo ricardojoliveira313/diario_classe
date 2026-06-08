@@ -1820,6 +1820,44 @@ export default function Importar() {
       const upsertDedup = Array.from(
         alunosParaUpsert.reduce((m, a) => { m.set(a.id, a); return m; }, new Map<string, typeof alunosParaUpsert[0]>()).values()
       );
+
+      // ─── SEGURANÇA: verifica se algum RA no batch já existe no banco ─────────
+      // Impede INSERTs com RA duplicado que violariam aluno_ra_uniq.
+      // Caso os mapas em memória tenham falhado em achar o registro existente,
+      // a consulta direta ao banco resolve antes do upsert.
+      {
+        const rasNoBatch = upsertDedup.filter(a => a.ra).map(a => a.ra as number);
+        if (rasNoBatch.length > 0) {
+          const { data: existentesPorRA } = await supabase
+            .from('Aluno')
+            .select('id, ra, situacao, turmaId')
+            .in('ra', rasNoBatch);
+          if (existentesPorRA) {
+            const raParaId = new Map<string, { id: string; isAEE: boolean }>();
+            for (const e of existentesPorRA) {
+              if (!e.ra) continue;
+              if (e.situacao === 'REMA') continue;
+              const ehAEE = e.turmaId ? aeeturmaIds.has(e.turmaId) : false;
+              const key = String(e.ra);
+              if (!raParaId.has(key)) {
+                raParaId.set(key, { id: e.id, isAEE: ehAEE });
+              }
+            }
+            for (const a of upsertDedup) {
+              if (!a.ra) continue;
+              const raStr = String(a.ra);
+              const match = raParaId.get(raStr);
+              if (!match) continue;
+              if (a.id === match.id) continue;
+              const uuidBatch = new Set(upsertDedup.map(x => x.id));
+              if (uuidBatch.has(match.id)) continue;
+              if (match.isAEE && !a.aee) continue;
+              a.id = match.id;
+            }
+          }
+        }
+      }
+
       for (let i = 0; i < upsertDedup.length; i += 80) {
         const { error } = await supabase
           .from('Aluno')
