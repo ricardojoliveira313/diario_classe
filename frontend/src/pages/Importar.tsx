@@ -749,6 +749,17 @@ export default function Importar() {
             const tf = allText.match(/(\d+[ª°º]?\s*(?:ETAPA|ANO|SÉRIE|FASE)\s*.+?(?:MANHA|TARDE|ANUAL|INTEGRAL|NOITE))/i);
             if (tf) serie = tf[1].trim();
           }
+          // EJA: extrai número de série do nome da turma ("SÉRIE 10 - 3° TERMO...")
+          // e mapeia directamente para a turma correcta antes de processar as linhas
+          {
+            const m = serie.match(/\bS[EÉ]RIE\s+(\d+)\b/i);
+            if (m) {
+              const n = parseInt(m[1]);
+              if (n === 9) serie = 'EJA I ALFABETIZACAO';
+              else if (n === 10) serie = 'EJA I POS ALFABETIZACAO';
+            }
+          }
+
           // Pega todas as tabelas
           const tables = doc.querySelectorAll('table');
           for (const table of tables) {
@@ -764,6 +775,9 @@ export default function Importar() {
               if (hasNome && hasRA) { headerIdx = i; headers.push(...texts); break; }
             }
             if (headerIdx < 0) continue;
+            // Índice da coluna "Série" no cabeçalho para desambiguação EJA por linha
+            const normHdr = (h: string) => h.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().trim();
+            const serieColIdx = headers.findIndex(h => normHdr(h) === 'SERIE');
             for (let i = headerIdx + 1; i < rows.length; i++) {
               const cells = rows[i].querySelectorAll('td');
               const vals = Array.from(cells).map(c => (c.textContent || '').trim());
@@ -779,6 +793,13 @@ export default function Importar() {
                 else if (/^(ATIVO|N\s?COM|BAIXA|REMA|TRANSF)/.test(v.toUpperCase())) situ = v;
                 else if (v.length > 2 && !/^\d/.test(v) && !nasc) defi = v;
               }
+              // Desambiguação por coluna Série: 9 = Alfabetização, 10 = Pós-Alfabetização
+              let rowSerie = serie;
+              if (serieColIdx >= 0 && serieColIdx < vals.length) {
+                const sNum = parseInt(vals[serieColIdx]);
+                if (sNum === 9) rowSerie = 'EJA I ALFABETIZACAO';
+                else if (sNum === 10) rowSerie = 'EJA I POS ALFABETIZACAO';
+              }
               const ra = parseInt(raStr) || null;
               const key = ra ? `RA:${ra}` : `${normalizeNome(nome)}|${nasc}`;
               if (processados.has(key)) continue;
@@ -786,7 +807,7 @@ export default function Importar() {
               alunos.push({
                 nome, nomeNorm: normalizeNome(nome),
                 ra, numero: 0,
-                nascimento: nasc, serie,
+                nascimento: nasc, serie: rowSerie,
                 professora: '', situacao: situ, deficiencia: defi,
                 bolsaFamilia: false,
                 dataInicioMatricula: '', dataFimMatricula: '', dataMovimentacao: '',
