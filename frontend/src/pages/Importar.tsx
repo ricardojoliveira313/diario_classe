@@ -534,8 +534,11 @@ export default function Importar() {
               // Planilha de diário mensal numera apenas ativos (pula BXTR/REMA) — não é o Nr real da SED.
               // Só usa o Nº de fontes que contenham a lista completa (ex: exportação SED).
               const numero = isDiario ? 0 : (parseInt(String(nr['Nº'] ?? nr['N°'] ?? nr['NR'] ?? nr['NUMERO'] ?? nr['CHAMADA'] ?? '')) || 0);
-              const serie = String(nr['SERIE'] ?? nr['TURMA'] ?? '').trim();
-              // Séries numéricas puras (ex: "0", "10") são códigos internos do SED para EJA
+              let serie = String(nr['SERIE'] ?? nr['TURMA'] ?? '').trim();
+              // EJA: séries numéricas 9 e 10 → turmas específicas
+              if (serie === '9') serie = 'EJA I ALFABETIZACAO';
+              else if (serie === '10') serie = 'EJA I POS ALFABETIZACAO';
+              // Séries numéricas puras (ex: "0", "5") são códigos internos do SED para EJA
               // — não correspondem a nenhum nome de turma e causam turmaId=null se importados
               if (!nome || /^\d{1,3}$/.test(serie)) continue;
 
