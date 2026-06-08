@@ -1,16 +1,12 @@
 -- ============================================================
--- CORREÇÃO: REMOVE REMA CRUZANDO MODALIDADES
--- REMA só vale dentro da mesma modalidade:
---   Regular→Regular, AEE→AEE, EJA→EJA, Infantil→Infantil
+-- LIMPA REMAs QUE CRUZAM MODALIDADES (dados incorretos)
+-- Rode no SQL Editor do Supabase
 -- ============================================================
 
--- ─── Identifica e lista os REMAs errados ─────────────────────
-SELECT 'REMA CRUZANDO MODALIDADE — SERÁ REMOVIDO' AS acao,
-  a1.ra, a1.nome,
-  COALESCE(t1.tipo, 'REGULAR') AS tipo_origem,
-  t1.nome AS turma_origem,
-  COALESCE(t2.tipo, 'REGULAR') AS tipo_destino,
-  t2.nome AS turma_destino
+-- ─── 1: LISTA os REMAs errados que serão removidos ──────────
+SELECT 'SERA REMOVIDO' AS acao, a1.id, a1.ra, a1.nome,
+  t1.nome AS turma_rema, COALESCE(t1.tipo, 'REGULAR') AS tipo_rema,
+  t2.nome AS turma_ativo, COALESCE(t2.tipo, 'REGULAR') AS tipo_ativo
 FROM "Aluno" a1
 JOIN "Aluno" a2 ON a1.ra = a2.ra
 LEFT JOIN "Turma" t1 ON t1.id = a1."turmaId"
@@ -20,40 +16,40 @@ WHERE a1.situacao = 'REMA' AND a2.situacao = 'ATIVO'
     (COALESCE(t1.tipo, 'REGULAR') = 'AEE' AND COALESCE(t2.tipo, 'REGULAR') <> 'AEE')
     OR
     (COALESCE(t2.tipo, 'REGULAR') = 'AEE' AND COALESCE(t1.tipo, 'REGULAR') <> 'AEE')
-    OR
-    (COALESCE(t1.tipo, 'REGULAR') = 'REGULAR' AND t2.tipo = 'EJA')
-    OR
-    (t1.tipo = 'EJA' AND COALESCE(t2.tipo, 'REGULAR') = 'REGULAR')
   )
 ORDER BY a1.nome;
 
--- ─── 2: Remove os REMAs errados (mantém ATIVO) ──────────────
--- Rode ABAIXO APENAS se a lista acima estiver correta
+-- ─── 2: REMOVE os REMAs errados (mantém os ATIVOS) ─────────
+-- DESCOMENTE e rode ABAIXO depois de verificar a lista acima
 
--- DELETE FROM "Aluno" WHERE id IN (
---   SELECT a1.id FROM "Aluno" a1
---   JOIN "Aluno" a2 ON a1.ra = a2.ra
---   LEFT JOIN "Turma" t1 ON t1.id = a1."turmaId"
---   LEFT JOIN "Turma" t2 ON t2.id = a2."turmaId"
---   WHERE a1.situacao = 'REMA' AND a2.situacao = 'ATIVO'
---     AND (
---       (COALESCE(t1.tipo, 'REGULAR') = 'AEE' AND COALESCE(t2.tipo, 'REGULAR') <> 'AEE')
---       OR
---       (COALESCE(t2.tipo, 'REGULAR') = 'AEE' AND COALESCE(t1.tipo, 'REGULAR') <> 'AEE')
---     )
--- );
+BEGIN;
+DELETE FROM "Aluno" WHERE id IN (
+  SELECT a1.id FROM "Aluno" a1
+  JOIN "Aluno" a2 ON a1.ra = a2.ra
+  LEFT JOIN "Turma" t1 ON t1.id = a1."turmaId"
+  LEFT JOIN "Turma" t2 ON t2.id = a2."turmaId"
+  WHERE a1.situacao = 'REMA' AND a2.situacao = 'ATIVO'
+    AND (
+      (COALESCE(t1.tipo, 'REGULAR') = 'AEE' AND COALESCE(t2.tipo, 'REGULAR') <> 'AEE')
+      OR
+      (COALESCE(t2.tipo, 'REGULAR') = 'AEE' AND COALESCE(t1.tipo, 'REGULAR') <> 'AEE')
+    )
+);
+COMMIT;
 
--- ─── 3: Varredura de verificação ─────────────────────────────
--- (mesmas consultas do varredura_duplicatas.sql)
+-- ─── 3: Remove registros REPETIDOS (mesmo RA+mesma turma+mesma situação) ──
+BEGIN;
+DELETE FROM "Aluno" WHERE id IN (
+  SELECT id FROM (
+    SELECT id, ROW_NUMBER() OVER (
+      PARTITION BY ra, situacao, "turmaId"
+      ORDER BY created_at ASC
+    ) AS rn FROM "Aluno" WHERE ra IS NOT NULL
+  ) sub WHERE rn > 1
+);
+COMMIT;
 
-SELECT 'REMA Regular→Regular (correto)' AS tipo, COUNT(DISTINCT a1.ra) AS total
-FROM "Aluno" a1 JOIN "Aluno" a2 ON a1.ra = a2.ra AND a1.id < a2.id
-LEFT JOIN "Turma" t1 ON t1.id = a1."turmaId"
-LEFT JOIN "Turma" t2 ON t2.id = a2."turmaId"
-WHERE a1.situacao = 'REMA' AND a2.situacao = 'ATIVO'
-  AND (t1.tipo IS NULL OR t1.tipo <> 'AEE')
-  AND (t2.tipo IS NULL OR t2.tipo <> 'AEE');
-
+-- ─── 4: Verifica resultado final ─────────────────────────────
 SELECT 'REMA AEE→AEE (correto)' AS tipo, COUNT(DISTINCT a1.ra) AS total
 FROM "Aluno" a1 JOIN "Aluno" a2 ON a1.ra = a2.ra AND a1.id < a2.id
 LEFT JOIN "Turma" t1 ON t1.id = a1."turmaId"
