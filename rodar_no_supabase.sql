@@ -10,7 +10,10 @@ ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS aee BOOLEAN DEFAULT FALSE;
 
 UPDATE "Aluno" SET aee = TRUE
 WHERE aee IS DISTINCT FROM TRUE
-  AND "turmaId" IN (SELECT id FROM "Turma" WHERE tipo = 'AEE');
+  AND "turmaId" IN (
+    SELECT id FROM "Turma"
+    WHERE tipo = 'AEE' OR nome ILIKE 'AEE%'
+  );
 
 -- ─── PASSO 2: Remove REMAs que cruzam modalidades (ex: AEE→Regular) ──
 DELETE FROM "Aluno" WHERE id IN (
