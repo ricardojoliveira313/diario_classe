@@ -15,6 +15,8 @@ WHERE aee IS DISTINCT FROM TRUE
     WHERE tipo = 'AEE' OR nome ILIKE 'AEE%'
   );
 
+UPDATE "Aluno" SET aee = FALSE WHERE aee IS NULL;
+
 -- ─── PASSO 2: Remove REMAs que cruzam modalidades (ex: AEE→Regular) ──
 DELETE FROM "Aluno" WHERE id IN (
   SELECT a1.id FROM "Aluno" a1
