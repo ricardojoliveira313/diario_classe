@@ -1876,47 +1876,59 @@ export default function Importar() {
         }
       }
 
-      // ─── PROTECÇÃO DEFINITIVA CONTRA aluno_ra_uniq ──────────────────────────────
-      // Problema identificado: o check "uuidBatch.has(matchId) → skip" é demasiado
-      // conservador — quando outro registo no batch usa matchId via nome-match com RA
-      // diferente (o "ladrão"), o verdadeiro dono do RA fica com UUID novo e o INSERT
-      // falha porque o registo original ainda existe no banco com aquele RA.
-      //
-      // Solução: mapa definitivo RA→existingId a partir de existentesFrescos.
-      // Para cada registo com UUID novo cujo RA existe no banco:
-      //   - Se o ID correcto está livre no batch → atribui directamente
-      //   - Se está ocupado por um "ladrão" (RA diferente) → expulsa o ladrão (novo UUID)
-      // No final: dedup de RA (segunda passagem) remove eventuais duplicatas residuais.
+      // ─── PROTECÇÃO CONTRA aluno_ra_uniq: corrige novos UUIDs + UPDATEs com RA trocado ─
       {
         const dbIdsSet = new Set(existentesFrescos.map((e: any) => e.id));
+        // Mapa RA → id para todos os registos não-REMA não-AEE no banco
         const raParaIdFinal = new Map<string, string>();
+        // Mapa id → RA original no banco (para detectar UPDATEs que mudam RA)
+        const idParaRAOriginal = new Map<string, string>();
         for (const e of existentesFrescos) {
           if (!e.ra || e.situacao === 'REMA' || e.aee === true) continue;
           raParaIdFinal.set(String(e.ra), e.id);
+          idParaRAOriginal.set(e.id, String(e.ra));
         }
-        for (const a of upsertDedup) {
-          if (!a.ra || a.situacao === 'REMA' || a.aee) continue;
-          if (dbIdsSet.has(a.id)) continue; // ID já existe → UPDATE → sem problema
+
+        const corrigir = (a: typeof upsertDedup[0]) => {
+          if (!a.ra || a.situacao === 'REMA' || a.aee) return;
           const raStr = String(a.ra);
           const correctId = raParaIdFinal.get(raStr);
-          if (!correctId) continue; // RA novo, sem conflito
-          // RA deste registo existe no banco — precisa usar correctId, não o UUID novo
-          const ladrão = upsertDedup.find(x => x.id === correctId);
-          if (ladrão) {
-            // Outro registo está a usar correctId
-            if (ladrão.situacao === 'REMA' || ladrão.aee) {
-              // REMA ou AEE: não afecta índice — rouba o ID à mesma
-              ladrão.id = crypto.randomUUID();
-            } else if (ladrão.ra && String(ladrão.ra) !== raStr) {
-              // RA diferente → "ladrão" por nome-match; expulsá-lo
-              ladrão.id = crypto.randomUUID();
-            } else {
-              continue; // mesmo RA → dedup de RA trata a seguir
-            }
+          if (!correctId || a.id === correctId) return; // já correcto ou RA novo
+          // Verifica se correctId está a ser usado por outro registo no batch
+          const ladrao = upsertDedup.find(x => x.id === correctId);
+          if (ladrao) {
+            const ladraoCause = ladrao.situacao === 'REMA' || ladrao.aee ||
+              (ladrao.ra && String(ladrao.ra) !== raStr);
+            if (!ladraoCause) return; // mesmo RA → dedup trata
+            ladrao.id = crypto.randomUUID(); // expulsa o ladrão
           }
           a.id = correctId;
+        };
+
+        // Passagem 1: corrige registos com UUID novo
+        for (const a of upsertDedup) {
+          if (!dbIdsSet.has(a.id)) corrigir(a);
         }
-        // Dedup de RA: remove duplicatas non-REMA non-AEE com mesmo RA no batch
+        // Passagem 2: corrige UPDATEs cujo RA muda para um RA já existente no banco
+        // (ex: nome-match associou ID errado a um aluno com RA diferente)
+        for (const a of upsertDedup) {
+          if (!a.ra || a.situacao === 'REMA' || a.aee) continue;
+          if (!dbIdsSet.has(a.id)) continue; // Novo UUID: já tratado acima
+          const originalRA = idParaRAOriginal.get(a.id);
+          if (!originalRA || originalRA === String(a.ra)) continue; // RA não muda
+          const conflictId = raParaIdFinal.get(String(a.ra));
+          if (!conflictId) continue; // RA destino não existe no banco
+          // UPDATE iria trocar RA→conflito. Fixar: usar conflictId para este registo
+          const ladrao = upsertDedup.find(x => x.id === conflictId);
+          if (ladrao) {
+            if (ladrao.situacao === 'REMA' || ladrao.aee ||
+                (ladrao.ra && String(ladrao.ra) !== String(a.ra))) {
+              ladrao.id = crypto.randomUUID();
+            } else continue;
+          }
+          a.id = conflictId;
+        }
+        // Dedup final de RA
         const rasBatch = new Set<string>();
         const semDupRA = upsertDedup.filter(a => {
           if (!a.ra || a.situacao === 'REMA' || a.aee) return true;
@@ -1930,14 +1942,26 @@ export default function Importar() {
 
       for (let i = 0; i < upsertDedup.length; i += 80) {
         const chunk = upsertDedup.slice(i, i + 80);
-        const { error } = await supabase
-          .from('Aluno')
-          .upsert(chunk, { onConflict: 'id' });
+        const { error } = await supabase.from('Aluno').upsert(chunk, { onConflict: 'id' });
         if (error) {
-          const rasNoChunk = chunk
-            .filter(a => !a.aee && a.situacao !== 'REMA' && a.ra)
-            .map(a => `RA=${a.ra}(id=${a.id?.slice(0,8)})`).join(', ');
-          throw new Error(`${error.message} | chunk ${i}-${i+80}: ${rasNoChunk}`);
+          if (!error.message.includes('aluno_ra_uniq')) {
+            throw new Error(`${error.message} | chunk ${i}`);
+          }
+          // Fallback individual: identifica e corrige o conflito restante no chunk
+          for (const record of chunk) {
+            const { error: e2 } = await supabase.from('Aluno').upsert([record], { onConflict: 'id' });
+            if (e2 && e2.message.includes('aluno_ra_uniq')) {
+              // Busca o verdadeiro dono deste RA no banco e actualiza-o directamente
+              const { data: owner } = await supabase.from('Aluno')
+                .select('id').eq('ra', record.ra).neq('aee', true).limit(1).maybeSingle();
+              if (owner) {
+                const { id: _id, ...rest } = record as any;
+                await supabase.from('Aluno').update(rest).eq('id', owner.id);
+              }
+            } else if (e2) {
+              throw new Error(`Upsert individual: ${e2.message} RA=${record.ra}`);
+            }
+          }
         }
         setProgresso(Math.min(i + 80, upsertDedup.length));
         setStatus(`Atualizando alunos... ${Math.min(i + 80, upsertDedup.length)}/${upsertDedup.length}`);
