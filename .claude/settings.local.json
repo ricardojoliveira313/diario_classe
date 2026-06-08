@@ -1,7 +1,15 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(npm run *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git -C /c/diario_classe add frontend/src/pages/Dashboard.tsx frontend/src/pages/Alunos.tsx frontend/src/pages/Distorcao.tsx)",
+      "Bash(git -C /c/diario_classe commit -m ' *)",
+      "Bash(git -C /c/diario_classe status)",
+      "Bash(git -C /c/diario_classe log --oneline -5)",
+      "Bash(git -C /c/diario_classe push origin main)"
     ]
   }
 }

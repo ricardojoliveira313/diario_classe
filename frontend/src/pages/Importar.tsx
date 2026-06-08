@@ -1007,10 +1007,10 @@ export default function Importar() {
         .normalize('NFD').replace(/[̀-ͯ]/g, '')
         .replace(/[ªº°]/g, '').replace(/[-]/g, ' ').replace(/\s+/g, ' ').trim();
       const ALIASES2: Record<string, string> = {
-        'ALFABETIZACAO': 'EJA I', 'EJA ALFABETIZACAO': 'EJA I',
-        'TURMA ALFABETIZACAO': 'EJA I',
-        'POS ALFABETIZACAO': 'EJA I', 'EJA POS ALFABETIZACAO': 'EJA I',
-        'TURMA POS ALFABETIZACAO': 'EJA I',
+        'ALFABETIZACAO': 'EJA I - ALFABETIZACAO', 'EJA ALFABETIZACAO': 'EJA I - ALFABETIZACAO',
+        'TURMA ALFABETIZACAO': 'EJA I - ALFABETIZACAO',
+        'POS ALFABETIZACAO': 'EJA I - POS ALFABETIZACAO', 'EJA POS ALFABETIZACAO': 'EJA I - POS ALFABETIZACAO',
+        'TURMA POS ALFABETIZACAO': 'EJA I - POS ALFABETIZACAO',
       };
       // Catch-all para nomes SED: "MULTISSERIADA" = Alfabetização, "TERMO" = Pós-Alfa
       const applyAlias2 = (s: string): string => {
@@ -1020,8 +1020,8 @@ export default function Importar() {
           .replace(/\b(MANHA|TARDE|NOTURNO|MATUTINO|VESPERTINO|NOITE|ANUAL|INTEGRAL)\b/g, '')
           .replace(/\s+/g, ' ').trim();
         if (ALIASES2[nSemSufixo]) return ALIASES2[nSemSufixo];
-        if (n.includes('MULTISSERIADA')) return 'EJA I';
-        if (/\bTERMO\b/.test(n)) return 'EJA I';
+        if (n.includes('MULTISSERIADA')) return 'EJA I - ALFABETIZACAO';
+        if (/\bTERMO\b/.test(n)) return 'EJA I - POS ALFABETIZACAO';
         return s;
       };
       const nomesNoBanco = new Set(turmasNoBanco.map((t: any) => normT2(t.nome)));
@@ -1088,12 +1088,12 @@ export default function Importar() {
 
     // Aliases: nomes usados no SED/PDF → nome cadastrado no sistema
     const ALIASES: Record<string, string> = {
-      'ALFABETIZACAO':           'EJA I',
-      'EJA ALFABETIZACAO':       'EJA I',
-      'TURMA ALFABETIZACAO':     'EJA I',
-      'POS ALFABETIZACAO':       'EJA I',
-      'EJA POS ALFABETIZACAO':   'EJA I',
-      'TURMA POS ALFABETIZACAO': 'EJA I',
+      'ALFABETIZACAO':           'EJA I - ALFABETIZACAO',
+      'EJA ALFABETIZACAO':       'EJA I - ALFABETIZACAO',
+      'TURMA ALFABETIZACAO':     'EJA I - ALFABETIZACAO',
+      'POS ALFABETIZACAO':       'EJA I - POS ALFABETIZACAO',
+      'EJA POS ALFABETIZACAO':   'EJA I - POS ALFABETIZACAO',
+      'TURMA POS ALFABETIZACAO': 'EJA I - POS ALFABETIZACAO',
     };
     const applyAlias = (serie: string): string => {
       const n = normT(serie);
@@ -1102,8 +1102,8 @@ export default function Importar() {
         .replace(/\b(MANHA|TARDE|NOTURNO|MATUTINO|VESPERTINO|NOITE|ANUAL|INTEGRAL|SEMI\s*INTEGRAL)\b/g, '')
         .replace(/\s+/g, ' ').trim();
       if (ALIASES[nSemSufixo]) return ALIASES[nSemSufixo];
-      if (n.includes('MULTISSERIADA')) return 'EJA I';
-      if (/\bTERMO\b/.test(n)) return 'EJA I';
+      if (n.includes('MULTISSERIADA')) return 'EJA I - ALFABETIZACAO';
+      if (/\bTERMO\b/.test(n)) return 'EJA I - POS ALFABETIZACAO';
       return serie;
     };
 
