@@ -130,7 +130,7 @@ function normalizeNome(s: string): string {
   return s
     .toUpperCase().trim()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .replace(/[-]/g, ' ')
+    .replace(/[-–—]/g, ' ')
     .replace(/[.]/g, '')
     .replace(/[\u2018\u2019\u0060\u00b4']/g, ' ')
     .replace(/[\u00aa\u00ba\u00b0]/g, '')
@@ -709,7 +709,7 @@ export default function Importar() {
               // Também guarda versão simplificada: "1ª ETAPA A" → "1 ETAPA A"
               // para casar com "1ª ETAPA PRÉ- ESCOLA A MANHA ANUAL" → "1 ETAPA A"
               const keySimp = keyExato
-                .replace(/[ªº°]/g, '').replace(/[-]/g, ' ')
+                .replace(/[ªº°]/g, '').replace(/[-–—]/g, ' ')
                 .replace(/\bPRE\s*ESCOLA\b/g, '')
                 .replace(/\b(MANHA|TARDE|NOTURNO|MATUTINO|VESPERTINO|NOITE|ANUAL|INTEGRAL)\b/g, '')
                 .replace(/\s+/g, ' ').trim();
@@ -1268,7 +1268,7 @@ export default function Importar() {
         const serieNorm = normalizeStr(a.serie);
         // Versão simplificada para casar "1ª ETAPA PRÉ- ESCOLA A MANHA ANUAL" → "1 ETAPA A"
         const serieSimp = serieNorm
-          .replace(/[ªº°]/g, '').replace(/[-]/g, ' ')
+          .replace(/[ªº°]/g, '').replace(/[-–—]/g, ' ')
           .replace(/\bPRE\s*ESCOLA\b/g, '')
           .replace(/\b(MANHA|TARDE|NOTURNO|MATUTINO|VESPERTINO|NOITE|ANUAL|INTEGRAL)\b/g, '')
           .replace(/\s+/g, ' ').trim();
@@ -1340,7 +1340,7 @@ export default function Importar() {
       const turmasNoBanco = await api.getTurmas();
       const normT2 = (s: string) => (s ?? '').toUpperCase()
         .normalize('NFD').replace(/[̀-ͯ]/g, '')
-        .replace(/[ªº°]/g, '').replace(/[-]/g, ' ').replace(/\s+/g, ' ').trim();
+        .replace(/[ªº°]/g, '').replace(/[-–—]/g, ' ').replace(/\s+/g, ' ').trim();
       const ALIASES2: Record<string, string> = {
         'ALFABETIZACAO': 'EJA I ALFABETIZACAO', 'EJA ALFABETIZACAO': 'EJA I ALFABETIZACAO',
         'TURMA ALFABETIZACAO': 'EJA I ALFABETIZACAO',
@@ -1414,7 +1414,7 @@ export default function Importar() {
     const normT = (s: string) => (s ?? '').toUpperCase()
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .replace(/[ªº°]/g, '')
-      .replace(/[-]/g, ' ')
+      .replace(/[-–—]/g, ' ')
       .replace(/\s+/g, ' ').trim()
       .replace(/\bEJAI\b/g, 'EJA I');
 
