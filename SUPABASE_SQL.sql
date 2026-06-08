@@ -118,6 +118,14 @@ ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS cor_raca TEXT DEFAULT '';
 -- Índice único em CPF (parcial: só alunos com CPF) para upsert da Educacenso
 CREATE UNIQUE INDEX IF NOT EXISTS educacenso_cpf_uniq ON "Educacenso" (cpf) WHERE cpf <> '';
 
+-- Índice único em RA do Aluno (parcial: exclui REMA, que legitmamente compartilha RA com ATIVO)
+-- Impede duplicatas mesmo que a aplicação falhe em detectá-las
+CREATE UNIQUE INDEX IF NOT EXISTS aluno_ra_uniq ON "Aluno" (ra) WHERE ra IS NOT NULL AND situacao <> 'REMA';
+
+-- Índice único em nome da Turma (parcial: ignora nomes vazios)
+-- Garante que não se criem duas turmas com o mesmo nome
+CREATE UNIQUE INDEX IF NOT EXISTS turma_nome_uniq ON "Turma" (nome) WHERE nome <> '';
+
 -- RLS desativado na Educacenso (se não rodou antes)
 ALTER TABLE "Educacenso" DISABLE ROW LEVEL SECURITY;
 

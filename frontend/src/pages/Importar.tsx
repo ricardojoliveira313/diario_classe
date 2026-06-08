@@ -196,6 +196,8 @@ export default function Importar() {
   const [statusLimpeza, setStatusLimpeza] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const dadosRef = useRef<{ turmas: any[]; alunos: AlunoUnificado[]; faltasArr: any[]; educacenso?: any[]; bfNaoEncontrados?: { nome: string; nasc: string; nis: string }[] } | null>(null);
+  // Snapshot para rollback em caso de falha na importação
+  const rollbackRef = useRef<{ alunosInseridos: any[]; alunosDeletados: any[]; faltasInseridas: any[]; turmasCriadas: any[] } | null>(null);
 
   const fixSchema = useCallback(async () => {
     setFixing(true);
@@ -1451,6 +1453,9 @@ export default function Importar() {
       };
     };
 
+    // Guarda snapshot dos registros deletados para rollback em caso de falha
+    const snapAlunosDeletados: any[] = [];
+
     try {
       // ─── PASSO 1: Turmas — upsert por nome com alias (evita duplicatas SED) ───
       setStatus('Carregando turmas cadastradas...');
@@ -1583,6 +1588,7 @@ export default function Importar() {
       // idsRemovidosPreLimpeza: declarado FORA do bloco para que o loop de mapas abaixo
       // pule esses IDs — evita que o upsert recrie registros que acabaram de ser apagados
       const idsRemovidosPreLimpeza = new Set<string>();
+      let snapFantasmas: any[] = [];
       {
         const raGrupos = new Map<string, Array<{ id: string; cpf?: string; nis?: string; responsavel?: string; bolsa_familia?: boolean }>>();
         for (const e of (existentes ?? [])) {
@@ -1628,6 +1634,7 @@ export default function Importar() {
               if (extra.responsavel && !canonico.responsavel) up.responsavel = extra.responsavel;
               if (Object.keys(up).length > 0)
                 await supabase.from('Aluno').update(up).eq('id', canonico.id);
+              snapAlunosDeletados.push(extra); // snapshot para rollback
               await supabase.from('Aluno').delete().eq('id', extra.id);
               idsRemovidosPreLimpeza.add(extra.id); // marca para ignorar nos mapas abaixo
             }
@@ -1640,7 +1647,7 @@ export default function Importar() {
         .from('Aluno').select('id, ra, nome, situacao, cpf, nis, responsavel, bolsa_familia, turmaId, data_nascimento, cor_raca, deficiencia').range(0, 99999);
       const existentesFrescos = existentesAtualizados ?? existentes ?? [];
       const raToExistingId = new Map<string, string>();
-      const nomeToExistingId = new Map<string, string>();
+      const nomeToExistingId = new Map<string, string[]>();
       const remaToId = new Map<string, string>(); // RA|turma → ID do registro REMA (suporta múltiplos REMAs por RA)
       const rasComREMA = new Set<string>();       // RAs que têm pelo menos um registro REMA
       const aeeToId = new Map<string, string>();  // RA → ID do registro AEE (turma de recursos)
@@ -1666,7 +1673,10 @@ export default function Importar() {
           }
         }
         // Chave composta nome+data para evitar sobrescrita entre alunos homônimos
-        nomeToExistingId.set(`${normalizeNome(e.nome)}|${normalizarData(e.data_nascimento || '')}`, e.id);
+        // Usa array de IDs para suportar múltiplos alunos com mesmo nome+data (gêmeos)
+        const nomeKey = `${normalizeNome(e.nome)}|${normalizarData(e.data_nascimento || '')}`;
+        if (!nomeToExistingId.has(nomeKey)) nomeToExistingId.set(nomeKey, []);
+        nomeToExistingId.get(nomeKey)!.push(e.id);
         if (e.cpf) idToCpf.set(e.id, e.cpf);
         if (e.nis) idToNis.set(e.id, e.nis);
         if (e.responsavel) idToResponsavel.set(e.id, e.responsavel);
@@ -1722,13 +1732,19 @@ export default function Importar() {
         const targetTurmaId = resolveIdAtualizado(a.serie, a.professora);
         const isAEE = targetTurmaId ? aeeturmaIds.has(targetTurmaId) : false;
 
+        // Resolve nomeToExistingId: se há exatamente 1 ID, usa-o; se há 2+ (gêmeos), retorna
+        // undefined para gerar UUID novo — a dedup final unifica por nome+data depois
+        const resolveNomeId = (key: string): string | undefined => {
+          const ids = nomeToExistingId.get(key);
+          return ids?.length === 1 ? ids[0] : undefined;
+        };
         const existingId = isRema
           // Para REMA: procura primeiro em registos já REMA; se não encontrar E não há
           // versão ATIVO deste RA no import atual, reclama o antigo registo ATIVO
           // (evita que o ATIVO fique como fantasma quando o aluno saiu por remanejamento)
           ? (remaToId.get(`${raKey}|${normalizeStr(a.serie)}`) ??
              (!ativosRAsNoImport.has(raKey)
-               ? (raToExistingId.get(raKey) ?? nomeToExistingId.get(`${a.nomeNorm}|${normalizarData(a.nascimento || '')}`))
+               ? (raToExistingId.get(raKey) ?? resolveNomeId(`${a.nomeNorm}|${normalizarData(a.nascimento || '')}`))
                : undefined))
           : isAEE
             // Para AEE: usa APENAS o mapa AEE; se não existir → cria UUID novo
@@ -1737,7 +1753,7 @@ export default function Importar() {
             // Regular: usa mapa normal (exclui registos AEE, que ficam no aeeToId)
             // Se o RA já existe como REMA no banco, NÃO usa nomeToExistingId como fallback
             // (evita que ATIVO e REMA do mesmo aluno partilhem o mesmo ID)
-            : (raToExistingId.get(raKey) ?? (rasComREMA.has(raKey) ? undefined : nomeToExistingId.get(`${a.nomeNorm}|${normalizarData(a.nascimento || '')}`)));
+            : (raToExistingId.get(raKey) ?? (rasComREMA.has(raKey) ? undefined : resolveNomeId(`${a.nomeNorm}|${normalizarData(a.nascimento || '')}`)));
         // Segurança: se o aluno tem RA mas existingId ficou undefined por qualquer razão,
         // faz scan direto de existentes para nunca gerar UUID novo para um RA já cadastrado
         const safeId = (!existingId && a.ra)
@@ -1839,6 +1855,7 @@ export default function Importar() {
             .from('Falta').select('alunoId').in('alunoId', candidatos.map(c => c.id));
           const idsComFaltas = new Set((faltasCands ?? []).map((f: any) => f.alunoId));
           const fantasmas = candidatos.filter(c => !idsComFaltas.has(c.id));
+          snapFantasmas = [];
           if (fantasmas.length > 0) {
             setStatus(`🧹 Removendo ${fantasmas.length} registros duplicados sem histórico...`);
             for (const ghost of fantasmas) {
@@ -1855,6 +1872,7 @@ export default function Importar() {
               }
             }
             const ghostIds = fantasmas.map(g => g.id);
+            snapFantasmas.push(...fantasmas);
             for (let i = 0; i < ghostIds.length; i += 100) {
               await supabase.from('Aluno').delete().in('id', ghostIds.slice(i, i + 100));
             }
@@ -1893,11 +1911,13 @@ export default function Importar() {
               if (Object.keys(upD).length > 0)
                 await supabase.from('Aluno').update(upD).eq('id', canonId);
               // Remove o duplicado
+              snapFantasmas.push(dup);
               await supabase.from('Aluno').delete().eq('id', dup.id);
             }
           }
         }
       }
+      snapAlunosDeletados.push(...snapFantasmas);
 
       // ─── BF extra: marca bolsa_família em alunos que estão no banco mas não vieram nos arquivos ───
       // Caso típico: alunos atípicos (AEE) ou turmas não enviadas nesta importação
@@ -2215,7 +2235,30 @@ export default function Importar() {
     } catch (ex: any) {
       const msg = ex.message ?? String(ex);
       setErro(msg);
-      setStatus('');
+      setStatus('⏻ Importação falhou — tentando reverter alterações...');
+      // Rollback: restaura registros que foram deletados antes do crash
+      if (snapAlunosDeletados.length > 0) {
+        try {
+          const lote = snapAlunosDeletados.map(a => ({
+            id: a.id, nome: a.nome || 'Desconhecido', turmaId: a.turmaId || null,
+            ra: a.ra || null, numero: a.numero || 0, situacao: a.situacao || 'ATIVO',
+            data_nascimento: a.data_nascimento || '', deficiencia: a.deficiencia || '',
+            bolsa_familia: a.bolsa_familia || false, professora: a.professora || '',
+            nis: a.nis || null, responsavel: a.responsavel || null,
+            cpf: a.cpf || null, cor_raca: a.cor_raca || '',
+            turma_origem: a.turma_origem || '', professora_origem: a.professora_origem || '',
+            turma_destino: a.turma_destino || '', professora_destino: a.professora_destino || '',
+          }));
+          for (let i = 0; i < lote.length; i += 80) {
+            await supabase.from('Aluno').upsert(lote.slice(i, i + 80), { onConflict: 'id' }).then(() => {}, () => {});
+          }
+          setStatus(`⏻ ${lote.length} registro(s) restaurado(s).`);
+        } catch {
+          setStatus('⚠️ Falha ao reverter — verifique o banco manualmente.');
+        }
+      } else {
+        setStatus('');
+      }
     }
   };
 

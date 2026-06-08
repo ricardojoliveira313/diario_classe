@@ -17,6 +17,8 @@ model Turma {
   alunos     Aluno[]
   faltas     Falta[]
   pendentes  Pendente[]
+
+  @@unique([nome])
 }
 
 model Aluno {
