@@ -1833,29 +1833,46 @@ export default function Importar() {
             .select('id, ra, situacao, turmaId')
             .in('ra', rasNoBatch);
           if (existentesPorRA) {
-            const raParaId = new Map<string, { id: string; isAEE: boolean }>();
+            // Mapas separados para regular e AEE — evita cruzamento quando AEE vem
+            // primeiro na query e o match.isAEE=true pula incorrectamente um ATIVO regular
+            const raParaIdRegular = new Map<string, string>();
+            const raParaIdAEE = new Map<string, string>();
             for (const e of existentesPorRA) {
-              if (!e.ra) continue;
-              if (e.situacao === 'REMA') continue;
+              if (!e.ra || e.situacao === 'REMA') continue;
               const ehAEE = e.turmaId ? aeeturmaIds.has(e.turmaId) : false;
               const key = String(e.ra);
-              if (!raParaId.has(key)) {
-                raParaId.set(key, { id: e.id, isAEE: ehAEE });
+              if (ehAEE) {
+                if (!raParaIdAEE.has(key)) raParaIdAEE.set(key, e.id);
+              } else {
+                if (!raParaIdRegular.has(key)) raParaIdRegular.set(key, e.id);
               }
             }
             for (const a of upsertDedup) {
-              if (!a.ra) continue;
+              if (!a.ra || a.situacao === 'REMA') continue; // REMA nunca rouba ID de ATIVO
               const raStr = String(a.ra);
-              const match = raParaId.get(raStr);
-              if (!match) continue;
-              if (a.id === match.id) continue;
+              const matchId = a.aee ? raParaIdAEE.get(raStr) : raParaIdRegular.get(raStr);
+              if (!matchId) continue;
+              if (a.id === matchId) continue;
               const uuidBatch = new Set(upsertDedup.map(x => x.id));
-              if (uuidBatch.has(match.id)) continue;
-              if (match.isAEE && !a.aee) continue;
-              a.id = match.id;
+              if (uuidBatch.has(matchId)) continue;
+              a.id = matchId;
             }
           }
         }
+      }
+
+      // Proteção final: garante que não há dois registros non-REMA non-AEE com o mesmo
+      // RA no batch (causaria violação de aluno_ra_uniq mesmo após o check acima)
+      {
+        const rasBatch = new Set<string>();
+        const semDupRA = upsertDedup.filter(a => {
+          if (!a.ra || a.situacao === 'REMA' || a.aee) return true;
+          const k = String(a.ra);
+          if (rasBatch.has(k)) return false;
+          rasBatch.add(k);
+          return true;
+        });
+        upsertDedup.splice(0, upsertDedup.length, ...semDupRA);
       }
 
       for (let i = 0; i < upsertDedup.length; i += 80) {
