@@ -142,6 +142,7 @@ export const FERIADOS_MOVEIS: Record<number, Record<string, string>> = {
   2026: {
     '02-16': 'Emenda Carnaval',
     '02-17': 'Carnaval',
+    '02-18': 'Reunião Pedagógica',
     '04-03': 'Sexta-feira Santa',
     '04-20': 'Emenda Tiradentes',
     '06-04': 'Corpus Christi',
@@ -170,9 +171,9 @@ export function getFeriado(ano: number, mes: number, dia: number): string | null
 }
 
 export function isRecesso(ano: number, mes: number, dia: number): string | null {
-  const data = new Date(ano, mes - 1, dia);
+  const dataStr = `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
   for (const r of (RECESSO_ESCOLAR[ano] ?? [])) {
-    if (data >= new Date(r.inicio) && data <= new Date(r.fim)) return r.descricao;
+    if (dataStr >= r.inicio && dataStr <= r.fim) return r.descricao;
   }
   return null;
 }
@@ -196,15 +197,15 @@ export function getDiasLetivos(mes: number, ano: number): number {
 // Compatibilidade retroativa
 export const DIAS_LETIVOS: Record<number, number> = DIAS_LETIVOS_ANO[2026];
 
-// ── Ordenação pedagógica das turmas — EMEIEF Luiz Gonzaga ──────────────────
-// Ordem: 1ªEtapa → 2ªEtapa → 1ºAno → 2ºAno → 3ºAno → 4ºAno → 5ºAno → EJA → Pós-Alfabetização
+// ── Ordenação pedagógica das turmas ─────────────────────────────────────────
+// Ordem: 1ªEtapa → 2ªEtapa → 1ºAno → … → 5ºAno → EJA/Alfa → Pós-Alfa → AEE
 export function ordemTurma(nome: string): string {
   const n = nome.toUpperCase()
     .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/[ªº°]/g, ' ')
     .replace(/\s+/g, ' ').trim();
 
-  let grupo = '99';
+  let grupo = '98'; // AEE e outros no final
   if      (/\b1\b.*ETAPA|ETAPA.*\b1\b/.test(n)) grupo = '01';
   else if (/\b2\b.*ETAPA|ETAPA.*\b2\b/.test(n)) grupo = '02';
   else if (/\b1\b.*ANO/.test(n))  grupo = '03';
@@ -212,9 +213,14 @@ export function ordemTurma(nome: string): string {
   else if (/\b3\b.*ANO/.test(n))  grupo = '05';
   else if (/\b4\b.*ANO/.test(n))  grupo = '06';
   else if (/\b5\b.*ANO/.test(n))  grupo = '07';
-  // PÓS-ALFABETIZAÇÃO deve vir ANTES de EJA — o nome pode conter ambos
+  // Alfabetização (EJA I / EJAI) vem antes de Pós-Alfabetização
+  else if (/\bEJAI\b|ALFABET/.test(n) && !/POS.{0,5}ALFABET/.test(n)) grupo = '08';
+  // Pós-Alfabetização
   else if (/POS.{0,5}ALFABET/.test(n)) grupo = '09';
-  else if (/\bEJA\b/.test(n))     grupo = '08';
+  // EJA genérico (sem ser alfa/pós-alfa)
+  else if (/\bEJA\b/.test(n)) grupo = '08';
+  // AEE — sala de recursos sempre no final
+  else if (/^AEE\b/.test(n)) grupo = '99';
 
   const periodo = n.includes('MANHA') ? '1'
     : n.includes('TARDE')    ? '2'

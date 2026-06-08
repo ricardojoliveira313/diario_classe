@@ -88,6 +88,12 @@ ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS rendimento          TEXT DEFAULT NU
 
 ALTER TABLE "Turma" ADD COLUMN IF NOT EXISTS professora TEXT DEFAULT '';
 ALTER TABLE "Turma" ADD COLUMN IF NOT EXISTS periodo    TEXT DEFAULT '';
+-- Tipo da turma: REGULAR (padrão), AEE (Sala de Recursos), EJA (Alfabetização/Pós-Alfa)
+ALTER TABLE "Turma" ADD COLUMN IF NOT EXISTS tipo TEXT DEFAULT 'REGULAR';
+-- Define tipo='AEE' em todas as turmas cujo nome começa por AEE (idempotente)
+UPDATE "Turma" SET tipo = 'AEE'
+  WHERE (nome ILIKE 'AEE%' OR nome ILIKE '%ATENDIMENTO EDUCACIONAL%')
+    AND (tipo IS NULL OR tipo <> 'AEE');
 
 -- Permissões por página para cada usuário viewer (null = todas liberadas)
 ALTER TABLE "Usuario" ADD COLUMN IF NOT EXISTS permissoes JSONB DEFAULT NULL;
@@ -109,8 +115,21 @@ CREATE TABLE IF NOT EXISTS "Educacenso" (
 -- Cor/Raça no Aluno
 ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS cor_raca TEXT DEFAULT '';
 
+-- Sinaliza se o aluno é da Sala de Recursos (AEE) — usado pelo índice único
+ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS aee BOOLEAN DEFAULT FALSE;
+
 -- Índice único em CPF (parcial: só alunos com CPF) para upsert da Educacenso
 CREATE UNIQUE INDEX IF NOT EXISTS educacenso_cpf_uniq ON "Educacenso" (cpf) WHERE cpf <> '';
+
+-- Índice único em RA do Aluno (parcial: exclui REMA e AEE, que legitimamente
+-- compartilham RA com ATIVO regular)
+-- Impede duplicatas entre alunos regulares mesmo que a aplicação falhe
+CREATE UNIQUE INDEX IF NOT EXISTS aluno_ra_uniq ON "Aluno" (ra)
+  WHERE ra IS NOT NULL AND situacao <> 'REMA' AND aee IS NOT TRUE;
+
+-- Índice único em nome da Turma (parcial: ignora nomes vazios)
+-- Garante que não se criem duas turmas com o mesmo nome
+CREATE UNIQUE INDEX IF NOT EXISTS turma_nome_uniq ON "Turma" (nome) WHERE nome <> '';
 
 -- RLS desativado na Educacenso (se não rodou antes)
 ALTER TABLE "Educacenso" DISABLE ROW LEVEL SECURITY;
