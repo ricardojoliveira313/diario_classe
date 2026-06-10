@@ -568,29 +568,21 @@ export default function Importar() {
           nr['INICIO DA MATRICULA'] ??
           nr['INICIO MATRICULA'] ??
           nr['DATA DA MATRICULA'] ??
+          nr['DATA MATRICULA'] ??
+          nr['DT MATRICULA'] ??
+          nr['DATA DE MATRICULA'] ??
           nr['DT INICIO'] ??
-          nr[Object.keys(nr).find(k =>
-            k.replace(/[ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜ]/gi, c =>
-              'AAAAAAAEEEEIIIIOOOOOOUUUU'['ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜ'.indexOf(c)]
-            ).includes('INICIO') &&
-            k.replace(/[ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜ]/gi, c =>
-              'AAAAAAAEEEEIIIIOOOOOOUUUU'['ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜ'.indexOf(c)]
-            ).includes('MATRICULA')
-          ) ?? '']
+          // fuzzy: chave já normalizada (normalizeStr na leitura), basta includes
+          nr[Object.keys(nr).find(k => k.includes('INICIO') && k.includes('MATRICULA')) ?? ''] ??
+          // último recurso: qualquer coluna com MATRICULA que não seja FIM
+          nr[Object.keys(nr).find(k => k.includes('MATRICULA') && !k.includes('FIM')) ?? '']
         );
         const dataFimMatricula = fmtDate(
           nr['DATA FIM MATRICULA'] ??
           nr['DT FIM MATRICULA'] ??
           nr['FIM MATRICULA'] ??
           nr['DATA FIM'] ??
-          nr[Object.keys(nr).find(k =>
-            k.replace(/[ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜ]/gi, c =>
-              'AAAAAAAEEEEIIIIOOOOOOUUUU'['ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜ'.indexOf(c)]
-            ).includes('FIM') &&
-            k.replace(/[ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜ]/gi, c =>
-              'AAAAAAAEEEEIIIIOOOOOOUUUU'['ÀÁÂÃÄÅÆÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜ'.indexOf(c)]
-            ).includes('MATRICULA')
-          ) ?? '']
+          nr[Object.keys(nr).find(k => k.includes('FIM') && k.includes('MATRICULA')) ?? '']
         );
         const _movKey = Object.keys(nr).find(k => k.includes('MOVIMENTAC') || k.includes('MOVIM'));
         const _movVal = _movKey ? nr[_movKey] : undefined;
