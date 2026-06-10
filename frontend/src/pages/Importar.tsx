@@ -1695,7 +1695,7 @@ export default function Importar() {
       // Recarrega existentes do banco após a pré-limpeza — garante dados frescos
       // (o array carregado no início do PASSO 2 ficou obsoleto após as deleções)
       const { data: existentesAtualizados } = await supabase
-        .from('Aluno').select('id, ra, nome, situacao, cpf, nis, responsavel, bolsa_familia, turmaId, data_nascimento, cor_raca, deficiencia, aee').range(0, 99999);
+        .from('Aluno').select('id, ra, nome, situacao, cpf, nis, responsavel, bolsa_familia, turmaId, data_nascimento, cor_raca, deficiencia, aee, data_inicio_matricula, data_fim_matricula, data_movimentacao').range(0, 99999);
       const existentesFrescos = existentesAtualizados ?? existentes ?? [];
       const raToExistingId = new Map<string, string>();
       const nomeToExistingId = new Map<string, string[]>();
@@ -1709,6 +1709,9 @@ export default function Importar() {
       const idToBolsaFamilia = new Map<string, boolean>();
       const idToCorRaca = new Map<string, string>();
       const idToDefi = new Map<string, string>();
+      const idToDataInicio = new Map<string, string>();
+      const idToDataFim = new Map<string, string>();
+      const idToDataMov = new Map<string, string>();
       for (const e of existentesFrescos) {
         if (e.ra) {
           if (e.situacao === 'REMA') {
@@ -1735,6 +1738,9 @@ export default function Importar() {
         if (e.bolsa_familia) idToBolsaFamilia.set(e.id, true);
         if (e.cor_raca) idToCorRaca.set(e.id, e.cor_raca);
         if (e.deficiencia) idToDefi.set(e.id, e.deficiencia);
+        if (e.data_inicio_matricula) idToDataInicio.set(e.id, e.data_inicio_matricula);
+        if (e.data_fim_matricula) idToDataFim.set(e.id, e.data_fim_matricula);
+        if (e.data_movimentacao) idToDataMov.set(e.id, e.data_movimentacao);
       }
 
       // ─── Carrega EDUCACENSO do banco (tabela fixa) e enriquece alunos ───
@@ -1824,9 +1830,9 @@ export default function Importar() {
           ra: a.ra,
           numero: a.numero,
           data_nascimento: a.nascimento,
-          data_inicio_matricula: a.dataInicioMatricula || null,
-          data_fim_matricula: a.dataFimMatricula || null,
-          data_movimentacao: a.dataMovimentacao || null,
+          data_inicio_matricula: a.dataInicioMatricula || idToDataInicio.get(alunoId) || null,
+          data_fim_matricula: a.dataFimMatricula || idToDataFim.get(alunoId) || null,
+          data_movimentacao: a.dataMovimentacao || idToDataMov.get(alunoId) || null,
           deficiencia: a.deficiencia || idToDefi.get(alunoId) || '',
           situacao: a.situacao,
           // Preserva bolsa_família existente no banco se o arquivo não trouxer
