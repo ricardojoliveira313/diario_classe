@@ -143,7 +143,7 @@ function nomeSignificativo(nome: string): string {
 }
 
 const SITUACAO_MAP: Record<string, string> = {
-  ATIVO: 'ATIVO', REMA: 'REMA', REMANEJADO: 'REMA', 'REMANEJADA': 'REMA', 'REMANEJADO(A)': 'REMA',
+  ATIVO: 'ATIVO', REMA: 'REMA', REMANEJADO: 'REMA', 'REMANEJADA': 'REMA', 'REMANEJADO(A)': 'REMA', REMANEJAMENTO: 'REMA',
   BXTR: 'BXTR', 'BAIXA TRANSF.': 'BXTR', 'BAIXA TRANSFERENCIA': 'BXTR', 'BAIXA TRANSFER\u00caNCIA': 'BXTR',
   TRAN: 'TRAN', 'TRANSF.': 'TRAN', TRANSFERIDO: 'TRAN', TRANSFERIDA: 'TRAN',
   'N COM': 'N COM', 'NAO COMPARECEU': 'N COM', 'N\u00c3O COMPARECEU': 'N COM', 'NCOM': 'N COM',
@@ -1692,6 +1692,7 @@ export default function Importar() {
       const raToExistingId = new Map<string, string>();
       const nomeToExistingId = new Map<string, string[]>();
       const remaToId = new Map<string, string>(); // RA|turma → ID do registro REMA (suporta múltiplos REMAs por RA)
+      const remaToIdByTurmaId = new Map<string, string>(); // RA|turmaId → ID do REMA (fallback quando nome curto ≠ nome SED)
       const rasComREMA = new Set<string>();       // RAs que têm pelo menos um registro REMA
       const aeeToId = new Map<string, string>();  // RA → ID do registro AEE (turma de recursos)
       // Preserva campos cadastrados manualmente — não sobrescreve com null na importação
@@ -1708,6 +1709,7 @@ export default function Importar() {
           if (e.situacao === 'REMA') {
             const turmaNome = e.turmaId ? (turmaIdToNome.get(e.turmaId) ?? '') : '';
             remaToId.set(`${String(e.ra)}|${normalizeStr(turmaNome)}`, e.id);
+            if (e.turmaId) remaToIdByTurmaId.set(`${String(e.ra)}|${e.turmaId}`, e.id);
             rasComREMA.add(String(e.ra));
           } else if (e.aee === true) {
             // Registo AEE (coluna aee=TRUE, alinha com aluno_ra_uniq: WHERE aee IS NOT TRUE)
@@ -1791,6 +1793,7 @@ export default function Importar() {
           // versão ATIVO deste RA no import atual, reclama o antigo registo ATIVO
           // (evita que o ATIVO fique como fantasma quando o aluno saiu por remanejamento)
           ? (remaToId.get(`${raKey}|${normalizeStr(a.serie)}`) ??
+             (targetTurmaId ? remaToIdByTurmaId.get(`${raKey}|${targetTurmaId}`) : undefined) ??
              (!ativosRAsNoImport.has(raKey)
                ? (raToExistingId.get(raKey) ?? resolveNomeId(`${a.nomeNorm}|${normalizarData(a.nascimento || '')}`))
                : undefined))
@@ -1804,7 +1807,9 @@ export default function Importar() {
             : (raToExistingId.get(raKey) ?? (rasComREMA.has(raKey) ? undefined : resolveNomeId(`${a.nomeNorm}|${normalizarData(a.nascimento || '')}`)));
         // Segurança: se o aluno tem RA mas existingId ficou undefined por qualquer razão,
         // faz scan direto de existentes para nunca gerar UUID novo para um RA já cadastrado
-        const safeId = (!existingId && a.ra)
+        // safeId só actua em registos não-REMA: evita que um REMA sem ID correspondente
+        // "roube" o ID do ATIVO com o mesmo RA, causando duplicados a cada reimport.
+        const safeId = (!existingId && a.ra && !isRema)
           ? existentesFrescos.find(e =>
               String(e.ra) === raKey &&
               e.situacao !== 'REMA' &&
