@@ -525,7 +525,12 @@ export default function Importar() {
             for (const row of rows) {
               const nr: Record<string, any> = {};
               for (const [k, v] of Object.entries(row)) {
-                nr[normalizeStr(String(k).trim())] = v;
+                // Normaliza chave: maiúsculo, sem acentos, pontuação → espaço, espaços colapsados
+                const normalKey = normalizeStr(String(k).trim())
+                  .replace(/[.\-_,;:!?()/\\]/g, ' ')
+                  .replace(/\s+/g, ' ')
+                  .trim();
+                nr[normalKey] = v;
               }
 
               const isDiario = 'FREQUENCIA DOS ALUNOS(A)' in nr;
@@ -571,18 +576,21 @@ export default function Importar() {
           nr['DATA MATRICULA'] ??
           nr['DT MATRICULA'] ??
           nr['DATA DE MATRICULA'] ??
+          nr['DT INICIO MATRI'] ??
+          nr['DATA INICIO MATRI'] ??
           nr['DT INICIO'] ??
-          // fuzzy: chave já normalizada (normalizeStr na leitura), basta includes
-          nr[Object.keys(nr).find(k => k.includes('INICIO') && k.includes('MATRICULA')) ?? ''] ??
-          // último recurso: qualquer coluna com MATRICULA que não seja FIM
-          nr[Object.keys(nr).find(k => k.includes('MATRICULA') && !k.includes('FIM')) ?? '']
+          // fuzzy: usa MATRI (prefixo) para apanhar colunas truncadas ("Dt. Início Matrí.")
+          nr[Object.keys(nr).find(k => k.includes('INICIO') && k.includes('MATRI') && !k.includes('FIM')) ?? ''] ??
+          // último recurso: qualquer coluna com MATRI que não seja FIM
+          nr[Object.keys(nr).find(k => k.includes('MATRI') && !k.includes('FIM')) ?? '']
         );
         const dataFimMatricula = fmtDate(
           nr['DATA FIM MATRICULA'] ??
           nr['DT FIM MATRICULA'] ??
           nr['FIM MATRICULA'] ??
           nr['DATA FIM'] ??
-          nr[Object.keys(nr).find(k => k.includes('FIM') && k.includes('MATRICULA')) ?? '']
+          nr['DT FIM MATRI'] ??
+          nr[Object.keys(nr).find(k => k.includes('FIM') && k.includes('MATRI')) ?? '']
         );
         const _movKey = Object.keys(nr).find(k => k.includes('MOVIMENTAC') || k.includes('MOVIM'));
         const _movVal = _movKey ? nr[_movKey] : undefined;
