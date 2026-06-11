@@ -508,7 +508,9 @@ export default function Importar() {
   }
 
   // ─── PARSE: Excel ───
-  function parseExcels(files: File[]): Promise<AlunoUnificado[]> {
+  // datesOnly: mapa externo onde são guardadas datas de séries numéricas não-AEE
+  // (FUNDAMENTAL, INFANTIL) — esses alunos não entram no alunosMap, PDF é a base
+  function parseExcels(files: File[], datesOnly?: Map<string, { inicio: string; fim: string }>): Promise<AlunoUnificado[]> {
     return new Promise((resolve) => {
       const alunosMap = new Map<string, AlunoUnificado>();
       let pendentes = 0;
@@ -579,10 +581,23 @@ export default function Importar() {
               // EJA: séries numéricas 9 e 10 → turmas específicas
               if (serie === '9') serie = 'EJA I ALFABETIZACAO';
               else if (serie === '10') serie = 'EJA I POS ALFABETIZACAO';
-              // Séries numéricas (ex: "0", "1", "5") são códigos internos do SED — não
-              // correspondem a nomes de turma. Zerar para que o PDF preencha via merge por RA.
-              if (/^\d{1,3}$/.test(serie)) serie = '';
-              if (!nome) continue;
+              // AEE: série "0" é código interno do SED — usar serie vazia para que o PDF
+              // preencha o nome correto da turma via merge, mas preservar data_inicio_matricula
+              const tipoEnsinoNorm = normalizeStr(String(nr['TIPO DE ENSINO'] ?? ''));
+              if (/^\d{1,3}$/.test(serie) && tipoEnsinoNorm.includes('ATENDIMENTO')) serie = '';
+              // Séries numéricas não-AEE (FUNDAMENTAL 1-5, INFANTIL, etc.):
+              // PDF é a base — Excel só fornece datas; não entram no alunosMap
+              if (!nome || /^\d{1,3}$/.test(serie)) {
+                if (datesOnly && nome && /^\d{1,3}$/.test(String(nr['SERIE'] ?? nr['TURMA'] ?? '').trim())) {
+                  const raNum = parseInt(String(nr['RA'] ?? '')) || null;
+                  if (raNum) {
+                    const ini = fmtDate(nr[Object.keys(nr).find(k => normalizeStr(k).includes('INICIO') && normalizeStr(k).includes('MATRI') && !normalizeStr(k).includes('FIM')) ?? '']);
+                    const fim = fmtDate(nr[Object.keys(nr).find(k => normalizeStr(k).includes('FIM') && normalizeStr(k).includes('MATRI')) ?? '']);
+                    if (ini || fim) datesOnly.set(String(raNum), { inicio: ini, fim: fim });
+                  }
+                }
+                continue;
+              }
 
         const ra = parseInt(String(nr['RA'] ?? '')) || null;
         const nasc = fmtDate(nr['DATA DE NASCIMENTO'] ?? nr['DATA NASCIMENTO']);
@@ -1127,7 +1142,8 @@ export default function Importar() {
       let cpfMap = new Map<string, { cpf: string; deficiencia: string; corRaca: string }>();
       try { alunosPDF = await parsePDFs(pdfFiles); } catch (e: any) { setErro('Erro nos PDFs: ' + (e.message ?? e)); return; }
       try { alunosHTML = await parseHTMLSED(xlsFiles); } catch (e: any) { setErro('Erro nos HTML (xls): ' + (e.message ?? e)); return; }
-      try { alunosExcel = await parseExcels(xlsxFiles); } catch (e: any) { setErro('Erro nos Excel: ' + (e.message ?? e)); return; }
+      const excelDatesMap = new Map<string, { inicio: string; fim: string }>();
+      try { alunosExcel = await parseExcels(xlsxFiles, excelDatesMap); } catch (e: any) { setErro('Erro nos Excel: ' + (e.message ?? e)); return; }
       try { turmasMap = await parseTurmasProfessores(files); } catch (e: any) { setErro('Erro na planilha Turmas: ' + (e.message ?? e)); return; }
       try { bolsaMapPDF = await parseBolsaFamiliaPDF(pdfFiles); } catch (e: any) { setErro('Erro no PDF Bolsa Família: ' + (e.message ?? e)); return; }
       try { bolsaMapTXT = await parseBolsaFamiliaTXT(txtFiles); } catch (e: any) { setErro('Erro no TXT Bolsa Família: ' + (e.message ?? e)); return; }
@@ -1272,6 +1288,19 @@ export default function Importar() {
       alunosExcel.forEach(mergeAluno);
       alunosHTML.forEach(mergeAluno);
       alunosPDF.forEach(mergeAluno);
+
+      // ─── Suplementar datas do Excel para alunos vindos do PDF ──────────────
+      // excelDatesMap tem datas de séries numéricas (FUNDAMENTAL, INFANTIL) que
+      // não entraram no alunosMap — aplica apenas se o aluno não tiver a data já
+      if (excelDatesMap.size > 0) {
+        for (const a of todosAlunos.values()) {
+          if (!a.ra) continue;
+          const d = excelDatesMap.get(String(a.ra));
+          if (!d) continue;
+          if (!a.dataInicioMatricula && d.inicio) a.dataInicioMatricula = d.inicio;
+          if (!a.dataFimMatricula && d.fim) a.dataFimMatricula = d.fim;
+        }
+      }
 
       // ─── Reconciliação pós-merge: mesmo aluno com RA num arquivo e sem RA noutro ──
       // Ex: PDF extrai RA mas Excel não tem coluna RA → dois keys diferentes (RA:xxx vs NOME|data)
