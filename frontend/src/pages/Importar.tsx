@@ -585,8 +585,7 @@ export default function Importar() {
         const deficiencia = String(nr['DEFICIENCIA'] ?? '').trim();
         const professora = String(nr['PROFESSORA'] ?? '').trim();
         const bolsaFamilia = parseBool(nr['BOLSA FAMILIA'] ?? nr['BOLSA FAMLIA']);
-        const dataInicioMatricula = fmtDate(
-          nr['DATA INICIO MATRICULA'] ??
+        const _rawDataInicio = nr['DATA INICIO MATRICULA'] ??
           nr['DATA DE INICIO DA MATRICULA'] ??
           nr['DT INICIO MATRICULA'] ??
           nr['INICIO DA MATRICULA'] ??
@@ -598,11 +597,15 @@ export default function Importar() {
           nr['DT INICIO MATRI'] ??
           nr['DATA INICIO MATRI'] ??
           nr['DT INICIO'] ??
-          // fuzzy: usa MATRI (prefixo) para apanhar colunas truncadas ("Dt. Início Matrí.")
           nr[Object.keys(nr).find(k => k.includes('INICIO') && k.includes('MATRI') && !k.includes('FIM')) ?? ''] ??
-          // último recurso: qualquer coluna com MATRI que não seja FIM
-          nr[Object.keys(nr).find(k => k.includes('MATRI') && !k.includes('FIM')) ?? '']
-        );
+          nr[Object.keys(nr).find(k => k.includes('MATRI') && !k.includes('FIM')) ?? ''];
+        const dataInicioMatricula = fmtDate(_rawDataInicio);
+        // Log nas primeiras 3 linhas para diagnóstico
+        if (!nome) {} else if ((window as any).__diagCount === undefined) (window as any).__diagCount = 0;
+        if (nome && (window as any).__diagCount < 3) {
+          console.log(`[Diag] Aluno: ${nome} | raw: ${JSON.stringify(_rawDataInicio)} (${typeof _rawDataInicio}) | fmtDate: "${dataInicioMatricula}"`);
+          (window as any).__diagCount++;
+        }
         const dataFimMatricula = fmtDate(
           nr['DATA FIM MATRICULA'] ??
           nr['DT FIM MATRICULA'] ??
