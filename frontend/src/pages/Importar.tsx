@@ -579,6 +579,10 @@ export default function Importar() {
               // EJA: séries numéricas 9 e 10 → turmas específicas
               if (serie === '9') serie = 'EJA I ALFABETIZACAO';
               else if (serie === '10') serie = 'EJA I POS ALFABETIZACAO';
+              // AEE: série "0" é código interno do SED — usar serie vazia para que o PDF
+              // preencha o nome correto da turma via merge, mas preservar data_inicio_matricula
+              const tipoEnsinoNorm = normalizeStr(String(nr['TIPO DE ENSINO'] ?? ''));
+              if (/^\d{1,3}$/.test(serie) && tipoEnsinoNorm.includes('ATENDIMENTO')) serie = '';
               // Séries numéricas puras (ex: "0", "5") são códigos internos do SED para EJA
               // — não correspondem a nenhum nome de turma e causam turmaId=null se importados
               if (!nome || /^\d{1,3}$/.test(serie)) continue;
