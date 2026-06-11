@@ -526,8 +526,9 @@ export default function Importar() {
               const nr: Record<string, any> = {};
               for (const [k, v] of Object.entries(row)) {
                 // Normaliza chave: maiúsculo, sem acentos, pontuação → espaço, espaços colapsados
+                // Nota: ( ) NÃO são removidos — preserva chaves como "FREQUENCIA DOS ALUNOS(A)"
                 const normalKey = normalizeStr(String(k).trim())
-                  .replace(/[.\-_,;:!?()/\\]/g, ' ')
+                  .replace(/[.\-_,;:!?/\\]/g, ' ')
                   .replace(/\s+/g, ' ')
                   .trim();
                 nr[normalKey] = v;
