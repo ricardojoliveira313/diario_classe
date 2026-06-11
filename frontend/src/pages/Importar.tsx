@@ -1776,19 +1776,25 @@ export default function Importar() {
             idsRemovidosPreLimpeza.add(e.id);
           }
         }
-        // Fase 2: múltiplos REMA com mesmo RA+turmaId → manter apenas 1
-        const remaGrupos = new Map<string, string[]>(); // "RA|turmaId" → [ids]
+        // Fase 2: agrupar por RA|turmaNome (não por turmaId) para detectar duplicados
+        // criados quando a turma foi recriada com nova UUID em imports anteriores
+        const remaGrupos = new Map<string, Array<{ id: string; turmaId: string | null }>>();
         for (const e of (existentes ?? [])) {
           if (e.situacao !== 'REMA' || !e.ra || idsRemovidosPreLimpeza.has(e.id)) continue;
-          const k = `${String(e.ra)}|${e.turmaId ?? 'null'}`;
+          const turmaNome = e.turmaId ? (turmaIdToNome.get(e.turmaId) ?? e.turmaId) : 'null';
+          const k = `${String(e.ra)}|${turmaNome}`;
           if (!remaGrupos.has(k)) remaGrupos.set(k, []);
-          remaGrupos.get(k)!.push(e.id);
+          remaGrupos.get(k)!.push({ id: e.id, turmaId: e.turmaId ?? null });
         }
-        for (const [, ids] of remaGrupos) {
-          if (ids.length <= 1) continue;
-          for (const id of ids.slice(1)) {
-            await supabase.from('Aluno').delete().eq('id', id);
-            idsRemovidosPreLimpeza.add(id);
+        for (const [, entries] of remaGrupos) {
+          if (entries.length <= 1) continue;
+          // Preferir o registro cujo turmaId ainda existe na tabela Turma (turma atual)
+          const comTurmaAtual = entries.find(e => e.turmaId && turmaIdToNome.has(e.turmaId));
+          const manter = comTurmaAtual ?? entries[0];
+          for (const e of entries) {
+            if (e.id === manter.id) continue;
+            await supabase.from('Aluno').delete().eq('id', e.id);
+            idsRemovidosPreLimpeza.add(e.id);
           }
         }
       }
