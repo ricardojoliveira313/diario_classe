@@ -522,7 +522,7 @@ export default function Importar() {
             // ──────────────────────────────────────────────────────────────────
 
             const rows = XLSX.utils.sheet_to_json(ws, { raw: false, dateNF: 'dd/mm/yyyy' }) as any[];
-            // Diagnóstico: mostra as colunas detectadas no console para facilitar debugging
+            // Diagnóstico: mostra colunas e valores da primeira linha de dados
             if (rows.length > 0) {
               const colsDetectadas = Object.keys(rows[0]).map(k => {
                 const normalKey = normalizeStr(String(k).trim())
@@ -532,6 +532,13 @@ export default function Importar() {
                 return `"${k}" → "${normalKey}"`;
               });
               console.log(`[Import] Ficheiro: ${file.name} | Aba: ${sheetName} | Colunas detectadas:\n${colsDetectadas.join('\n')}`);
+              // Mostra valores das colunas de data na primeira linha
+              const primeiraLinha: Record<string, any> = {};
+              for (const [k, v] of Object.entries(rows[0])) {
+                const normalKey = normalizeStr(String(k).trim()).replace(/[.\-_,;:!?/\\]/g, ' ').replace(/\s+/g, ' ').trim();
+                primeiraLinha[normalKey] = v;
+              }
+              console.log(`[Import] Primeira linha — DATA INICIO MATRICULA: ${JSON.stringify(primeiraLinha['DATA INICIO MATRICULA'])} | tipo: ${typeof primeiraLinha['DATA INICIO MATRICULA']} | DATA FIM MATRICULA: ${JSON.stringify(primeiraLinha['DATA FIM MATRICULA'])}`);
             }
             for (const row of rows) {
               const nr: Record<string, any> = {};
