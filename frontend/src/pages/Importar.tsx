@@ -1731,7 +1731,24 @@ export default function Importar() {
           }
         }
       }
-      // Recarrega existentes do banco após a pré-limpeza — garante dados frescos
+      // ─── PRÉ-LIMPEZA REMA: remove registros REMA duplicados (mesmo RA + turmaId) ──
+      {
+        const remaGrupos = new Map<string, string[]>(); // "RA|turmaId" → [ids]
+        for (const e of (existentes ?? [])) {
+          if (e.situacao !== 'REMA' || !e.ra || !e.turmaId) continue;
+          const k = `${String(e.ra)}|${e.turmaId}`;
+          if (!remaGrupos.has(k)) remaGrupos.set(k, []);
+          remaGrupos.get(k)!.push(e.id);
+        }
+        for (const [, ids] of remaGrupos) {
+          if (ids.length <= 1) continue;
+          const extras = ids.slice(1); // mantém o primeiro, apaga os demais
+          for (const id of extras) {
+            await supabase.from('Aluno').delete().eq('id', id);
+            idsRemovidosPreLimpeza.add(id);
+          }
+        }
+      }
       // (o array carregado no início do PASSO 2 ficou obsoleto após as deleções)
       const { data: existentesAtualizados } = await supabase
         .from('Aluno').select('id, ra, nome, situacao, cpf, nis, responsavel, bolsa_familia, turmaId, data_nascimento, cor_raca, deficiencia, aee, data_inicio_matricula, data_fim_matricula, data_movimentacao').range(0, 99999);
@@ -1843,6 +1860,10 @@ export default function Importar() {
           // (evita que o ATIVO fique como fantasma quando o aluno saiu por remanejamento)
           ? (remaToId.get(`${raKey}|${normalizeStr(a.serie)}`) ??
              (targetTurmaId ? remaToIdByTurmaId.get(`${raKey}|${targetTurmaId}`) : undefined) ??
+             // Scan direto: cobre casos em que turmaId não estava no turmaIdToNome (turma renomeada/recriada)
+             (targetTurmaId
+               ? existentesFrescos.find(e => String(e.ra) === raKey && e.situacao === 'REMA' && e.turmaId === targetTurmaId)?.id
+               : undefined) ??
              (!ativosRAsNoImport.has(raKey)
                ? (raToExistingId.get(raKey) ?? resolveNomeId(`${a.nomeNorm}|${normalizarData(a.nascimento || '')}`))
                : undefined))
