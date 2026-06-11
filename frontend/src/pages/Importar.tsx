@@ -522,6 +522,17 @@ export default function Importar() {
             // ──────────────────────────────────────────────────────────────────
 
             const rows = XLSX.utils.sheet_to_json(ws, { raw: false, dateNF: 'dd/mm/yyyy' }) as any[];
+            // Diagnóstico: mostra as colunas detectadas no console para facilitar debugging
+            if (rows.length > 0) {
+              const colsDetectadas = Object.keys(rows[0]).map(k => {
+                const normalKey = normalizeStr(String(k).trim())
+                  .replace(/[.\-_,;:!?/\\]/g, ' ')
+                  .replace(/\s+/g, ' ')
+                  .trim();
+                return `"${k}" → "${normalKey}"`;
+              });
+              console.log(`[Import] Ficheiro: ${file.name} | Aba: ${sheetName} | Colunas detectadas:\n${colsDetectadas.join('\n')}`);
+            }
             for (const row of rows) {
               const nr: Record<string, any> = {};
               for (const [k, v] of Object.entries(row)) {
