@@ -1732,19 +1732,32 @@ export default function Importar() {
           }
         }
       }
-      // ─── PRÉ-LIMPEZA REMA: remove registros REMA duplicados (mesmo RA + turmaId) ──
+      // ─── PRÉ-LIMPEZA REMA: remove registros REMA duplicados ─────────────────────
       {
+        // Fase 1: REMA com turmaId=null são fantasmas — apagar se já existe REMA
+        // com turmaId real para o mesmo RA (criados em imports anteriores com turma não resolvida)
+        const raComRemaReal = new Set<string>();
+        for (const e of (existentes ?? [])) {
+          if (e.situacao === 'REMA' && e.ra && e.turmaId) raComRemaReal.add(String(e.ra));
+        }
+        for (const e of (existentes ?? [])) {
+          if (e.situacao !== 'REMA' || !e.ra || e.turmaId) continue; // só null turmaId
+          if (raComRemaReal.has(String(e.ra))) {
+            await supabase.from('Aluno').delete().eq('id', e.id);
+            idsRemovidosPreLimpeza.add(e.id);
+          }
+        }
+        // Fase 2: múltiplos REMA com mesmo RA+turmaId → manter apenas 1
         const remaGrupos = new Map<string, string[]>(); // "RA|turmaId" → [ids]
         for (const e of (existentes ?? [])) {
-          if (e.situacao !== 'REMA' || !e.ra || !e.turmaId) continue;
-          const k = `${String(e.ra)}|${e.turmaId}`;
+          if (e.situacao !== 'REMA' || !e.ra || idsRemovidosPreLimpeza.has(e.id)) continue;
+          const k = `${String(e.ra)}|${e.turmaId ?? 'null'}`;
           if (!remaGrupos.has(k)) remaGrupos.set(k, []);
           remaGrupos.get(k)!.push(e.id);
         }
         for (const [, ids] of remaGrupos) {
           if (ids.length <= 1) continue;
-          const extras = ids.slice(1); // mantém o primeiro, apaga os demais
-          for (const id of extras) {
+          for (const id of ids.slice(1)) {
             await supabase.from('Aluno').delete().eq('id', id);
             idsRemovidosPreLimpeza.add(id);
           }
