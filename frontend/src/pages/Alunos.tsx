@@ -58,7 +58,15 @@ export default function Alunos() {
   const [corRacaInputs, setCorRacaInputs] = useState<Record<string, string>>({});
   const [cpfSalvos, setCpfSalvos] = useState<Set<string>>(new Set());
   const [cpfSalvando, setCpfSalvando] = useState<Set<string>>(new Set());
+  const [deletandoId, setDeletandoId] = useState<string | null>(null);
   const { role, podeEditarCpf, podeEditarCorRaca } = useAuth();
+
+  const excluirAluno = async (id: string) => {
+    await supabase.from('Falta').delete().eq('alunoId', id);
+    await supabase.from('Aluno').delete().eq('id', id);
+    setAlunos(prev => prev.filter(a => a.id !== id));
+    setDeletandoId(null);
+  };
 
   const enriquecerEducacenso = async () => {
     setEnriquecendo(true);
@@ -291,7 +299,9 @@ export default function Alunos() {
     win.document.close();
   };
 
-  const COLUNAS = '44px 1fr 110px 85px 100px 40px 110px 130px 125px 90px';
+  const COLUNAS = role === 'admin'
+    ? '44px 1fr 110px 85px 100px 40px 110px 130px 125px 90px 36px'
+    : '44px 1fr 110px 85px 100px 40px 110px 130px 125px 90px';
   const formataCPF = (cpf: string) => cpf ? cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : '';
   const copiar = async (texto: string, label: string) => {
     try { await navigator.clipboard.writeText(texto); setCopiado(label); setTimeout(() => setCopiado(''), 1500); } catch {}
@@ -548,6 +558,7 @@ export default function Alunos() {
             <span>Docente</span><span>Turma</span>
             <span style={{ textAlign: 'center' }}>CPF</span>
             <span style={{ textAlign: 'center' }}>Cor/Raça</span>
+            {role === 'admin' && <span />}
           </div>
 
           {renderRows.map((item, globalIdx) =>
@@ -642,6 +653,28 @@ export default function Alunos() {
                       title={!a.cor_raca && podeEditarCorRaca ? 'Clique para adicionar Cor/Raça' : ''}>
                       {a.cor_raca || (podeEditarCorRaca ? <span style={{ color: '#3b82f6', cursor: 'pointer' }}>+ raça</span> : <span style={{ color: theme.textMuted }}>—</span>)}
                     </span>
+                    {role === 'admin' && (
+                      deletandoId === a.id ? (
+                        <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                          <button onClick={e => { e.stopPropagation(); excluirAluno(a.id); }}
+                            style={{ fontSize: 10, fontWeight: 700, background: '#ef4444', color: 'white', border: 'none', borderRadius: 3, padding: '2px 5px', cursor: 'pointer' }}>
+                            ✓
+                          </button>
+                          <button onClick={e => { e.stopPropagation(); setDeletandoId(null); }}
+                            style={{ fontSize: 10, background: theme.border, color: theme.text, border: 'none', borderRadius: 3, padding: '2px 5px', cursor: 'pointer' }}>
+                            ✕
+                          </button>
+                        </span>
+                      ) : (
+                        <button onClick={e => { e.stopPropagation(); setDeletandoId(a.id); }}
+                          title="Excluir aluno"
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: theme.textMuted, padding: '2px 4px', borderRadius: 4, lineHeight: 1 }}
+                          onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; }}
+                          onMouseLeave={e => { e.currentTarget.style.color = theme.textMuted; }}>
+                          🗑️
+                        </button>
+                      )
+                    )}
                   </div>
 
                   {/* Detalhes expandidos */}
