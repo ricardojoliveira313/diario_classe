@@ -100,15 +100,32 @@ function getMes(sheetName: string, row: any): number {
 }
 
 function fmtDate(val: any): string {
-  if (!val) return '';
+  if (val == null || val === '') return '';
   if (val instanceof Date) {
+    if (isNaN(val.getTime())) return '';
     const d = String(val.getDate()).padStart(2, '0');
     const m = String(val.getMonth() + 1).padStart(2, '0');
     return `${d}/${m}/${val.getFullYear()}`;
   }
   const s = String(val).trim();
+  if (!s || s === 'undefined' || s === 'null') return '';
+  // DD/MM/YYYY (formato brasileiro)
   const dm = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (dm) return `${dm[1].padStart(2,'0')}/${dm[2].padStart(2,'0')}/${dm[3]}`;
+  // YYYY-MM-DD ou YYYY-MM-DDTHH:MM:SS (ISO)
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+  // DD-MM-YYYY
+  const dashes = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (dashes) return `${dashes[1].padStart(2,'0')}/${dashes[2].padStart(2,'0')}/${dashes[3]}`;
+  // Número serial do Excel (ex: 46047 = 04/02/2026)
+  const num = Number(s);
+  if (!isNaN(num) && num > 1 && num < 200000) {
+    const d = new Date(Math.round((num - 25569) * 86400 * 1000));
+    if (!isNaN(d.getTime())) {
+      return `${String(d.getUTCDate()).padStart(2,'0')}/${String(d.getUTCMonth()+1).padStart(2,'0')}/${d.getUTCFullYear()}`;
+    }
+  }
   return s;
 }
 
@@ -600,11 +617,10 @@ export default function Importar() {
           nr[Object.keys(nr).find(k => k.includes('INICIO') && k.includes('MATRI') && !k.includes('FIM')) ?? ''] ??
           nr[Object.keys(nr).find(k => k.includes('MATRI') && !k.includes('FIM')) ?? ''];
         const dataInicioMatricula = fmtDate(_rawDataInicio);
-        // Log nas primeiras 3 linhas para diagnóstico
-        if (!nome) {} else if ((window as any).__diagCount === undefined) (window as any).__diagCount = 0;
-        if (nome && (window as any).__diagCount < 3) {
-          console.log(`[Diag] Aluno: ${nome} | raw: ${JSON.stringify(_rawDataInicio)} (${typeof _rawDataInicio}) | fmtDate: "${dataInicioMatricula}"`);
-          (window as any).__diagCount++;
+        // Log de diagnóstico — __diagCount é resetado no início de cada Analisar
+        if (nome && (window as any).__diagCount < 10) {
+          console.log(`[Diag] ${file.name} | Aluno: ${nome} | raw: ${JSON.stringify(_rawDataInicio)} (${typeof _rawDataInicio}) | fmtDate: "${dataInicioMatricula}" | chaves nr: ${Object.keys(nr).filter(k => k.includes('MATRI') || k.includes('INICIO')).join(', ')}`);
+          (window as any).__diagCount = ((window as any).__diagCount || 0) + 1;
         }
         const dataFimMatricula = fmtDate(
           nr['DATA FIM MATRICULA'] ??
@@ -1096,6 +1112,7 @@ export default function Importar() {
     if (files.length === 0) { setErro('Adicione ao menos 1 arquivo.'); return; }
     setErro('');
     setStatus('Analisando arquivos...');
+    (window as any).__diagCount = 0; // reset para log aparecer em todo Analisar
     try {
       const pdfFiles = files.filter(f => f.name.toLowerCase().endsWith('.pdf'));
       const xlsFiles = files.filter(f => f.name.toLowerCase().endsWith('.xls'));
@@ -1996,6 +2013,10 @@ export default function Importar() {
         });
         upsertDedup.splice(0, upsertDedup.length, ...semDupRA);
       }
+
+      // Log dos primeiros registros para confirmar data_inicio_matricula antes do upsert
+      const amostraLog = upsertDedup.filter(a => a.situacao !== 'REMA').slice(0, 5);
+      console.log('[PreUpsert] Amostra data_inicio_matricula:', amostraLog.map(a => `${a.nome}: "${a.data_inicio_matricula}"`).join(' | '));
 
       for (let i = 0; i < upsertDedup.length; i += 80) {
         const chunk = upsertDedup.slice(i, i + 80);
