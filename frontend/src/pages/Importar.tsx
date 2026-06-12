@@ -1798,54 +1798,31 @@ export default function Importar() {
           }
         }
       }
-      // (o array carregado no início do PASSO 2 ficou obsoleto após as deleções)
+      // ─── LOOKUP FRESCO: lê o banco DEPOIS da pré-limpeza ──────────────────
+      // Mapas directos RA→registo: REMA, AEE e Regular em mapas separados
+      // Sem idTo* indirectos — preservamos dados do registo existente na hora do upsert
       const { data: existentesAtualizados } = await supabase
         .from('Aluno').select('id, ra, nome, situacao, cpf, nis, responsavel, bolsa_familia, turmaId, data_nascimento, cor_raca, deficiencia, aee, data_inicio_matricula, data_fim_matricula, data_movimentacao').range(0, 99999);
       const existentesFrescos = existentesAtualizados ?? existentes ?? [];
-      const raToExistingId = new Map<string, string>();
-      const nomeToExistingId = new Map<string, string[]>();
-      const remaToId = new Map<string, string>(); // RA|turma → ID do registro REMA (suporta múltiplos REMAs por RA)
-      const remaToIdByTurmaId = new Map<string, string>(); // RA|turmaId → ID do REMA (fallback quando nome curto ≠ nome SED)
-      const rasComREMA = new Set<string>();       // RAs que têm pelo menos um registro REMA
-      const aeeToId = new Map<string, string>();  // RA → ID do registro AEE (turma de recursos)
-      // Preserva campos cadastrados manualmente — não sobrescreve com null na importação
-      const idToCpf = new Map<string, string>();
-      const idToNis = new Map<string, string>();
-      const idToResponsavel = new Map<string, string>();
-      const idToBolsaFamilia = new Map<string, boolean>();
-      const idToCorRaca = new Map<string, string>();
-      const idToDefi = new Map<string, string>();
-      const idToDataInicio = new Map<string, string>();
-      const idToDataFim = new Map<string, string>();
-      const idToDataMov = new Map<string, string>();
+      const freshRegular = new Map<string, any>();  // RA → registo (não-REMA, não-AEE)
+      const freshAEE = new Map<string, any>();      // RA → registo AEE
+      const freshRema = new Map<string, any>();     // RA|turmaNome → registo REMA
+      const freshByName = new Map<string, any[]>(); // nome|nasc → registos (para alunos sem RA)
       for (const e of existentesFrescos) {
-        if (e.ra) {
-          if (e.situacao === 'REMA') {
-            const turmaNome = e.turmaId ? (turmaIdToNome.get(e.turmaId) ?? '') : '';
-            remaToId.set(`${String(e.ra)}|${normalizeStr(turmaNome)}`, e.id);
-            if (e.turmaId) remaToIdByTurmaId.set(`${String(e.ra)}|${e.turmaId}`, e.id);
-            rasComREMA.add(String(e.ra));
-          } else if (e.aee === true || (e.turmaId && aeeturmaIds.has(e.turmaId))) {
-            aeeToId.set(String(e.ra), e.id);
-          } else {
-            // aee=FALSE ou aee=NULL: está no scope do índice único → raToExistingId
-            raToExistingId.set(String(e.ra), e.id);
-          }
-        }
-        // Chave composta nome+data para evitar sobrescrita entre alunos homônimos
-        // Usa array de IDs para suportar múltiplos alunos com mesmo nome+data (gêmeos)
         const nomeKey = `${normalizeNome(e.nome)}|${normalizarData(e.data_nascimento || '')}`;
-        if (!nomeToExistingId.has(nomeKey)) nomeToExistingId.set(nomeKey, []);
-        nomeToExistingId.get(nomeKey)!.push(e.id);
-        if (e.cpf) idToCpf.set(e.id, e.cpf);
-        if (e.nis) idToNis.set(e.id, e.nis);
-        if (e.responsavel) idToResponsavel.set(e.id, e.responsavel);
-        if (e.bolsa_familia) idToBolsaFamilia.set(e.id, true);
-        if (e.cor_raca) idToCorRaca.set(e.id, e.cor_raca);
-        if (e.deficiencia) idToDefi.set(e.id, e.deficiencia);
-        if (e.data_inicio_matricula) idToDataInicio.set(e.id, e.data_inicio_matricula);
-        if (e.data_fim_matricula) idToDataFim.set(e.id, e.data_fim_matricula);
-        if (e.data_movimentacao) idToDataMov.set(e.id, e.data_movimentacao);
+        if (!freshByName.has(nomeKey)) freshByName.set(nomeKey, []);
+        freshByName.get(nomeKey)!.push(e);
+        if (!e.ra) continue;
+        const raStr = String(e.ra);
+        if (e.situacao === 'REMA') {
+          const turmaNome = e.turmaId ? (turmaIdToNome.get(e.turmaId) ?? '') : '';
+          freshRema.set(`${raStr}|${normalizeStr(turmaNome)}`, e);
+          if (e.turmaId) freshRema.set(`${raStr}|TID:${e.turmaId}`, e);
+        } else if (e.aee === true || (e.turmaId && aeeturmaIds.has(e.turmaId))) {
+          freshAEE.set(raStr, e);
+        } else {
+          freshRegular.set(raStr, e);
+        }
       }
 
       // ─── Carrega EDUCACENSO do banco (tabela fixa) e enriquece alunos ───
@@ -1882,8 +1859,9 @@ export default function Importar() {
         }
       }
 
-      // RAs que aparecem como ATIVO (ou outra situação não-REMA) neste import
-      // Usado para evitar que o mesmo RA seja "reclamado" tanto pelo registo ATIVO como pelo REMA
+      // ─── Resolução de ID: lookup directo nos mapas frescos ──────────────────
+      // Regra: RA é a chave natural. O mapa fresco garante que nunca geramos UUID
+      // novo para um RA que já existe no banco → zero duplicados por RA.
       const ativosRAsNoImport = new Set<string>(
         alunos.filter(a => a.ra && a.situacao !== 'REMA').map(a => String(a.ra))
       );
@@ -1891,50 +1869,35 @@ export default function Importar() {
       const alunosParaUpsert = alunos.map(a => {
         const isRema = a.situacao === 'REMA';
         const raKey = String(a.ra ?? '');
-        // Resolve turma de destino ANTES de decidir qual registro reutilizar
         const targetTurmaId = resolveIdAtualizado(a.serie, a.professora);
         const isAEE = targetTurmaId ? aeeturmaIds.has(targetTurmaId) : false;
 
-        // Resolve nomeToExistingId: se há exatamente 1 ID, usa-o; se há 2+ (gêmeos), retorna
-        // undefined para gerar UUID novo — a dedup final unifica por nome+data depois
-        const resolveNomeId = (key: string): string | undefined => {
-          const ids = nomeToExistingId.get(key);
-          return ids?.length === 1 ? ids[0] : undefined;
-        };
-        const existingId = isRema
-          // Para REMA: procura primeiro em registos já REMA; se não encontrar E não há
-          // versão ATIVO deste RA no import atual, reclama o antigo registo ATIVO
-          // (evita que o ATIVO fique como fantasma quando o aluno saiu por remanejamento)
-          ? (remaToId.get(`${raKey}|${normalizeStr(a.serie)}`) ??
-             (targetTurmaId ? remaToIdByTurmaId.get(`${raKey}|${targetTurmaId}`) : undefined) ??
-             // Scan direto: cobre casos em que turmaId não estava no turmaIdToNome (turma renomeada/recriada)
-             (targetTurmaId
-               ? existentesFrescos.find(e => String(e.ra) === raKey && e.situacao === 'REMA' && e.turmaId === targetTurmaId)?.id
-               : undefined) ??
-             (!ativosRAsNoImport.has(raKey)
-               ? (raToExistingId.get(raKey) ?? resolveNomeId(`${a.nomeNorm}|${normalizarData(a.nascimento || '')}`))
-               : undefined))
-          : isAEE
-            // Para AEE: usa APENAS o mapa AEE; se não existir → cria UUID novo
-            // Nunca sobrescreve o registo de turma regular do mesmo aluno
-            ? aeeToId.get(raKey)
-            // Regular: usa mapa normal (exclui registos AEE, que ficam no aeeToId)
-            // Se o RA já existe como REMA no banco, NÃO usa nomeToExistingId como fallback
-            // (evita que ATIVO e REMA do mesmo aluno partilhem o mesmo ID)
-            : (raToExistingId.get(raKey) ?? (rasComREMA.has(raKey) ? undefined : resolveNomeId(`${a.nomeNorm}|${normalizarData(a.nascimento || '')}`)));
-        // Segurança: se o aluno tem RA mas existingId ficou undefined por qualquer razão,
-        // faz scan direto de existentes para nunca gerar UUID novo para um RA já cadastrado
-        // safeId só actua em registos não-REMA: evita que um REMA sem ID correspondente
-        // "roube" o ID do ATIVO com o mesmo RA, causando duplicados a cada reimport.
-        const safeId = (!existingId && a.ra && !isRema)
-          ? existentesFrescos.find(e =>
-              String(e.ra) === raKey &&
-              e.situacao !== 'REMA' &&
-              e.aee !== true &&
-              !(e.turmaId && aeeturmaIds.has(e.turmaId))
-            )?.id
-          : existingId;
-        const alunoId = safeId ?? crypto.randomUUID();
+        // Lookup directo no mapa fresco
+        let existente: any = null;
+        if (a.ra) {
+          if (isRema) {
+            existente = freshRema.get(`${raKey}|${normalizeStr(a.serie)}`)
+              ?? (targetTurmaId ? freshRema.get(`${raKey}|TID:${targetTurmaId}`) : null)
+              ?? (!ativosRAsNoImport.has(raKey) ? freshRegular.get(raKey) : null);
+          } else if (isAEE) {
+            existente = freshAEE.get(raKey);
+          } else {
+            existente = freshRegular.get(raKey);
+          }
+        }
+
+        // Fallback nome+nascimento: só para não-REMA e se candidato único (evita gêmeos)
+        if (!existente && !isRema) {
+          const nomeKey = `${a.nomeNorm}|${normalizarData(a.nascimento || '')}`;
+          const candidatos = (freshByName.get(nomeKey) ?? []).filter(c => {
+            if (c.situacao === 'REMA') return false;
+            const cIsAEE = c.aee === true || (c.turmaId && aeeturmaIds.has(c.turmaId));
+            return isAEE === cIsAEE;
+          });
+          if (candidatos.length === 1) existente = candidatos[0];
+        }
+
+        const alunoId = existente?.id ?? crypto.randomUUID();
         return {
           id: alunoId,
           nome: a.nome,
@@ -1942,19 +1905,17 @@ export default function Importar() {
           ra: a.ra,
           numero: a.numero,
           data_nascimento: a.nascimento,
-          data_inicio_matricula: a.dataInicioMatricula || idToDataInicio.get(alunoId) || null,
-          data_fim_matricula: a.dataFimMatricula || idToDataFim.get(alunoId) || null,
-          data_movimentacao: a.dataMovimentacao || idToDataMov.get(alunoId) || null,
-          deficiencia: a.deficiencia || idToDefi.get(alunoId) || '',
+          data_inicio_matricula: a.dataInicioMatricula || existente?.data_inicio_matricula || null,
+          data_fim_matricula: a.dataFimMatricula || existente?.data_fim_matricula || null,
+          data_movimentacao: a.dataMovimentacao || existente?.data_movimentacao || null,
+          deficiencia: a.deficiencia || existente?.deficiencia || '',
           situacao: a.situacao,
-          // Preserva bolsa_família existente no banco se o arquivo não trouxer
-          bolsa_familia: a.bolsaFamilia || idToBolsaFamilia.get(alunoId) || false,
+          bolsa_familia: a.bolsaFamilia || existente?.bolsa_familia || false,
           professora: a.professora,
-          // Preserva valor cadastrado manualmente no banco se o arquivo não trouxer
-          nis: a.nis || idToNis.get(alunoId) || null,
-          responsavel: a.responsavel || idToResponsavel.get(alunoId) || null,
-          cpf: a.cpf || idToCpf.get(alunoId) || null,
-          cor_raca: a.corRaca || idToCorRaca.get(alunoId) || '',
+          nis: a.nis || existente?.nis || null,
+          responsavel: a.responsavel || existente?.responsavel || null,
+          cpf: a.cpf || existente?.cpf || null,
+          cor_raca: a.corRaca || existente?.cor_raca || '',
           turma_origem: a.turmaOrigem || '',
           professora_origem: a.professoraOrigem || '',
           turma_destino: a.turmaDestino || '',
@@ -1963,128 +1924,28 @@ export default function Importar() {
         };
       });
 
-      // Garante IDs únicos: se REMA e ATIVO do mesmo RA resolveram pro mesmo ID
-      // (ex: REMA fallback reusou ID do ATIVO antigo, e ATIVO também achou esse ID),
-      // o segundo registro ganha UUID novo para não ser engolido pelo upsertDedup
+      // Garante IDs únicos no batch (REMA+ATIVO do mesmo RA → segundo ganha UUID novo)
       const idSet = new Set<string>();
       for (const a of alunosParaUpsert) {
-        if (idSet.has(a.id)) {
-          a.id = crypto.randomUUID();
-        }
+        if (idSet.has(a.id)) a.id = crypto.randomUUID();
         idSet.add(a.id);
       }
+      // Dedup por ID (último ganha)
       const upsertDedup = Array.from(
         alunosParaUpsert.reduce((m, a) => { m.set(a.id, a); return m; }, new Map<string, typeof alunosParaUpsert[0]>()).values()
       );
-
-      // ─── SEGURANÇA: verifica se algum RA no batch já existe no banco ─────────
-      // Impede INSERTs com RA duplicado que violariam aluno_ra_uniq.
-      // Caso os mapas em memória tenham falhado em achar o registro existente,
-      // a consulta direta ao banco resolve antes do upsert.
+      // Dedup por RA no batch: evita que ficheiros com RA repetido violem aluno_ra_uniq
       {
-        const rasNoBatch = upsertDedup.filter(a => a.ra).map(a => a.ra as number);
-        if (rasNoBatch.length > 0) {
-          const { data: existentesPorRA } = await supabase
-            .from('Aluno')
-            .select('id, ra, situacao, turmaId, aee')
-            .in('ra', rasNoBatch);
-          if (existentesPorRA) {
-            // Mapas separados para regular e AEE.
-            // Usa coluna aee como fonte primária (alinha com aluno_ra_uniq: aee IS NOT TRUE).
-            // Fallback via aeeturmaIds para registos com aee=NULL cujo turmaId é AEE.
-            const raParaIdRegular = new Map<string, string>();
-            const raParaIdAEE = new Map<string, string>();
-            for (const e of existentesPorRA) {
-              if (!e.ra || e.situacao === 'REMA') continue;
-              const ehAEE = e.aee === true; // só coluna, alinha com aluno_ra_uniq
-              const key = String(e.ra);
-              if (ehAEE) {
-                if (!raParaIdAEE.has(key)) raParaIdAEE.set(key, e.id);
-              } else {
-                if (!raParaIdRegular.has(key)) raParaIdRegular.set(key, e.id);
-              }
-            }
-            for (const a of upsertDedup) {
-              if (!a.ra || a.situacao === 'REMA') continue; // REMA nunca rouba ID de ATIVO
-              const raStr = String(a.ra);
-              const matchId = a.aee ? raParaIdAEE.get(raStr) : raParaIdRegular.get(raStr);
-              if (!matchId) continue;
-              if (a.id === matchId) continue;
-              const uuidBatch = new Set(upsertDedup.map(x => x.id));
-              if (uuidBatch.has(matchId)) continue;
-              a.id = matchId;
-            }
-          }
-        }
-      }
-
-      // ─── PROTECÇÃO CONTRA aluno_ra_uniq: corrige novos UUIDs + UPDATEs com RA trocado ─
-      {
-        const dbIdsSet = new Set(existentesFrescos.map((e: any) => e.id));
-        // Mapa RA → id para todos os registos não-REMA não-AEE no banco
-        const raParaIdFinal = new Map<string, string>();
-        // Mapa id → RA original no banco (para detectar UPDATEs que mudam RA)
-        const idParaRAOriginal = new Map<string, string>();
-        for (const e of existentesFrescos) {
-          if (!e.ra || e.situacao === 'REMA' || e.aee === true) continue;
-          raParaIdFinal.set(String(e.ra), e.id);
-          idParaRAOriginal.set(e.id, String(e.ra));
-        }
-
-        const corrigir = (a: typeof upsertDedup[0]) => {
-          if (!a.ra || a.situacao === 'REMA' || a.aee) return;
-          const raStr = String(a.ra);
-          const correctId = raParaIdFinal.get(raStr);
-          if (!correctId || a.id === correctId) return; // já correcto ou RA novo
-          // Verifica se correctId está a ser usado por outro registo no batch
-          const ladrao = upsertDedup.find(x => x.id === correctId);
-          if (ladrao) {
-            const ladraoCause = ladrao.situacao === 'REMA' || ladrao.aee ||
-              (ladrao.ra && String(ladrao.ra) !== raStr);
-            if (!ladraoCause) return; // mesmo RA → dedup trata
-            ladrao.id = crypto.randomUUID(); // expulsa o ladrão
-          }
-          a.id = correctId;
-        };
-
-        // Passagem 1: corrige registos com UUID novo
-        for (const a of upsertDedup) {
-          if (!dbIdsSet.has(a.id)) corrigir(a);
-        }
-        // Passagem 2: corrige UPDATEs cujo RA muda para um RA já existente no banco
-        // (ex: nome-match associou ID errado a um aluno com RA diferente)
-        for (const a of upsertDedup) {
-          if (!a.ra || a.situacao === 'REMA' || a.aee) continue;
-          if (!dbIdsSet.has(a.id)) continue; // Novo UUID: já tratado acima
-          const originalRA = idParaRAOriginal.get(a.id);
-          if (!originalRA || originalRA === String(a.ra)) continue; // RA não muda
-          const conflictId = raParaIdFinal.get(String(a.ra));
-          if (!conflictId) continue; // RA destino não existe no banco
-          // UPDATE iria trocar RA→conflito. Fixar: usar conflictId para este registo
-          const ladrao = upsertDedup.find(x => x.id === conflictId);
-          if (ladrao) {
-            if (ladrao.situacao === 'REMA' || ladrao.aee ||
-                (ladrao.ra && String(ladrao.ra) !== String(a.ra))) {
-              ladrao.id = crypto.randomUUID();
-            } else continue;
-          }
-          a.id = conflictId;
-        }
-        // Dedup final de RA
         const rasBatch = new Set<string>();
-        const semDupRA = upsertDedup.filter(a => {
+        const limpo = upsertDedup.filter(a => {
           if (!a.ra || a.situacao === 'REMA' || a.aee) return true;
           const k = String(a.ra);
           if (rasBatch.has(k)) return false;
           rasBatch.add(k);
           return true;
         });
-        upsertDedup.splice(0, upsertDedup.length, ...semDupRA);
+        upsertDedup.splice(0, upsertDedup.length, ...limpo);
       }
-
-      // Log dos primeiros registros para confirmar data_inicio_matricula antes do upsert
-      const amostraLog = upsertDedup.filter(a => a.situacao !== 'REMA').slice(0, 5);
-      console.log('[PreUpsert] Amostra data_inicio_matricula:', amostraLog.map(a => `${a.nome}: "${a.data_inicio_matricula}"`).join(' | '));
 
       for (let i = 0; i < upsertDedup.length; i += 80) {
         const chunk = upsertDedup.slice(i, i + 80);
@@ -2113,116 +1974,6 @@ export default function Importar() {
         setStatus(`Atualizando alunos... ${Math.min(i + 80, upsertDedup.length)}/${upsertDedup.length}`);
       }
 
-      // ─── DEDUPLICAÇÃO CONSERVADORA: só remove fantasmas sem histórico de faltas ───
-      // Alunos AEE têm 2 registos legítimos (turma regular + AEE) com mesmo RA → não apagar
-      // Apenas apaga registos que: mesmo RA que um registo do batch + ZERO faltas associadas
-      {
-        const batchIds = new Set(upsertDedup.map(a => a.id));
-        const batchIdsByRA = new Map<string, string[]>();
-        for (const a of upsertDedup) {
-          if (!a.ra) continue;
-          const raStr = String(a.ra);
-          if (!batchIdsByRA.has(raStr)) batchIdsByRA.set(raStr, []);
-          batchIdsByRA.get(raStr)!.push(a.id);
-        }
-        // Candidatos: no banco, fora do batch, mesmo RA que um registo do batch
-        // Excluímos: (1) registros AEE — têm 2 registros legítimos por aluno
-        //            (2) registros regulares quando o batch tem AEE para esse RA
-        const candidatos = (existentes ?? []).filter(e => {
-          if (!e.ra || batchIds.has(e.id)) return false;
-          // Nunca apaga registos em turma AEE
-          if (e.turmaId && aeeturmaIds.has(e.turmaId)) return false;
-          const batchIdsForRA = batchIdsByRA.get(String(e.ra)) ?? [];
-          if (batchIdsForRA.length === 0) return false;
-          // Nunca apaga registo regular se o batch importou AEE para este RA
-          const batchTemAEE = batchIdsForRA.some(bid => {
-            const br = upsertDedup.find(x => x.id === bid);
-            return br?.turmaId && aeeturmaIds.has(br.turmaId);
-          });
-          if (batchTemAEE) return false;
-          // Nunca apaga registo com turmaId válido quando o batch NÃO encontrou turma
-          // (turmaId=null no batch = falha de matching, não uma mudança real do aluno)
-          const batchSemTurma = batchIdsForRA.every(bid => {
-            const br = upsertDedup.find(x => x.id === bid);
-            return !br?.turmaId;
-          });
-          if (batchSemTurma && e.turmaId) return false;
-          return true;
-        });
-        if (candidatos.length > 0) {
-          // Verifica quais candidatos têm faltas (esses NÃO são apagados — podem ser AEE legítimos)
-          const { data: faltasCands } = await supabase
-            .from('Falta').select('alunoId').in('alunoId', candidatos.map(c => c.id));
-          const idsComFaltas = new Set((faltasCands ?? []).map((f: any) => f.alunoId));
-          const fantasmas = candidatos.filter(c => !idsComFaltas.has(c.id));
-          snapFantasmas = [];
-          if (fantasmas.length > 0) {
-            setStatus(`🧹 Removendo ${fantasmas.length} registros duplicados sem histórico...`);
-            for (const ghost of fantasmas) {
-              const realIds = (batchIdsByRA.get(String(ghost.ra)) ?? []).filter(bid => {
-                const br = upsertDedup.find(x => x.id === bid);
-                return br && br.situacao !== 'REMA' && !br.aee;
-              });
-              if (realIds.length !== 1) continue;
-              const realId = realIds[0];
-              const up: any = {};
-              if (ghost.bolsa_familia) up.bolsa_familia = true;
-              if (ghost.cpf) up.cpf = ghost.cpf;
-              if (ghost.nis) up.nis = ghost.nis;
-              if (ghost.responsavel) up.responsavel = ghost.responsavel;
-              if (Object.keys(up).length > 0) {
-                await supabase.from('Aluno').update(up).eq('id', realId);
-              }
-            }
-            const ghostIds = fantasmas.map(g => g.id);
-            snapFantasmas.push(...fantasmas);
-            for (let i = 0; i < ghostIds.length; i += 100) {
-              await supabase.from('Aluno').delete().in('id', ghostIds.slice(i, i + 100));
-            }
-          }
-          // ─── Duplicatas COM faltas: transfere meses em falta e elimina ────────────
-          const duplicatasComFaltas = candidatos.filter(c => idsComFaltas.has(c.id));
-          if (duplicatasComFaltas.length > 0) {
-            setStatus(`🔧 Unificando ${duplicatasComFaltas.length} aluno(s) duplicado(s) com histórico...`);
-            for (const dup of duplicatasComFaltas) {
-              const canonIds = (batchIdsByRA.get(String(dup.ra)) ?? []).filter(bid => {
-                const br = upsertDedup.find(x => x.id === bid);
-                return br && br.situacao !== 'REMA' && !br.aee;
-              });
-              if (canonIds.length !== 1) continue;
-              const canonId = canonIds[0];
-              // Meses que o canônico já tem (não transferir)
-              const { data: faltasCanon } = await supabase
-                .from('Falta').select('mes, ano').eq('alunoId', canonId);
-              const mesesCanon = new Set((faltasCanon ?? []).map((f: any) => `${f.mes}-${f.ano}`));
-              // Faltas do duplicado
-              const { data: faltasDup } = await supabase
-                .from('Falta').select('id, mes, ano').eq('alunoId', dup.id);
-              const paraTransferir: string[] = [];
-              const paraApagar: string[] = [];
-              for (const f of (faltasDup ?? [])) {
-                if (mesesCanon.has(`${f.mes}-${f.ano}`)) paraApagar.push(f.id);
-                else paraTransferir.push(f.id);
-              }
-              if (paraTransferir.length > 0)
-                await supabase.from('Falta').update({ alunoId: canonId }).in('id', paraTransferir);
-              if (paraApagar.length > 0)
-                await supabase.from('Falta').delete().in('id', paraApagar);
-              // Preserva dados manuais do duplicado no canônico
-              const upD: any = {};
-              if (dup.bolsa_familia && !idToBolsaFamilia.get(canonId)) upD.bolsa_familia = true;
-              if (dup.cpf && !idToCpf.get(canonId)) upD.cpf = dup.cpf;
-              if (dup.nis && !idToNis.get(canonId)) upD.nis = dup.nis;
-              if (dup.responsavel && !idToResponsavel.get(canonId)) upD.responsavel = dup.responsavel;
-              if (Object.keys(upD).length > 0)
-                await supabase.from('Aluno').update(upD).eq('id', canonId);
-              // Remove o duplicado
-              snapFantasmas.push(dup);
-              await supabase.from('Aluno').delete().eq('id', dup.id);
-            }
-          }
-        }
-      }
       snapAlunosDeletados.push(...snapFantasmas);
 
       // ─── BF extra: marca bolsa_família em alunos que estão no banco mas não vieram nos arquivos ───
@@ -2285,127 +2036,6 @@ export default function Importar() {
         }
       }
 
-      // ─── PASSO 2.9: DEDUPLICAÇÃO FINAL AUTO-CURATIVA ──────────────────────────
-      // Relê o banco no estado FINAL (sem dados em memória obsoletos) e unifica
-      // qualquer RA que ainda tenha mais de 1 registro regular. Roda sempre e é
-      // idempotente: independentemente de como o duplicado surgiu (bug antigo,
-      // RA repetido no PDF, importação interrompida), aqui o banco fica limpo.
-      {
-        const { data: todosAlunos } = await supabase
-          .from('Aluno').select('id, ra, nome, situacao, turmaId, cpf, nis, responsavel, bolsa_familia, data_nascimento, aee').range(0, 99999);
-
-        const idsLimposRA = new Set<string>();
-
-        // ── 2.9.1: Dedup por RA ────────────────────────────────────────────────
-        {
-          const grpRA = new Map<string, any[]>();
-          for (const a of (todosAlunos ?? [])) {
-            if (!a.ra || a.situacao === 'REMA') continue;
-            if (a.aee === true || (a.turmaId && aeeturmaIds.has(a.turmaId))) continue;
-            const k = String(a.ra);
-            if (!grpRA.has(k)) grpRA.set(k, []);
-            grpRA.get(k)!.push(a);
-          }
-          const dupsRA = Array.from(grpRA.values()).filter(g => g.length > 1);
-          if (dupsRA.length > 0) {
-            setStatus(`🧹 Limpeza final: unificando ${dupsRA.length} aluno(s) duplicado(s) por RA...`);
-            const todosIds = dupsRA.flatMap(g => g.map(a => a.id));
-            for (const id of todosIds) idsLimposRA.add(id);
-            const { data: fts } = await supabase
-              .from('Falta').select('id, alunoId, mes, ano').in('alunoId', todosIds);
-            const ftsPorAluno = new Map<string, any[]>();
-            for (const f of (fts ?? [])) {
-              if (!ftsPorAluno.has(f.alunoId)) ftsPorAluno.set(f.alunoId, []);
-              ftsPorAluno.get(f.alunoId)!.push(f);
-            }
-            for (const grupo of dupsRA) {
-              const canon = grupo.reduce((best, cur) =>
-                (ftsPorAluno.get(cur.id)?.length ?? 0) > (ftsPorAluno.get(best.id)?.length ?? 0) ? cur : best
-              );
-              const mesesCanon = new Set((ftsPorAluno.get(canon.id) ?? []).map(f => `${f.mes}-${f.ano}`));
-              for (const extra of grupo) {
-                if (extra.id === canon.id) continue;
-                const transferir: string[] = [];
-                const apagar: string[] = [];
-                for (const f of (ftsPorAluno.get(extra.id) ?? [])) {
-                  if (mesesCanon.has(`${f.mes}-${f.ano}`)) apagar.push(f.id);
-                  else { transferir.push(f.id); mesesCanon.add(`${f.mes}-${f.ano}`); }
-                }
-                if (transferir.length > 0)
-                  await supabase.from('Falta').update({ alunoId: canon.id }).in('id', transferir);
-                if (apagar.length > 0)
-                  await supabase.from('Falta').delete().in('id', apagar);
-                const up: any = {};
-                if (extra.bolsa_familia && !canon.bolsa_familia) up.bolsa_familia = true;
-                if (extra.cpf && !canon.cpf) up.cpf = extra.cpf;
-                if (extra.nis && !canon.nis) up.nis = extra.nis;
-                if (extra.responsavel && !canon.responsavel) up.responsavel = extra.responsavel;
-                if (Object.keys(up).length > 0)
-                  await supabase.from('Aluno').update(up).eq('id', canon.id);
-                await supabase.from('Aluno').delete().eq('id', extra.id);
-              }
-            }
-          }
-        }
-
-        // ── 2.9.2: Dedup por nome + data de nascimento ────────────────────────
-        // Captura alunos sem RA (ou com RA único mas mesmo nome+nasc de outro)
-        {
-          const grpNome = new Map<string, any[]>();
-          for (const a of (todosAlunos ?? [])) {
-            if (!a.nome || a.situacao === 'REMA') continue;
-            if (a.aee === true || (a.turmaId && aeeturmaIds.has(a.turmaId))) continue;
-            // Pula alunos com RA que já foram tratados na etapa 2.9.1
-            if (a.ra && idsLimposRA.has(a.id)) continue;
-            const nn = normalizeNome(a.nome);
-            const dn = normalizarData(a.data_nascimento || '');
-            if (!nn) continue;
-            const k = `${nn}|${dn}`;
-            if (!grpNome.has(k)) grpNome.set(k, []);
-            grpNome.get(k)!.push(a);
-          }
-          const dupsNome = Array.from(grpNome.values()).filter(g => g.length > 1);
-          if (dupsNome.length > 0) {
-            setStatus(`🧹 Limpeza final: unificando ${dupsNome.length} aluno(s) duplicado(s) por nome...`);
-            const todosIds = dupsNome.flatMap(g => g.map(a => a.id));
-            const { data: fts } = await supabase
-              .from('Falta').select('id, alunoId, mes, ano').in('alunoId', todosIds);
-            const ftsPorAluno = new Map<string, any[]>();
-            for (const f of (fts ?? [])) {
-              if (!ftsPorAluno.has(f.alunoId)) ftsPorAluno.set(f.alunoId, []);
-              ftsPorAluno.get(f.alunoId)!.push(f);
-            }
-            for (const grupo of dupsNome) {
-              const canon = grupo.reduce((best, cur) =>
-                (ftsPorAluno.get(cur.id)?.length ?? 0) > (ftsPorAluno.get(best.id)?.length ?? 0) ? cur : best
-              );
-              const mesesCanon = new Set((ftsPorAluno.get(canon.id) ?? []).map(f => `${f.mes}-${f.ano}`));
-              for (const extra of grupo) {
-                if (extra.id === canon.id) continue;
-                const transferir: string[] = [];
-                const apagar: string[] = [];
-                for (const f of (ftsPorAluno.get(extra.id) ?? [])) {
-                  if (mesesCanon.has(`${f.mes}-${f.ano}`)) apagar.push(f.id);
-                  else { transferir.push(f.id); mesesCanon.add(`${f.mes}-${f.ano}`); }
-                }
-                if (transferir.length > 0)
-                  await supabase.from('Falta').update({ alunoId: canon.id }).in('id', transferir);
-                if (apagar.length > 0)
-                  await supabase.from('Falta').delete().in('id', apagar);
-                const up: any = {};
-                if (extra.bolsa_familia && !canon.bolsa_familia) up.bolsa_familia = true;
-                if (extra.cpf && !canon.cpf) up.cpf = extra.cpf;
-                if (extra.nis && !canon.nis) up.nis = extra.nis;
-                if (extra.responsavel && !canon.responsavel) up.responsavel = extra.responsavel;
-                if (Object.keys(up).length > 0)
-                  await supabase.from('Aluno').update(up).eq('id', canon.id);
-                await supabase.from('Aluno').delete().eq('id', extra.id);
-              }
-            }
-          }
-        }
-      }
-
       // ─── PASSO 3: Re-ler IDs dos alunos ───
       const { data: alunosDb } = await supabase.from('Aluno').select('id, ra, nome');
       const raToId = new Map<string, string>();
@@ -2462,78 +2092,6 @@ export default function Importar() {
           .from('Falta')
           .upsert(faltasParaInserir.slice(i, i + 80), { onConflict: 'alunoId,mes,ano' });
         if (error) throw error;
-      }
-
-      // ─── LIMPEZA FINAL: garante máximo 1 ATIVO por RA ou nome+nasc ──────────
-      // Roda sempre ao final do import, usando dados frescos do banco.
-      // Se o import criou duplicados por qualquer motivo, aqui são eliminados.
-      {
-        setStatus('🧹 Verificando duplicados...');
-        const { data: todosParaLimpar } = await supabase
-          .from('Aluno').select('id, ra, nome, situacao, turmaId, cpf, nis, responsavel, bolsa_familia, data_nascimento, aee').range(0, 99999);
-        const idsDesteBatch = new Set(upsertDedup.map((a: any) => a.id));
-        const idsRemovidosAgora = new Set<string>();
-
-        // Função auxiliar: unifica grupo preservando dados manuais
-        const unificarGrupo = async (grupo: any[]) => {
-          let canon = grupo.find(a => idsDesteBatch.has(a.id) && !idsRemovidosAgora.has(a.id));
-          if (!canon) {
-            const ids = grupo.map(a => a.id).filter(id => !idsRemovidosAgora.has(id));
-            if (ids.length < 2) return;
-            const { data: ftsGrp } = await supabase
-              .from('Falta').select('alunoId').in('alunoId', ids);
-            const contagem = new Map<string, number>();
-            for (const f of (ftsGrp ?? [])) contagem.set(f.alunoId, (contagem.get(f.alunoId) ?? 0) + 1);
-            canon = grupo.reduce((best, cur) =>
-              (contagem.get(cur.id) ?? 0) > (contagem.get(best.id) ?? 0) ? cur : best
-            );
-          }
-          for (const extra of grupo) {
-            if (extra.id === canon!.id || idsRemovidosAgora.has(extra.id)) continue;
-            const up: any = {};
-            if (extra.bolsa_familia && !canon!.bolsa_familia) up.bolsa_familia = true;
-            if (extra.cpf && !canon!.cpf) up.cpf = extra.cpf;
-            if (extra.nis && !canon!.nis) up.nis = extra.nis;
-            if (extra.responsavel && !canon!.responsavel) up.responsavel = extra.responsavel;
-            if (Object.keys(up).length > 0)
-              await supabase.from('Aluno').update(up).eq('id', canon!.id);
-            await supabase.from('Aluno').delete().eq('id', extra.id);
-            idsRemovidosAgora.add(extra.id);
-          }
-        };
-
-        // RA-based
-        {
-          const grp = new Map<string, any[]>();
-          for (const a of (todosParaLimpar ?? [])) {
-            if (!a.ra || a.situacao === 'REMA') continue;
-            if (a.aee === true || (a.turmaId && aeeturmaIds.has(a.turmaId))) continue;
-            const k = String(a.ra);
-            if (!grp.has(k)) grp.set(k, []);
-            grp.get(k)!.push(a);
-          }
-          for (const grupo of Array.from(grp.values()).filter(g => g.length > 1))
-            await unificarGrupo(grupo);
-        }
-
-        // Name-based
-        {
-          const grp = new Map<string, any[]>();
-          for (const a of (todosParaLimpar ?? [])) {
-            if (idsRemovidosAgora.has(a.id)) continue;
-            if (a.situacao === 'REMA') continue;
-            if (a.aee === true || (a.turmaId && aeeturmaIds.has(a.turmaId))) continue;
-            if (!a.nome) continue;
-            const nn = normalizeNome(a.nome);
-            const dn = normalizarData(a.data_nascimento || '');
-            if (!nn) continue;
-            const k = `${nn}|${dn}`;
-            if (!grp.has(k)) grp.set(k, []);
-            grp.get(k)!.push(a);
-          }
-          for (const grupo of Array.from(grp.values()).filter(g => g.length > 1))
-            await unificarGrupo(grupo);
-        }
       }
 
       setStatus('');
