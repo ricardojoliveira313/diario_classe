@@ -288,7 +288,7 @@ export default function Importar() {
           .map((t: any) => t.id)
       );
       const { data: alunos } = await supabase
-        .from('Aluno').select('id, ra, nome, situacao, turmaId, cpf, nis, responsavel, bolsa_familia, data_nascimento').range(0, 99999);
+        .from('Aluno').select('id, ra, nome, situacao, turmaId, cpf, nis, responsavel, bolsa_familia, data_nascimento, aee').range(0, 99999);
 
       if (!alunos || alunos.length === 0) {
         setStatusLimpeza('⚠️ Nenhum aluno encontrado no banco.');
@@ -301,7 +301,7 @@ export default function Importar() {
       const idsPorRA = new Set<string>();
       for (const a of alunos) {
         if (!a.ra || a.situacao === 'REMA') continue;
-        if (a.turmaId && aeeIds.has(a.turmaId)) continue;
+        if (a.aee === true || (a.turmaId && aeeIds.has(a.turmaId))) continue;
         const k = String(a.ra).trim();
         if (!grpRA.has(k)) grpRA.set(k, []);
         grpRA.get(k)!.push(a);
@@ -313,7 +313,7 @@ export default function Importar() {
       for (const a of alunos) {
         if (idsPorRA.has(a.id)) continue;
         if (a.situacao === 'REMA') continue;
-        if (a.turmaId && aeeIds.has(a.turmaId)) continue;
+        if (a.aee === true || (a.turmaId && aeeIds.has(a.turmaId))) continue;
         const nn = normalizeNome(a.nome);
         const dn = normalizarData(a.data_nascimento || '');
         if (!nn) continue;
@@ -1825,9 +1825,7 @@ export default function Importar() {
             remaToId.set(`${String(e.ra)}|${normalizeStr(turmaNome)}`, e.id);
             if (e.turmaId) remaToIdByTurmaId.set(`${String(e.ra)}|${e.turmaId}`, e.id);
             rasComREMA.add(String(e.ra));
-          } else if (e.aee === true) {
-            // Registo AEE (coluna aee=TRUE, alinha com aluno_ra_uniq: WHERE aee IS NOT TRUE)
-            // Usa apenas a coluna — turmaId sozinho não é suficiente porque o índice usa aee
+          } else if (e.aee === true || (e.turmaId && aeeturmaIds.has(e.turmaId))) {
             aeeToId.set(String(e.ra), e.id);
           } else {
             // aee=FALSE ou aee=NULL: está no scope do índice único → raToExistingId
@@ -2161,7 +2159,10 @@ export default function Importar() {
           if (fantasmas.length > 0) {
             setStatus(`🧹 Removendo ${fantasmas.length} registros duplicados sem histórico...`);
             for (const ghost of fantasmas) {
-              const realIds = batchIdsByRA.get(String(ghost.ra)) ?? [];
+              const realIds = (batchIdsByRA.get(String(ghost.ra)) ?? []).filter(bid => {
+                const br = upsertDedup.find(x => x.id === bid);
+                return br && br.situacao !== 'REMA' && !br.aee;
+              });
               if (realIds.length !== 1) continue;
               const realId = realIds[0];
               const up: any = {};
@@ -2184,7 +2185,10 @@ export default function Importar() {
           if (duplicatasComFaltas.length > 0) {
             setStatus(`🔧 Unificando ${duplicatasComFaltas.length} aluno(s) duplicado(s) com histórico...`);
             for (const dup of duplicatasComFaltas) {
-              const canonIds = batchIdsByRA.get(String(dup.ra)) ?? [];
+              const canonIds = (batchIdsByRA.get(String(dup.ra)) ?? []).filter(bid => {
+                const br = upsertDedup.find(x => x.id === bid);
+                return br && br.situacao !== 'REMA' && !br.aee;
+              });
               if (canonIds.length !== 1) continue;
               const canonId = canonIds[0];
               // Meses que o canônico já tem (não transferir)
@@ -2288,7 +2292,7 @@ export default function Importar() {
       // RA repetido no PDF, importação interrompida), aqui o banco fica limpo.
       {
         const { data: todosAlunos } = await supabase
-          .from('Aluno').select('id, ra, nome, situacao, turmaId, cpf, nis, responsavel, bolsa_familia, data_nascimento').range(0, 99999);
+          .from('Aluno').select('id, ra, nome, situacao, turmaId, cpf, nis, responsavel, bolsa_familia, data_nascimento, aee').range(0, 99999);
 
         const idsLimposRA = new Set<string>();
 
@@ -2297,7 +2301,7 @@ export default function Importar() {
           const grpRA = new Map<string, any[]>();
           for (const a of (todosAlunos ?? [])) {
             if (!a.ra || a.situacao === 'REMA') continue;
-            if (a.turmaId && aeeturmaIds.has(a.turmaId)) continue;
+            if (a.aee === true || (a.turmaId && aeeturmaIds.has(a.turmaId))) continue;
             const k = String(a.ra);
             if (!grpRA.has(k)) grpRA.set(k, []);
             grpRA.get(k)!.push(a);
@@ -2350,7 +2354,7 @@ export default function Importar() {
           const grpNome = new Map<string, any[]>();
           for (const a of (todosAlunos ?? [])) {
             if (!a.nome || a.situacao === 'REMA') continue;
-            if (a.turmaId && aeeturmaIds.has(a.turmaId)) continue;
+            if (a.aee === true || (a.turmaId && aeeturmaIds.has(a.turmaId))) continue;
             // Pula alunos com RA que já foram tratados na etapa 2.9.1
             if (a.ra && idsLimposRA.has(a.id)) continue;
             const nn = normalizeNome(a.nome);
@@ -2466,7 +2470,7 @@ export default function Importar() {
       {
         setStatus('🧹 Verificando duplicados...');
         const { data: todosParaLimpar } = await supabase
-          .from('Aluno').select('id, ra, nome, situacao, turmaId, cpf, nis, responsavel, bolsa_familia, data_nascimento').range(0, 99999);
+          .from('Aluno').select('id, ra, nome, situacao, turmaId, cpf, nis, responsavel, bolsa_familia, data_nascimento, aee').range(0, 99999);
         const idsDesteBatch = new Set(upsertDedup.map((a: any) => a.id));
         const idsRemovidosAgora = new Set<string>();
 
@@ -2503,7 +2507,7 @@ export default function Importar() {
           const grp = new Map<string, any[]>();
           for (const a of (todosParaLimpar ?? [])) {
             if (!a.ra || a.situacao === 'REMA') continue;
-            if (a.turmaId && aeeturmaIds.has(a.turmaId)) continue;
+            if (a.aee === true || (a.turmaId && aeeturmaIds.has(a.turmaId))) continue;
             const k = String(a.ra);
             if (!grp.has(k)) grp.set(k, []);
             grp.get(k)!.push(a);
@@ -2518,7 +2522,7 @@ export default function Importar() {
           for (const a of (todosParaLimpar ?? [])) {
             if (idsRemovidosAgora.has(a.id)) continue;
             if (a.situacao === 'REMA') continue;
-            if (a.turmaId && aeeturmaIds.has(a.turmaId)) continue;
+            if (a.aee === true || (a.turmaId && aeeturmaIds.has(a.turmaId))) continue;
             if (!a.nome) continue;
             const nn = normalizeNome(a.nome);
             const dn = normalizarData(a.data_nascimento || '');
