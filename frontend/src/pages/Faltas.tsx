@@ -861,6 +861,11 @@ export default function Faltas() {
                                 ♿ {a.deficiencia}
                               </span>
                             )}
+                            {a.bolsa_familia && (
+                              <span style={{ fontSize: 10, color: '#15803d', fontWeight: 600, display: 'block' }}>
+                                💚 Bolsa Família
+                              </span>
+                            )}
                           </div>
                         </div>
                       </td>
