@@ -1,0 +1,62 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Turma {
+  id        String   @id @default(cuid())
+  nome      String   // ex: "1ª ETAPA A - Manhã"
+  etapa     String   // "ETAPA" ou "ANO"
+  numero    Int
+  letra     String
+  periodo   String   // "Manhã" ou "Tarde"
+  professor String   @default("")
+  createdAt DateTime @default(now())
+  alunos    Aluno[]
+  faltas    Falta[]
+}
+
+model Aluno {
+  id               String   @id @default(cuid())
+  ra               String
+  digito           String   @default("")
+  nome             String
+  nascimento       String   @default("")
+  situacao         String   @default("ATIVO")
+  bolsaFamilia     Boolean  @default(false)
+  deficiencia      String   @default("")
+  dataInicioMatric String   @default("")
+  dataFimMatric    String   @default("")
+  numeroAluno      Int      @default(0)
+  turmaId          String
+  turma            Turma    @relation(fields: [turmaId], references: [id], onDelete: Cascade)
+  faltas           Falta[]
+  createdAt        DateTime @default(now())
+
+  @@unique([ra, turmaId])
+}
+
+model Falta {
+  id      String @id @default(cuid())
+  alunoId String
+  turmaId String
+  mes     Int
+  ano     Int    @default(2026)
+  faltas  Int    @default(0)
+  aluno   Aluno  @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  turma   Turma  @relation(fields: [turmaId], references: [id], onDelete: Cascade)
+
+  @@unique([alunoId, mes, ano])
+}
+
+model Upload {
+  id        String   @id @default(cuid())
+  tipo      String
+  filename  String
+  path      String
+  createdAt DateTime @default(now())
+}
