@@ -255,7 +255,15 @@ export default function Importar() {
       for (let p = 1; p <= pdf.numPages; p++) {
         const page = await pdf.getPage(p);
         const content = await page.getTextContent();
-        texto += content.items.map((item: any) => item.str).join(' ') + '\n';
+        const sorted = [...content.items]
+          .filter((it: any) => it.str && it.transform)
+          .sort((a: any, b: any) => {
+            const yA = Math.round(a.transform[5]);
+            const yB = Math.round(b.transform[5]);
+            if (Math.abs(yA - yB) > 2) return yB - yA;
+            return a.transform[4] - b.transform[4];
+          });
+        texto += sorted.map((item: any) => item.str).join(' ') + '\n';
       }
 
       // Preserva espaços múltiplos — são delimitadores de coluna nos PDFs SED
@@ -713,25 +721,27 @@ export default function Importar() {
               if (hasNome && hasRA) { headerIdx = i; headers.push(...texts); break; }
             }
             if (headerIdx < 0) continue;
-            // Índice da coluna "Série" no cabeçalho para desambiguação EJA por linha
             const normHdr = (h: string) => h.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().trim();
             const serieColIdx = headers.findIndex(h => normHdr(h) === 'SERIE');
+            const nomeColIdx = headers.findIndex(h => normHdr(h).includes('NOME'));
+            const nrColIdx = headers.findIndex(h => /^(N[º°]?|NR\.?|NUMERO|CHAMADA)$/i.test(normHdr(h)));
             for (let i = headerIdx + 1; i < rows.length; i++) {
               const cells = rows[i].querySelectorAll('td');
               const vals = Array.from(cells).map(c => (c.textContent || '').trim());
               if (vals.length < 2) continue;
-              const nome = vals[0]?.length > 3 ? vals[0] : '';
+              const nomeIdx = nomeColIdx >= 0 ? nomeColIdx : 0;
+              const nome = vals[nomeIdx]?.length > 3 ? vals[nomeIdx] : '';
               if (!nome || /^\d/.test(nome)) continue;
-              // RA está em alguma coluna
+              const numero = nrColIdx >= 0 && nrColIdx < vals.length ? (parseInt(vals[nrColIdx]) || 0) : 0;
               let raStr = '', nasc = '', situ = 'ATIVO', defi = '';
-              for (let j = 1; j < vals.length; j++) {
+              for (let j = 0; j < vals.length; j++) {
+                if (j === nomeIdx || j === nrColIdx) continue;
                 const v = vals[j];
                 if (/^\d{6,12}$/.test(v)) raStr = v;
                 else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(v) && !nasc) nasc = fmtDate(v);
                 else if (/^(ATIVO|N\s?COM|BAIXA|REMA|TRANSF)/.test(v.toUpperCase())) situ = v;
                 else if (v.length > 2 && !/^\d/.test(v) && !nasc) defi = v;
               }
-              // Desambiguação por coluna Série: 9 = Alfabetização, 10 = Pós-Alfabetização
               let rowSerie = serie;
               if (serieColIdx >= 0 && serieColIdx < vals.length) {
                 const sNum = parseInt(vals[serieColIdx]);
@@ -744,7 +754,7 @@ export default function Importar() {
               processados.add(key);
               alunos.push({
                 nome, nomeNorm: normalizeNome(nome),
-                ra, numero: 0,
+                ra, numero,
                 nascimento: nasc, serie: rowSerie,
                 professora: '', situacao: situ, deficiencia: defi,
                 bolsaFamilia: false,
@@ -1839,7 +1849,7 @@ export default function Importar() {
           nome: a.nome,
           turmaId: targetTurmaId,
           ra: a.ra,
-          numero: a.numero,
+          numero: a.numero || existente?.numero || 0,
           data_nascimento: a.nascimento,
           data_inicio_matricula: a.dataInicioMatricula || existente?.data_inicio_matricula || null,
           data_fim_matricula: a.dataFimMatricula || existente?.data_fim_matricula || null,
