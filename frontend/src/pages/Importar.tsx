@@ -252,18 +252,39 @@ export default function Importar() {
       const arrayBuf = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: arrayBuf }).promise;
       let texto = '';
+      const raNumeroByPos = new Map<string, number>();
       for (let p = 1; p <= pdf.numPages; p++) {
         const page = await pdf.getPage(p);
         const content = await page.getTextContent();
-        const sorted = [...content.items]
+        const items = [...content.items]
           .filter((it: any) => it.str && it.transform)
           .sort((a: any, b: any) => {
             const yA = Math.round(a.transform[5]);
             const yB = Math.round(b.transform[5]);
-            if (Math.abs(yA - yB) > 2) return yB - yA;
+            if (Math.abs(yA - yB) > 5) return yB - yA;
             return a.transform[4] - b.transform[4];
           });
-        texto += sorted.map((item: any) => item.str).join(' ') + '\n';
+        texto += items.map((item: any) => item.str).join(' ') + '\n';
+
+        const rows = new Map<number, Array<{ str: string; x: number }>>();
+        for (const it of items) {
+          const y = Math.round((it as any).transform[5]);
+          let rowKey = y;
+          for (const k of rows.keys()) { if (Math.abs(k - y) <= 5) { rowKey = k; break; } }
+          if (!rows.has(rowKey)) rows.set(rowKey, []);
+          rows.get(rowKey)!.push({ str: (it as any).str.trim(), x: (it as any).transform[4] });
+        }
+        for (const cells of rows.values()) {
+          const raCells = cells.filter(c => /^0{3}\d{9}$/.test(c.str));
+          if (!raCells.length) continue;
+          const raCell = raCells[0];
+          const nums = cells.filter(c => /^\d{1,3}$/.test(c.str) && c.x < raCell.x);
+          if (nums.length > 0) {
+            nums.sort((a, b) => a.x - b.x);
+            const nr = parseInt(nums[nums.length - 1].str);
+            if (nr >= 1 && nr <= 200) raNumeroByPos.set(raCell.str, nr);
+          }
+        }
       }
 
       // Preserva espaços múltiplos — são delimitadores de coluna nos PDFs SED
@@ -321,10 +342,9 @@ export default function Importar() {
         const before = allText.substring(Math.max(0, raPos - 160), raPos);
         const nomeMatch = before.match(/([A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ][A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ\s'-]{3,})$/);
         if (!nomeMatch) continue;
-        // Nr está no texto antes do nome: "... [série] [nr] [NOME]" — extrai o último número antes do nome
         const preNome = before.substring(0, nomeMatch.index);
         const nrMatch = preNome.trimEnd().match(/(\d{1,3})\s*$/);
-        const numero = nrMatch ? parseInt(nrMatch[1]) : 0;
+        const numero = nrMatch ? parseInt(nrMatch[1]) : (raNumeroByPos.get(raStr) || 0);
         const nome = nomeMatch[1].trim();
         if (!nome || nome.length < 4) continue;
 
@@ -344,7 +364,8 @@ export default function Importar() {
           // Fallback: PDF "Relação de Alunos" SED — colunas em ordem invertida
           // (datas/situações extraídas antes dos nomes pelo pdfjs). Salva nome+RA+série;
           // o merge com Excel preencherá nascimento, situação e deficiência via RA.
-          if (!serieAluno) continue; // sem turma identificada, descarta
+          if (!serieAluno) continue;
+          console.log(`[PDF-fallback] ${nome} | RA:${raStr} | nr_regex:${nrMatch?.[1] ?? 'X'} | nr_pos:${raNumeroByPos.get(raStr) ?? 'X'} | final:${numero}`);
           alunos.push({
             nome, nomeNorm: normalizeNome(nome),
             ra: parseInt(raStr) || null,
@@ -375,6 +396,7 @@ export default function Importar() {
         ) ? '' : defRawClean;
         const isAtivo = situacao === 'ATIVO';
 
+        console.log(`[PDF] ${nome} | RA:${raStr} | nr_regex:${nrMatch?.[1] ?? 'X'} | nr_pos:${raNumeroByPos.get(raStr) ?? 'X'} | final:${numero}`);
         alunos.push({
           nome, nomeNorm: normalizeNome(nome),
           ra: parseInt(raStr) || null,
