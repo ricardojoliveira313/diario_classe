@@ -1,5 +1,11 @@
 # Diário de Classe — Instruções para Claude
 
+## Idioma e Localização
+
+O utilizador é do **Brasil**. A língua de comunicação é **português do Brasil (pt-BR)**. Todas as respostas, mensagens de commit, descrições de PR e comentários devem ser escritos em português brasileiro.
+
+---
+
 ## 🚨 REGRA OBRIGATÓRIA: Fluxo Git Completo
 
 **SEMPRE que fizeres qualquer alteração de código**, deves completar TODO o fluxo abaixo sem exceção:
