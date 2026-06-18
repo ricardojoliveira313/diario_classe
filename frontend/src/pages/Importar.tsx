@@ -258,15 +258,20 @@ export default function Importar() {
         const content = await page.getTextContent();
         texto += content.items.map((item: any) => item.str).join(' ') + '\n';
 
+        const allPageItems: Array<{ str: string; x: number; y: number }> = [];
         const rows = new Map<number, Array<{ str: string; x: number }>>();
         for (const it of content.items as any[]) {
           if (!it.str?.trim() || !it.transform) continue;
-          const y = Math.round(it.transform[5]);
-          let rowKey = y;
-          for (const k of rows.keys()) { if (Math.abs(k - y) <= 5) { rowKey = k; break; } }
+          const str = it.str.trim();
+          const x = it.transform[4];
+          const y = it.transform[5];
+          allPageItems.push({ str, x, y });
+          let rowKey = Math.round(y);
+          for (const k of rows.keys()) { if (Math.abs(k - Math.round(y)) <= 8) { rowKey = k; break; } }
           if (!rows.has(rowKey)) rows.set(rowKey, []);
-          rows.get(rowKey)!.push({ str: it.str.trim(), x: it.transform[4] });
+          rows.get(rowKey)!.push({ str, x });
         }
+        // 1ª passagem: mesma linha (tolerância ±8)
         for (const cells of rows.values()) {
           const raCells = cells.filter(c => /^0{3}\d{9}$/.test(c.str));
           if (!raCells.length) continue;
@@ -276,6 +281,18 @@ export default function Importar() {
             nums.sort((a, b) => a.x - b.x);
             const nr = parseInt(nums[nums.length - 1].str);
             if (nr >= 1 && nr <= 200) raNumeroByPos.set(raCell.str, nr);
+          }
+        }
+        // 2ª passagem: janela alargada ±40 para linhas multi-row (BXTR/TRAN têm número numa linha e RA noutra)
+        for (const it of allPageItems) {
+          if (!/^0{3}\d{9}$/.test(it.str) || raNumeroByPos.has(it.str)) continue;
+          const candidates = allPageItems.filter(c =>
+            /^\d{1,3}$/.test(c.str) && c.x < it.x && Math.abs(c.y - it.y) <= 40
+          );
+          if (candidates.length > 0) {
+            candidates.sort((a, b) => Math.abs(a.y - it.y) - Math.abs(b.y - it.y) || a.x - b.x);
+            const nr = parseInt(candidates[0].str);
+            if (nr >= 1 && nr <= 200) raNumeroByPos.set(it.str, nr);
           }
         }
       }
@@ -358,7 +375,6 @@ export default function Importar() {
           // (datas/situações extraídas antes dos nomes pelo pdfjs). Salva nome+RA+série;
           // o merge com Excel preencherá nascimento, situação e deficiência via RA.
           if (!serieAluno) continue;
-          console.log(`[PDF-fallback] ${nome} | RA:${raStr} | nr_regex:${nrMatch?.[1] ?? 'X'} | nr_pos:${raNumeroByPos.get(raStr) ?? 'X'} | final:${numero}`);
           alunos.push({
             nome, nomeNorm: normalizeNome(nome),
             ra: parseInt(raStr) || null,
@@ -389,7 +405,6 @@ export default function Importar() {
         ) ? '' : defRawClean;
         const isAtivo = situacao === 'ATIVO';
 
-        console.log(`[PDF] ${nome} | RA:${raStr} | nr_regex:${nrMatch?.[1] ?? 'X'} | nr_pos:${raNumeroByPos.get(raStr) ?? 'X'} | final:${numero}`);
         alunos.push({
           nome, nomeNorm: normalizeNome(nome),
           ra: parseInt(raStr) || null,
@@ -983,7 +998,7 @@ export default function Importar() {
         const cpfRaw = String(row[idxCPF] ?? '').replace(/\D/g, '');
         if (!nomeRaw || nomeRaw === '--') continue;
 
-        const nomeNorm = normalizeStr(nomeRaw);
+        const nomeNorm = normalizeNome(nomeRaw);
         let nasc = '';
         if (idxNasc >= 0) {
           const nascRaw = row[idxNasc];
@@ -1239,6 +1254,32 @@ export default function Importar() {
 
       // Enriquece com professor da tabela TURMA-PROFESSORES
       const alunosArr = Array.from(todosAlunos.values());
+
+      // Renumeração de alunos sem número (numero=0): recebem número sequencial no fim da turma,
+      // ordenados por data_inicio_matricula (alunos que entraram mais tarde ficam por último).
+      const porSerie = new Map<string, AlunoUnificado[]>();
+      for (const a of alunosArr) {
+        const s = a.serie || '';
+        if (!porSerie.has(s)) porSerie.set(s, []);
+        porSerie.get(s)!.push(a);
+      }
+      for (const grupo of porSerie.values()) {
+        const comNum = grupo.filter(a => a.numero > 0);
+        const semNum = grupo.filter(a => !a.numero && a.situacao !== 'REMA');
+        if (!semNum.length) continue;
+        const maxNum = comNum.reduce((m, a) => Math.max(m, a.numero), 0);
+        // Ordena sem número por data de início de matrícula (mais antiga primeiro)
+        semNum.sort((a, b) => {
+          const da = normalizarData(a.dataInicioMatricula);
+          const db = normalizarData(b.dataInicioMatricula);
+          if (da && db) return da.localeCompare(db);
+          if (da) return -1;
+          if (db) return 1;
+          return a.nomeNorm.localeCompare(b.nomeNorm);
+        });
+        semNum.forEach((a, i) => { a.numero = maxNum + i + 1; });
+      }
+
       // Rastreio de NIS do BF que foram cruzados com algum aluno do arquivo
       const bfUsados = new Set<string>();
       for (const a of alunosArr) {
