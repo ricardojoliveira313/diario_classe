@@ -353,8 +353,11 @@ export default function Importar() {
         const nomeMatch = before.match(/([A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ][A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ\s'-]{3,})$/);
         if (!nomeMatch) continue;
         const preNome = before.substring(0, nomeMatch.index);
-        const nrMatch = preNome.trimEnd().match(/(\d{1,3})\s*$/);
-        const numero = nrMatch ? parseInt(nrMatch[1]) : (raNumeroByPos.get(raStr) || 0);
+        // XY map é mais confiável (usa coordenadas 2D reais); texto é fallback
+        // O stream do pdfjs nem sempre preserva a ordem esquerda→direita dentro da linha
+        const xyNr = raNumeroByPos.get(raStr);
+        const nrMatch = xyNr ? null : preNome.trimEnd().match(/(\d{1,3})\s*$/);
+        const numero = xyNr || (nrMatch ? parseInt(nrMatch[1]) : 0);
         const nome = nomeMatch[1].trim();
         if (!nome || nome.length < 4) continue;
 
