@@ -253,46 +253,80 @@ export default function Importar() {
       const pdf = await pdfjsLib.getDocument({ data: arrayBuf }).promise;
       let texto = '';
       const raNumeroByPos = new Map<string, number>();
+      const allPdfItems: Array<{ str: string; x: number; y: number; page: number }> = [];
       for (let p = 1; p <= pdf.numPages; p++) {
         const page = await pdf.getPage(p);
         const content = await page.getTextContent();
         texto += content.items.map((item: any) => item.str).join(' ') + '\n';
-
-        const allPageItems: Array<{ str: string; x: number; y: number }> = [];
-        const rows = new Map<number, Array<{ str: string; x: number }>>();
         for (const it of content.items as any[]) {
           if (!it.str?.trim() || !it.transform) continue;
-          const str = it.str.trim();
-          const x = it.transform[4];
-          const y = it.transform[5];
-          allPageItems.push({ str, x, y });
-          let rowKey = Math.round(y);
-          for (const k of rows.keys()) { if (Math.abs(k - Math.round(y)) <= 8) { rowKey = k; break; } }
-          if (!rows.has(rowKey)) rows.set(rowKey, []);
-          rows.get(rowKey)!.push({ str, x });
+          allPdfItems.push({ str: it.str.trim(), x: it.transform[4], y: it.transform[5], page: p });
         }
-        // 1ª passagem: mesma linha (tolerância ±8)
-        for (const cells of rows.values()) {
-          const raCells = cells.filter(c => /^0{3}\d{9}$/.test(c.str));
-          if (!raCells.length) continue;
-          const raCell = raCells[0];
-          const nums = cells.filter(c => /^\d{1,3}$/.test(c.str) && c.x < raCell.x);
-          if (nums.length > 0) {
-            nums.sort((a, b) => a.x - b.x);
-            const nr = parseInt(nums[nums.length - 1].str);
-            if (nr >= 1 && nr <= 200) raNumeroByPos.set(raCell.str, nr);
+      }
+
+      // ── Detecção da coluna Nr e mapeamento RA→número de chamada ──
+      // Agrupa números 1-200 por posição X (±10) e identifica a coluna Nr como
+      // o grupo mais à esquerda com ≥3 itens. Depois faz match por proximidade Y
+      // dentro de cada página, garantindo que cada Nr é usado apenas uma vez.
+      {
+        const numCands = allPdfItems.filter(it => /^\d{1,3}$/.test(it.str) && parseInt(it.str) >= 1 && parseInt(it.str) <= 200);
+        const xBuckets = new Map<number, typeof numCands>();
+        for (const n of numCands) {
+          let added = false;
+          for (const [bx, bucket] of xBuckets) {
+            if (Math.abs(n.x - bx) <= 10) { bucket.push(n); added = true; break; }
+          }
+          if (!added) xBuckets.set(n.x, [n]);
+        }
+        const nrCol = [...xBuckets.entries()].filter(([, b]) => b.length >= 3).sort((a, b) => a[0] - b[0])[0];
+
+        if (nrCol) {
+          const colX = nrCol[0];
+          const nrAll = numCands.filter(n => Math.abs(n.x - colX) <= 10);
+          const raAll = allPdfItems.filter(it => /^0{3}\d{9}$/.test(it.str));
+          const pages = new Set([...nrAll.map(n => n.page), ...raAll.map(r => r.page)]);
+
+          for (const pg of pages) {
+            const nrs = nrAll.filter(n => n.page === pg);
+            const ras = raAll.filter(r => r.page === pg).sort((a, b) => b.y - a.y);
+            const used = new Set<number>();
+
+            for (const ra of ras) {
+              let bestI = -1, bestD = Infinity;
+              for (let i = 0; i < nrs.length; i++) {
+                if (used.has(i)) continue;
+                const d = Math.abs(nrs[i].y - ra.y);
+                if (d < bestD) { bestD = d; bestI = i; }
+              }
+              if (bestI >= 0 && bestD <= 50) {
+                raNumeroByPos.set(ra.str, parseInt(nrs[bestI].str));
+                used.add(bestI);
+              }
+            }
           }
         }
-        // 2ª passagem: janela alargada ±40 para linhas multi-row (BXTR/TRAN têm número numa linha e RA noutra)
-        for (const it of allPageItems) {
-          if (!/^0{3}\d{9}$/.test(it.str) || raNumeroByPos.has(it.str)) continue;
-          const candidates = allPageItems.filter(c =>
-            /^\d{1,3}$/.test(c.str) && c.x < it.x && Math.abs(c.y - it.y) <= 40
-          );
-          if (candidates.length > 0) {
-            candidates.sort((a, b) => Math.abs(a.y - it.y) - Math.abs(b.y - it.y) || a.x - b.x);
-            const nr = parseInt(candidates[0].str);
-            if (nr >= 1 && nr <= 200) raNumeroByPos.set(it.str, nr);
+
+        // Fallback: para RAs não mapeados, procura número à esquerda na mesma linha (±8)
+        for (const pg of new Set(allPdfItems.map(it => it.page))) {
+          const items = allPdfItems.filter(it => it.page === pg);
+          const rows = new Map<number, Array<{ str: string; x: number }>>();
+          for (const it of items) {
+            let rk = Math.round(it.y);
+            for (const k of rows.keys()) { if (Math.abs(k - rk) <= 8) { rk = k; break; } }
+            if (!rows.has(rk)) rows.set(rk, []);
+            rows.get(rk)!.push({ str: it.str, x: it.x });
+          }
+          for (const cells of rows.values()) {
+            const raCells = cells.filter(c => /^0{3}\d{9}$/.test(c.str));
+            for (const raCell of raCells) {
+              if (raNumeroByPos.has(raCell.str)) continue;
+              const nums = cells.filter(c => /^\d{1,3}$/.test(c.str) && c.x < raCell.x);
+              if (nums.length > 0) {
+                nums.sort((a, b) => a.x - b.x);
+                const nr = parseInt(nums[0].str);
+                if (nr >= 1 && nr <= 200) raNumeroByPos.set(raCell.str, nr);
+              }
+            }
           }
         }
       }
