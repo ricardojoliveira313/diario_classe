@@ -400,7 +400,7 @@ export default function Importar() {
         // Limpa deficiência: remove falsos positivos (cabeçalhos, datas, números isolados)
         const defRawClean = (defRaw ?? '').trim().replace(/\s+/g, ' ');
         const deficiencia = (!defRawClean || defRawClean.length > 120
-          || /^(ATIVO|REMA|TRAN|BXTR|ABAN|N\s?COM|\d{2}\s*\/\s*\d{2}\s*\/\s*\d{4}|$)/i.test(defRawClean)
+          || /^(ATIVO|REMA|TRAN|BXTR|ABAN|N\s?COM|NAO\s?COMPAREC|\d{2}\s*\/\s*\d{2}\s*\/\s*\d{4}|$)/i.test(defRawClean)
           || /^(Ano|Diretoria|Escola|Turma|Tipo|Habilitação|Série|Nr\b)/i.test(defRawClean)
         ) ? '' : defRawClean;
         const isAtivo = situacao === 'ATIVO';
@@ -1838,7 +1838,7 @@ export default function Importar() {
           const entry = { cpf: rec.cpf || '', deficiencia: rec.deficiencia || '', corRaca: rec.cor_raca || '' };
           if (rec.cpf) dbEduc.set(`CPF:${rec.cpf}`, entry);
           if (rec.nome) {
-            const nn = normalizeStr(rec.nome);
+            const nn = normalizeNome(rec.nome);
             dbEduc.set(`${nn}|${rec.data_nascimento || ''}`, entry);
             if (rec.data_nascimento) {
               const simp = nomeSignificativo(nn);
@@ -1910,7 +1910,7 @@ export default function Importar() {
           data_inicio_matricula: a.dataInicioMatricula || existente?.data_inicio_matricula || null,
           data_fim_matricula: a.dataFimMatricula || existente?.data_fim_matricula || null,
           data_movimentacao: a.dataMovimentacao || existente?.data_movimentacao || null,
-          deficiencia: a.deficiencia || existente?.deficiencia || '',
+          deficiencia: a.deficiencia || '',
           situacao: a.situacao,
           bolsa_familia: a.bolsaFamilia || existente?.bolsa_familia || false,
           professora: a.professora,
