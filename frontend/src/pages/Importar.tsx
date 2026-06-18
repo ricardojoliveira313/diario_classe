@@ -256,23 +256,16 @@ export default function Importar() {
       for (let p = 1; p <= pdf.numPages; p++) {
         const page = await pdf.getPage(p);
         const content = await page.getTextContent();
-        const items = [...content.items]
-          .filter((it: any) => it.str && it.transform)
-          .sort((a: any, b: any) => {
-            const yA = Math.round(a.transform[5]);
-            const yB = Math.round(b.transform[5]);
-            if (Math.abs(yA - yB) > 5) return yB - yA;
-            return a.transform[4] - b.transform[4];
-          });
-        texto += items.map((item: any) => item.str).join(' ') + '\n';
+        texto += content.items.map((item: any) => item.str).join(' ') + '\n';
 
         const rows = new Map<number, Array<{ str: string; x: number }>>();
-        for (const it of items) {
-          const y = Math.round((it as any).transform[5]);
+        for (const it of content.items as any[]) {
+          if (!it.str?.trim() || !it.transform) continue;
+          const y = Math.round(it.transform[5]);
           let rowKey = y;
           for (const k of rows.keys()) { if (Math.abs(k - y) <= 5) { rowKey = k; break; } }
           if (!rows.has(rowKey)) rows.set(rowKey, []);
-          rows.get(rowKey)!.push({ str: (it as any).str.trim(), x: (it as any).transform[4] });
+          rows.get(rowKey)!.push({ str: it.str.trim(), x: it.transform[4] });
         }
         for (const cells of rows.values()) {
           const raCells = cells.filter(c => /^0{3}\d{9}$/.test(c.str));
