@@ -270,25 +270,67 @@ export default function Alunos() {
 
   const exportarPDF = () => {
     const turmaSel = turmas.find(t => t.id === turmaId);
-    const linhas = alunosFiltrados.map((a, i) => {
-      const nome = String(a.nome ?? '').padEnd(38);
-      const ra = String(a.ra ?? '').padEnd(12);
-      const sit = (SITUACAO_LABEL[a.situacao] ?? a.situacao ?? '').padEnd(14);
-      const defi = (a.deficiencia ?? '').substring(0, 22).padEnd(22);
-      return `${String(i + 1).padStart(2)} ${nome} ${ra} ${sit} ${defi}`;
-    });
+    const blocos: string[] = [];
+
+    if (turmaSel) {
+      // Turma específica selecionada
+      const linhas = alunosFiltrados.map((a, i) => {
+        const nome = String(a.nome ?? '').padEnd(38);
+        const ra = String(a.ra ?? '').padEnd(12);
+        const sit = (SITUACAO_LABEL[a.situacao] ?? a.situacao ?? '').padEnd(14);
+        const defi = (a.deficiencia ?? '').substring(0, 22).padEnd(22);
+        return `${String(a.numero || (i + 1)).padStart(2)} ${nome} ${ra} ${sit} ${defi}`;
+      });
+      const prof = turmaSel.professora ? `  ${labelDocente(turmaSel.professora)} ${turmaSel.professora}` : '';
+      blocos.push([
+        '='.repeat(100),
+        `  ${turmaSel.nome}${prof}`,
+        '='.repeat(100),
+        '',
+        ` Nº  Nome                                    RA             Situação       Deficiência`,
+        '─'.repeat(100),
+        ...linhas,
+        '─'.repeat(100),
+        `  Total: ${alunosFiltrados.length} alunos`,
+      ].join('\n'));
+    } else {
+      // Todas as turmas — separar por turma
+      const grupos = new Map<string, any[]>();
+      for (const a of alunosFiltrados) {
+        if (!grupos.has(a.turmaId)) grupos.set(a.turmaId, []);
+        grupos.get(a.turmaId)!.push(a);
+      }
+      const gruposOrdenados = [...grupos.entries()].sort(([tidA], [tidB]) =>
+        ordemTurma(turmaMap.get(tidA)?.nome ?? '').localeCompare(ordemTurma(turmaMap.get(tidB)?.nome ?? ''))
+      );
+      for (const [tid, arr] of gruposOrdenados) {
+        const t = turmaMap.get(tid);
+        arr.sort((a: any, b: any) => (a.numero || 9999) - (b.numero || 9999));
+        const prof = t?.professora ? `  ${labelDocente(t.professora)} ${t.professora}` : '';
+        const nomeTurma = t?.nome ?? 'Sem turma';
+        const linhas = arr.map((a: any, i: number) => {
+          const nome = String(a.nome ?? '').padEnd(38);
+          const ra = String(a.ra ?? '').padEnd(12);
+          const sit = (SITUACAO_LABEL[a.situacao] ?? a.situacao ?? '').padEnd(14);
+          const defi = (a.deficiencia ?? '').substring(0, 22).padEnd(22);
+          return `${String(a.numero || (i + 1)).padStart(2)} ${nome} ${ra} ${sit} ${defi}`;
+        });
+        blocos.push([
+          '='.repeat(100),
+          `  ${nomeTurma} —${prof}`,
+          '='.repeat(100),
+          '',
+          ` Nº  Nome                                    RA             Situação       Deficiência`,
+          '─'.repeat(100),
+          ...linhas,
+          '─'.repeat(100),
+          `  Total: ${arr.length} alunos`,
+        ].join('\n'));
+      }
+    }
+
     const titulo = `RELAÇÃO DE ALUNOS — ${turmaSel?.nome ?? 'Todas as Turmas'}`;
-    const conteudo = [
-      '='.repeat(100),
-      `  ${titulo}`,
-      '='.repeat(100),
-      '',
-      ` Nº  Nome                                    RA             Situação       Deficiência`,
-      '─'.repeat(100),
-      ...linhas,
-      '─'.repeat(100),
-      `  Total: ${alunosFiltrados.length} alunos`,
-    ].join('\n');
+    const conteudo = blocos.join('\n\n\n');
     const win = window.open('', '_blank');
     if (!win) return;
     win.document.write(`<html><head><title>${titulo}</title>
