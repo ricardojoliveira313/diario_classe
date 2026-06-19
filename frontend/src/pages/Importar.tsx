@@ -287,20 +287,27 @@ export default function Importar() {
           const pages = new Set([...nrAll.map(n => n.page), ...raAll.map(r => r.page)]);
 
           for (const pg of pages) {
-            const nrs = nrAll.filter(n => n.page === pg);
+            const nrs = nrAll.filter(n => n.page === pg).sort((a, b) => b.y - a.y);
             const ras = raAll.filter(r => r.page === pg).sort((a, b) => b.y - a.y);
-            const used = new Set<number>();
 
-            for (const ra of ras) {
-              let bestI = -1, bestD = Infinity;
+            if (nrs.length === ras.length) {
               for (let i = 0; i < nrs.length; i++) {
-                if (used.has(i)) continue;
-                const d = Math.abs(nrs[i].y - ra.y);
-                if (d < bestD) { bestD = d; bestI = i; }
+                const nr = parseInt(nrs[i].str);
+                if (nr >= 1 && nr <= 200) raNumeroByPos.set(ras[i].str, nr);
               }
-              if (bestI >= 0 && bestD <= 50) {
-                raNumeroByPos.set(ra.str, parseInt(nrs[bestI].str));
-                used.add(bestI);
+            } else {
+              const used = new Set<number>();
+              for (const ra of ras) {
+                let bestI = -1, bestD = Infinity;
+                for (let i = 0; i < nrs.length; i++) {
+                  if (used.has(i)) continue;
+                  const d = Math.abs(nrs[i].y - ra.y);
+                  if (d < bestD) { bestD = d; bestI = i; }
+                }
+                if (bestI >= 0 && bestD <= 50) {
+                  raNumeroByPos.set(ra.str, parseInt(nrs[bestI].str));
+                  used.add(bestI);
+                }
               }
             }
           }
