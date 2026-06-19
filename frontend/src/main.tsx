@@ -11,6 +11,7 @@ import Professor from './pages/Professor';
 import Pendentes from './pages/Pendentes';
 import Distorcao from './pages/Distorcao';
 import Usuarios from './pages/Usuarios';
+import Protocolo from './pages/Protocolo';
 import Login from './pages/Login';
 import { api, supabase } from './api';
 import { theme } from './styles';
@@ -34,6 +35,7 @@ const NAV_ITEMS: { to: string; label: string; end?: boolean; badge?: boolean; ad
   { to: '/ocr',       label: '📷 OCR',       adminOnly: true },
   { to: '/pendentes', label: '📋 Ata',                badge: true,    pageKey: 'pendentes' },
   { to: '/usuarios',  label: '👥 Usuários',  adminOnly: true },
+  { to: '/protocolo', label: '📄 Protocolo',  adminOnly: true },
 ];
 
 const ANOS_DISPONIVEIS = [2025, 2026, 2027];
@@ -244,6 +246,7 @@ function AppShell() {
             <Route path="/professor" element={<Professor />} />
             <Route path="/pendentes" element={<ViewerRoute pageKey="pendentes"><Pendentes /></ViewerRoute>} />
             <Route path="/usuarios" element={<AdminRoute><Usuarios /></AdminRoute>} />
+            <Route path="/protocolo" element={<AdminRoute><Protocolo /></AdminRoute>} />
           </Routes>
         </div>
       </div>
