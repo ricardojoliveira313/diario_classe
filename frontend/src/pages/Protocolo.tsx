@@ -62,7 +62,10 @@ export default function Protocolo() {
       if (alvo.length > 0) {
         const ids = alvo.map(t => t.id);
         const { data: alunoData } = await supabase
-          .from('Aluno').select('id,nome,situacao,turmaId').in('turmaId', ids).order('nome');
+          .from('Aluno').select('id,nome,situacao,turmaId,numero')
+          .in('turmaId', ids)
+          .order('numero', { nullsFirst: false })
+          .order('nome');
         setAlunos((alunoData ?? []).filter(a => isAtivo(a.situacao)));
       }
       setLoading(false);
@@ -76,15 +79,22 @@ export default function Protocolo() {
     const blocos = turmasFiltradas.map(turma => {
       const lista = alunos
         .filter(a => a.turmaId === turma.id)
-        .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+        .sort((a, b) => {
+          const na = a.numero ?? 9999;
+          const nb = b.numero ?? 9999;
+          if (na !== nb) return na - nb;
+          return a.nome.localeCompare(b.nome, 'pt-BR');
+        });
 
       const periodo = (turma.periodo ?? '').toLowerCase();
       const manha = periodo.includes('manh') || periodo.includes('manhã');
 
-      const linhas = Array.from({ length: 35 }, (_, i) => {
-        const nome = lista[i]?.nome ?? '';
+      const linhas = Array.from({ length: Math.max(lista.length, 18) }, (_, i) => {
+        const aluno = lista[i];
+        const nr = aluno?.numero ? aluno.numero : (i + 1);
+        const nome = aluno?.nome ?? '';
         return `<tr>
-          <td style="text-align:center;width:28px">${i + 1}</td>
+          <td style="text-align:center;width:28px">${nr}</td>
           <td style="width:38%">${nome}</td>
           <td></td><td style="width:13%"></td><td style="width:13%"></td>
         </tr>`;
@@ -193,7 +203,12 @@ export default function Protocolo() {
           {turmasFiltradas.map(t => {
             const lista = alunos
               .filter(a => a.turmaId === t.id)
-              .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+              .sort((a, b) => {
+                const na = a.numero ?? 9999;
+                const nb = b.numero ?? 9999;
+                if (na !== nb) return na - nb;
+                return a.nome.localeCompare(b.nome, 'pt-BR');
+              });
             return (
               <div key={t.id} style={{
                 background: theme.card, borderRadius: 10, border: `1px solid ${theme.borderLight}`,
@@ -212,14 +227,22 @@ export default function Protocolo() {
                     {lista.length} aluno{lista.length !== 1 ? 's' : ''}
                   </span>
                 </div>
-                <ol style={{ margin: 0, padding: '10px 16px 10px 36px', fontSize: 13, columns: lista.length > 20 ? 2 : 1, columnGap: 24 }}>
-                  {lista.map(a => (
-                    <li key={a.id} style={{ padding: '2px 0', color: theme.text }}>{a.nome}</li>
-                  ))}
-                  {lista.length === 0 && (
-                    <li style={{ listStyle: 'none', color: theme.textMuted, fontStyle: 'italic' }}>Nenhum aluno ativo</li>
+                <div style={{ padding: '10px 16px', fontSize: 13 }}>
+                  {lista.length === 0 ? (
+                    <span style={{ color: theme.textMuted, fontStyle: 'italic' }}>Nenhum aluno ativo</span>
+                  ) : (
+                    <div style={{ columns: lista.length > 20 ? 2 : 1, columnGap: 24 }}>
+                      {lista.map((a, idx) => (
+                        <div key={a.id} style={{ padding: '2px 0', color: theme.text, display: 'flex', gap: 8, alignItems: 'baseline', breakInside: 'avoid' }}>
+                          <span style={{ minWidth: 28, fontWeight: 700, color: theme.textSecondary, textAlign: 'right', fontFamily: 'monospace', fontSize: 12 }}>
+                            {a.numero ?? (idx + 1)}
+                          </span>
+                          <span>{a.nome}</span>
+                        </div>
+                      ))}
+                    </div>
                   )}
-                </ol>
+                </div>
               </div>
             );
           })}
