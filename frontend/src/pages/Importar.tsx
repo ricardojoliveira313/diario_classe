@@ -265,11 +265,15 @@ export default function Importar() {
       }
 
       // ── Detecção da coluna Nr e mapeamento RA→número de chamada ──
-      // Agrupa números 1-200 por posição X (±10) e identifica a coluna Nr como
-      // o grupo mais à esquerda com ≥3 itens. Depois faz match por proximidade Y
-      // dentro de cada página, garantindo que cada Nr é usado apenas uma vez.
+      // Apenas números que estão próximos (±60 Y) de algum RA são candidatos —
+      // isso filtra o "2" de "2ª ETAPA C" nos cabeçalhos que não tem RA na mesma linha.
       {
-        const numCands = allPdfItems.filter(it => /^\d{1,3}$/.test(it.str) && parseInt(it.str) >= 1 && parseInt(it.str) <= 200);
+        const raAll = allPdfItems.filter(it => /^0{3}\d{9}$/.test(it.str));
+        const raYSet = new Set(raAll.map(it => `${it.page}:${Math.round(it.y)}`));
+        const nearRA = (it: { page: number; y: number }) =>
+          [...raYSet].some(k => { const [p, y] = k.split(':'); return Number(p) === it.page && Math.abs(Number(y) - Math.round(it.y)) <= 60; });
+
+        const numCands = allPdfItems.filter(it => /^\d{1,3}$/.test(it.str) && parseInt(it.str) >= 1 && parseInt(it.str) <= 200 && nearRA(it));
         const xBuckets = new Map<number, typeof numCands>();
         for (const n of numCands) {
           let added = false;
@@ -282,12 +286,11 @@ export default function Importar() {
 
         if (nrCol) {
           const colX = nrCol[0];
-          const nrAll = numCands.filter(n => Math.abs(n.x - colX) <= 10);
-          const raAll = allPdfItems.filter(it => /^0{3}\d{9}$/.test(it.str));
-          const pages = new Set([...nrAll.map(n => n.page), ...raAll.map(r => r.page)]);
+          const nrAll2 = numCands.filter(n => Math.abs(n.x - colX) <= 10);
+          const pages = new Set([...nrAll2.map(n => n.page), ...raAll.map(r => r.page)]);
 
           for (const pg of pages) {
-            const nrs = nrAll.filter(n => n.page === pg).sort((a, b) => b.y - a.y);
+            const nrs = nrAll2.filter(n => n.page === pg).sort((a, b) => b.y - a.y);
             const ras = raAll.filter(r => r.page === pg).sort((a, b) => b.y - a.y);
 
             if (nrs.length === ras.length) {
@@ -304,7 +307,7 @@ export default function Importar() {
                   const d = Math.abs(nrs[i].y - ra.y);
                   if (d < bestD) { bestD = d; bestI = i; }
                 }
-                if (bestI >= 0 && bestD <= 50) {
+                if (bestI >= 0 && bestD <= 60) {
                   raNumeroByPos.set(ra.str, parseInt(nrs[bestI].str));
                   used.add(bestI);
                 }
