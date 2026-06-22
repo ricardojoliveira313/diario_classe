@@ -333,7 +333,6 @@ export default function Importar() {
           for (const cells of rows.values()) {
             const raCells = cells.filter(c => /^0{3}\d{9}$/.test(c.str));
             for (const raCell of raCells) {
-              if (raNumeroByPos.has(raCell.str)) continue;
               const nums = cells.filter(c => /^\d{1,3}$/.test(c.str) && c.x < raCell.x);
               if (nums.length > 0) {
                 // Mais à DIREITA dentre os números à esquerda do RA = Nr de chamada (não Série)
