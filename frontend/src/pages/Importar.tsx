@@ -273,7 +273,10 @@ export default function Importar() {
         const nearRA = (it: { page: number; y: number }) =>
           [...raYSet].some(k => { const [p, y] = k.split(':'); return Number(p) === it.page && Math.abs(Number(y) - Math.round(it.y)) <= 60; });
 
-        const numCands = allPdfItems.filter(it => /^\d{1,3}$/.test(it.str) && parseInt(it.str) >= 1 && parseInt(it.str) <= 200 && nearRA(it));
+        // raMinX: posição X mínima das âncoras RA — exclui Dig.RA (fica à direita do RA)
+        const raMinX = raAll.length > 0 ? Math.min(...raAll.map(r => r.x)) : Infinity;
+        // Candidatos apenas à ESQUERDA das âncoras RA (evita confundir com dígito verificador)
+        const numCands = allPdfItems.filter(it => /^\d{1,3}$/.test(it.str) && parseInt(it.str) >= 1 && parseInt(it.str) <= 200 && nearRA(it) && it.x < raMinX);
         const xBuckets = new Map<number, typeof numCands>();
         for (const n of numCands) {
           let added = false;
@@ -282,7 +285,8 @@ export default function Importar() {
           }
           if (!added) xBuckets.set(n.x, [n]);
         }
-        const nrCol = [...xBuckets.entries()].filter(([, b]) => b.length >= 3).sort((a, b) => a[0] - b[0])[0];
+        // Toma a coluna mais à DIREITA (Nr de chamada) — não a coluna Série (mais à esquerda)
+        const nrCol = [...xBuckets.entries()].filter(([, b]) => b.length >= 3).sort((a, b) => b[0] - a[0])[0];
 
         if (nrCol) {
           const colX = nrCol[0];
@@ -332,7 +336,8 @@ export default function Importar() {
               if (raNumeroByPos.has(raCell.str)) continue;
               const nums = cells.filter(c => /^\d{1,3}$/.test(c.str) && c.x < raCell.x);
               if (nums.length > 0) {
-                nums.sort((a, b) => a.x - b.x);
+                // Mais à DIREITA dentre os números à esquerda do RA = Nr de chamada (não Série)
+                nums.sort((a, b) => b.x - a.x);
                 const nr = parseInt(nums[0].str);
                 if (nr >= 1 && nr <= 200) raNumeroByPos.set(raCell.str, nr);
               }
