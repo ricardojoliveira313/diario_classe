@@ -122,13 +122,7 @@ export default function Faltas() {
     if (!turmaId) { setLoading(false); return; }
     setLoading(true);
     Promise.all([api.getAlunos(turmaId), api.getFaltas(turmaId, mes, ano)]).then(([al, fa]) => {
-      setAlunos([...al].sort((a: any, b: any) => {
-        const aAtivo = !a.situacao || a.situacao === 'ATIVO';
-        const bAtivo = !b.situacao || b.situacao === 'ATIVO';
-        if (aAtivo && !bAtivo) return -1;
-        if (!aAtivo && bAtivo) return 1;
-        return (a.numero || 9999) - (b.numero || 9999);
-      }));
+      setAlunos([...al].sort((a: any, b: any) => (a.numero || 9999) - (b.numero || 9999)));
       const mapDias: Record<string, Status[]> = {};
       const mapTextos: Record<string, string> = {};
       fa.forEach((f: any) => {
