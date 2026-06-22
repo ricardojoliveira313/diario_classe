@@ -320,9 +320,9 @@ export default function Importar() {
           }
         }
 
-        // Detecção direta por RA: para cada RA, busca o Nr à esquerda mais próximo em Y (±30)
-        // Tem prioridade sobre a detecção de coluna — cobre desalinhamentos verticais do PDF
+        // Detecção direta por RA: fallback para RAs não mapeados pela detecção de coluna
         for (const raItem of raAll) {
+          if (raNumeroByPos.has(raItem.str)) continue; // coluna já mapeou — não sobrescrever
           const candidates = allPdfItems.filter(c =>
             /^\d{1,3}$/.test(c.str) &&
             parseInt(c.str) >= 1 && parseInt(c.str) <= 200 &&
