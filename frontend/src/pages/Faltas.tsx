@@ -122,7 +122,13 @@ export default function Faltas() {
     if (!turmaId) { setLoading(false); return; }
     setLoading(true);
     Promise.all([api.getAlunos(turmaId), api.getFaltas(turmaId, mes, ano)]).then(([al, fa]) => {
-      setAlunos([...al].sort((a: any, b: any) => (a.numero || 9999) - (b.numero || 9999)));
+      setAlunos([...al].sort((a: any, b: any) => {
+        const aAtivo = !a.situacao || a.situacao === 'ATIVO';
+        const bAtivo = !b.situacao || b.situacao === 'ATIVO';
+        if (aAtivo && !bAtivo) return -1;
+        if (!aAtivo && bAtivo) return 1;
+        return (a.numero || 9999) - (b.numero || 9999);
+      }));
       const mapDias: Record<string, Status[]> = {};
       const mapTextos: Record<string, string> = {};
       fa.forEach((f: any) => {
@@ -845,7 +851,7 @@ export default function Faltas() {
                         borderRight: '2px solid var(--border-light)',
                       }}>
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
-                          <span style={{ fontSize: 11, color: theme.textMuted, paddingTop: 2, minWidth: 18 }}>{a.numero || (i + 1)}</span>
+                          <span style={{ fontSize: 11, color: theme.textMuted, paddingTop: 2, minWidth: 18 }}>{i + 1}</span>
                           <div>
                             <div style={{ fontSize: 13, fontWeight: 600, color: theme.text, display: 'flex', alignItems: 'center', gap: 4 }}>
                               {emAlerta && <span title="Frequência abaixo de 75%">⚠️</span>}
