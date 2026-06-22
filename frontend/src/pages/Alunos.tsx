@@ -31,6 +31,26 @@ function matchScore(a: string, b: string): number {
   return intersect / Math.max(na.length, nb.length);
 }
 
+// Alunos matriculados após 15/04 ficam por último na chamada
+function isLateEnrollment(a: any): boolean {
+  const d = a.data_inicio_matricula;
+  if (!d) return false;
+  const parts = String(d).split('/');
+  if (parts.length < 2) return false;
+  const day = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10);
+  if (isNaN(day) || isNaN(month)) return false;
+  return month > 4 || (month === 4 && day > 15);
+}
+
+function sortByNr(a: any, b: any): number {
+  const aLate = isLateEnrollment(a);
+  const bLate = isLateEnrollment(b);
+  if (aLate && !bLate) return 1;
+  if (!aLate && bLate) return -1;
+  return (a.numero || 9999) - (b.numero || 9999);
+}
+
 export default function Alunos() {
   const [turmas, setTurmas] = useState<any[]>([]);
   const [turmaId, setTurmaId] = useState('__all__');
@@ -133,7 +153,7 @@ export default function Alunos() {
     if (filtroProfessora && turmaMap.get(a.turmaId)?.professora !== filtroProfessora) return false;
     if (filtroDefi && a.deficiencia !== filtroDefi) return false;
     return true;
-  }).sort((a, b) => (a.numero || 9999) - (b.numero || 9999));
+  }).sort(sortByNr);
 
   const isAtivo = (a: any) => !a.situacao || a.situacao === 'ATIVO';
   const totalAtivos = alunos.filter(isAtivo).length;
@@ -170,7 +190,7 @@ export default function Alunos() {
     );
     for (const [tid, arr] of gruposOrdenados) {
       const t = turmaMap.get(tid);
-      arr.sort((a, b) => (a.numero || 9999) - (b.numero || 9999));
+      arr.sort(sortByNr);
       linhas.push({ tipo: 'header', nome: t ? `📚 ${t.nome} — ${labelDocente(t.professora || '')} ${t.professora || ''}` : 'Sem turma', key: tid, total: arr.length });
       arr.forEach((a, idx) => linhas.push({ tipo: 'aluno', a, idx }));
     }
@@ -279,7 +299,7 @@ export default function Alunos() {
         const ra = String(a.ra ?? '').padEnd(12);
         const sit = (SITUACAO_LABEL[a.situacao] ?? a.situacao ?? '').padEnd(14);
         const defi = (a.deficiencia ?? '').substring(0, 22).padEnd(22);
-        return `${String(a.numero || (i + 1)).padStart(2)} ${nome} ${ra} ${sit} ${defi}`;
+        return `${String(i + 1).padStart(2)} ${nome} ${ra} ${sit} ${defi}`;
       });
       const prof = turmaSel.professora ? `  ${labelDocente(turmaSel.professora)} ${turmaSel.professora}` : '';
       blocos.push([
@@ -305,7 +325,7 @@ export default function Alunos() {
       );
       for (const [tid, arr] of gruposOrdenados) {
         const t = turmaMap.get(tid);
-        arr.sort((a: any, b: any) => (a.numero || 9999) - (b.numero || 9999));
+        arr.sort(sortByNr);
         const prof = t?.professora ? `  ${labelDocente(t.professora)} ${t.professora}` : '';
         const nomeTurma = t?.nome ?? 'Sem turma';
         const linhas = arr.map((a: any, i: number) => {
@@ -313,7 +333,7 @@ export default function Alunos() {
           const ra = String(a.ra ?? '').padEnd(12);
           const sit = (SITUACAO_LABEL[a.situacao] ?? a.situacao ?? '').padEnd(14);
           const defi = (a.deficiencia ?? '').substring(0, 22).padEnd(22);
-          return `${String(a.numero || (i + 1)).padStart(2)} ${nome} ${ra} ${sit} ${defi}`;
+          return `${String(i + 1).padStart(2)} ${nome} ${ra} ${sit} ${defi}`;
         });
         blocos.push([
           '='.repeat(100),
@@ -641,7 +661,7 @@ export default function Alunos() {
                     }}
                     onMouseEnter={e => { if (editandoId !== a.id) e.currentTarget.style.background = 'var(--ghost-bg)'; }}
                     onMouseLeave={e => { if (editandoId !== a.id) e.currentTarget.style.background = ''; }}>
-<span style={{ fontSize: 13, color: theme.textMuted }}>{a.numero || i + 1}</span>
+<span style={{ fontSize: 13, color: theme.textMuted }}>{i + 1}</span>
                   <div>
                       <div style={{ fontSize: 15, fontWeight: 600, color: theme.text }}>{a.nome}</div>
                       <div style={{ fontSize: 12, color: theme.textMuted, marginTop: 2 }}>
