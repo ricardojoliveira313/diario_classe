@@ -320,27 +320,26 @@ export default function Importar() {
           }
         }
 
-        // Fallback: para RAs não mapeados, procura número à esquerda na mesma linha (±8)
-        for (const pg of new Set(allPdfItems.map(it => it.page))) {
-          const items = allPdfItems.filter(it => it.page === pg);
-          const rows = new Map<number, Array<{ str: string; x: number }>>();
-          for (const it of items) {
-            let rk = Math.round(it.y);
-            for (const k of rows.keys()) { if (Math.abs(k - rk) <= 8) { rk = k; break; } }
-            if (!rows.has(rk)) rows.set(rk, []);
-            rows.get(rk)!.push({ str: it.str, x: it.x });
-          }
-          for (const cells of rows.values()) {
-            const raCells = cells.filter(c => /^0{3}\d{9}$/.test(c.str));
-            for (const raCell of raCells) {
-              const nums = cells.filter(c => /^\d{1,3}$/.test(c.str) && c.x < raCell.x);
-              if (nums.length > 0) {
-                // Mais à DIREITA dentre os números à esquerda do RA = Nr de chamada (não Série)
-                nums.sort((a, b) => b.x - a.x);
-                const nr = parseInt(nums[0].str);
-                if (nr >= 1 && nr <= 200) raNumeroByPos.set(raCell.str, nr);
-              }
-            }
+        // Detecção direta por RA: para cada RA, busca o Nr à esquerda mais próximo em Y (±30)
+        // Tem prioridade sobre a detecção de coluna — cobre desalinhamentos verticais do PDF
+        for (const raItem of raAll) {
+          const candidates = allPdfItems.filter(c =>
+            /^\d{1,3}$/.test(c.str) &&
+            parseInt(c.str) >= 1 && parseInt(c.str) <= 200 &&
+            c.page === raItem.page &&
+            c.x < raItem.x &&
+            Math.abs(c.y - raItem.y) <= 30
+          );
+          if (candidates.length > 0) {
+            // Mais próximo em Y (mesma linha); empate → mais à direita em X (Nr, não Série)
+            candidates.sort((a, b) => {
+              const dya = Math.abs(a.y - raItem.y);
+              const dyb = Math.abs(b.y - raItem.y);
+              if (Math.abs(dya - dyb) > 2) return dya - dyb;
+              return b.x - a.x;
+            });
+            const nr = parseInt(candidates[0].str);
+            if (nr >= 1 && nr <= 200) raNumeroByPos.set(raItem.str, nr);
           }
         }
       }
