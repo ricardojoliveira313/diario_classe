@@ -2095,6 +2095,32 @@ export default function Importar() {
         setStatus(`Atualizando alunos... ${Math.min(i + 80, upsertDedup.length)}/${upsertDedup.length}`);
       }
 
+      // ─── Espelho fiel: para cada turma importada, apaga o que não veio no relatório ──
+      // O relatório SED é a verdade. O banco deve ser cópia exacta do relatório.
+      // Qualquer registo no banco que não conste no ficheiro importado é lixo histórico
+      // e deve ser eliminado — sem SQL manual, sem paliativos.
+      {
+        // IDs que acabamos de gravar, agrupados por turmaId
+        const idsPorTurma = new Map<string, Set<string>>();
+        for (const r of upsertDedup) {
+          if (!idsPorTurma.has(r.turmaId)) idsPorTurma.set(r.turmaId, new Set());
+          idsPorTurma.get(r.turmaId)!.add(r.id);
+        }
+        // Para cada turma que foi importada, apaga registos não incluídos neste import
+        for (const [turmaId, idsValidos] of idsPorTurma) {
+          const { data: existentesDB } = await supabase.from('Aluno')
+            .select('id').eq('turmaId', turmaId);
+          const parasApagar = (existentesDB ?? [])
+            .map(r => r.id)
+            .filter(id => !idsValidos.has(id));
+          if (parasApagar.length > 0) {
+            for (let i = 0; i < parasApagar.length; i += 50) {
+              await supabase.from('Aluno').delete().in('id', parasApagar.slice(i, i + 50));
+            }
+          }
+        }
+      }
+
       snapAlunosDeletados.push(...snapFantasmas);
 
       // ─── BF extra: marca bolsa_família em alunos que estão no banco mas não vieram nos arquivos ───
