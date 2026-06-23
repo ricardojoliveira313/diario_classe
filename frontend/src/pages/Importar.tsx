@@ -1128,8 +1128,18 @@ export default function Importar() {
       const todosAlunos = new Map<string, AlunoUnificado>();
       // Chave: RA (quando disponível) para cruzar PDF + Excel mesmo sem data de nascimento
       // Usa normalizarData para garantir formato YYYYMMDD consistente com a dedup
-      const mkKey = (a: AlunoUnificado) =>
-        a.ra ? `RA:${a.ra}` : `${a.nomeNorm}|${normalizarData(a.nascimento)}`;
+      const mkKey = (a: AlunoUnificado) => {
+        if (!a.ra) return `${a.nomeNorm}|${normalizarData(a.nascimento)}`;
+        const turmaNorm = normalizeStr(a.serie ?? '');
+        const num = a.numero ? String(a.numero) : '';
+        const sit = a.situacao ?? 'ATIVO';
+        // Chave única por linha do SED: cada combinação RA+turma+número+situação é uma entrada separada
+        if (num) return `RA:${a.ra}|${turmaNorm}|${num}|${sit}`;
+        // Sem número (cruzamento entre arquivos): RA+turma+situação
+        if (turmaNorm) return `RA:${a.ra}|${turmaNorm}|${sit}`;
+        // Sem turma (dados complementares puros): só RA
+        return `RA:${a.ra}`;
+      };
       // Prioridade: Excel primeiro (dados mais completos), depois PDF
       const mergeAluno = (a: AlunoUnificado) => {
         const key = mkKey(a);
