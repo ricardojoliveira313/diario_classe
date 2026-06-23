@@ -1874,7 +1874,8 @@ export default function Importar() {
       const { data: existentesAtualizados } = await supabase
         .from('Aluno').select('id, ra, nome, situacao, cpf, nis, responsavel, bolsa_familia, turmaId, data_nascimento, cor_raca, deficiencia, aee, data_inicio_matricula, data_fim_matricula, data_movimentacao').range(0, 99999);
       const existentesFrescos = existentesAtualizados ?? existentes ?? [];
-      const freshRegular = new Map<string, any>();  // RA → registo (não-REMA, não-AEE)
+      const freshRegular = new Map<string, any>();  // RA → registo ATIVO (não-REMA, não-TRAN, não-AEE)
+      const freshTran = new Map<string, any>();     // RA → registo TRAN (separado para não colidir com ATIVO)
       const freshAEE = new Map<string, any>();      // RA → registo AEE
       const freshRema = new Map<string, any>();     // RA|turmaNome → registo REMA
       const freshByName = new Map<string, any[]>(); // nome|nasc → registos (para alunos sem RA)
@@ -1890,6 +1891,8 @@ export default function Importar() {
           if (e.turmaId) freshRema.set(`${raStr}|TID:${e.turmaId}`, e);
         } else if (e.aee === true || (e.turmaId && aeeturmaIds.has(e.turmaId))) {
           freshAEE.set(raStr, e);
+        } else if (e.situacao === 'TRAN') {
+          freshTran.set(raStr, e);
         } else {
           freshRegular.set(raStr, e);
         }
@@ -1951,6 +1954,8 @@ export default function Importar() {
               ?? (!ativosRAsNoImport.has(raKey) ? freshRegular.get(raKey) : null);
           } else if (isAEE) {
             existente = freshAEE.get(raKey);
+          } else if (a.situacao === 'TRAN') {
+            existente = freshTran.get(raKey) ?? freshRegular.get(raKey);
           } else {
             existente = freshRegular.get(raKey);
           }
