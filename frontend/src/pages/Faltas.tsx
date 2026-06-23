@@ -85,6 +85,7 @@ export default function Faltas() {
   const [showBF, setShowBF] = useState(false);
   const [bfAlunos, setBfAlunos] = useState<any[]>([]);
   const [bfLoading, setBfLoading] = useState(false);
+  const [bfFiltroSit, setBfFiltroSit] = useState('');
 
   const isMobile = window.innerWidth < 640;
 
@@ -205,17 +206,20 @@ export default function Faltas() {
 
   const exportarBFExcel = () => {
     const turmaNomeMap = new Map(turmas.map((t: any) => [t.id, t.nome]));
-    const dados = bfAlunos.map(a => ({
+    const toRow = (a: any) => ({
       'Nome': a.nome,
       'RA': a.ra ?? '',
       'NIS': a.nis ?? '',
       'Turma': turmaNomeMap.get(a.turmaId) ?? '',
-      'Situação': a.situacao ?? 'ATIVO',
+      'Situação': SITUACAO_LABEL[a.situacao ?? 'ATIVO'] ?? (a.situacao ?? 'ATIVO'),
+      'Data Movimentação': a.data_movimentacao ?? '',
       'Deficiência': a.deficiencia ?? '',
-    }));
-    const ws = XLSX.utils.json_to_sheet(dados);
+    });
+    const ativos = bfAlunos.filter(a => !a.situacao || a.situacao === 'ATIVO');
+    const saidas = bfAlunos.filter(a => a.situacao && a.situacao !== 'ATIVO');
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Bolsa Família');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ativos.map(toRow)), 'Ativos');
+    if (saidas.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(saidas.map(toRow)), 'Transferidos e Outros');
     XLSX.writeFile(wb, `BolsaFamilia_${ano}.xlsx`);
   };
 
@@ -797,30 +801,69 @@ export default function Faltas() {
               background: theme.card, borderRadius: theme.radiusMd,
               boxShadow: '0 8px 40px rgba(0,0,0,0.4)',
               border: `1px solid ${theme.borderLight}`,
-              width: '100%', maxWidth: 700,
+              width: '100%', maxWidth: 800,
               padding: 24,
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            {/* Cabeçalho */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
               <div>
                 <h2 style={{ fontSize: 20, fontWeight: 800, color: '#15803d', margin: 0 }}>
                   💚 Alunos com Bolsa Família
                 </h2>
                 {!bfLoading && (
                   <div style={{ fontSize: 12, color: theme.textMuted, marginTop: 4 }}>
-                    {bfAlunos.length} aluno{bfAlunos.length !== 1 ? 's' : ''} — todas as turmas, todas as situações
+                    {bfAlunos.length} total · {bfAlunos.filter(a => !a.situacao || a.situacao === 'ATIVO').length} ativos ·{' '}
+                    <span style={{ color: '#0284c7', fontWeight: 700 }}>
+                      {bfAlunos.filter(a => a.situacao === 'TRAN').length} transferidos
+                    </span>
+                    {' '}— todas as turmas
                   </div>
                 )}
               </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 {!bfLoading && bfAlunos.length > 0 && (
-                  <button onClick={exportarBFExcel} style={btn('success', { small: true, outline: true })}>
-                    📊 Excel
+                  <button onClick={exportarBFExcel} style={btn('success', { small: true, outline: true })} title="Excel com duas abas: Ativos e Transferidos/Outros">
+                    📊 Excel (2 abas)
                   </button>
                 )}
                 <button onClick={() => setShowBF(false)} style={btn('danger', { small: true, outline: true })}>✕ Fechar</button>
               </div>
             </div>
+
+            {/* Filtro por situação */}
+            {!bfLoading && bfAlunos.length > 0 && (() => {
+              const situacoes = Array.from(new Set(bfAlunos.map(a => a.situacao ?? 'ATIVO'))).sort();
+              return (
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+                  <button
+                    onClick={() => setBfFiltroSit('')}
+                    style={{
+                      padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                      border: `1.5px solid ${bfFiltroSit === '' ? '#15803d' : theme.borderLight}`,
+                      background: bfFiltroSit === '' ? '#15803d' : 'transparent',
+                      color: bfFiltroSit === '' ? '#fff' : theme.textSecondary,
+                    }}
+                  >
+                    Todas ({bfAlunos.length})
+                  </button>
+                  {situacoes.map(sit => (
+                    <button
+                      key={sit}
+                      onClick={() => setBfFiltroSit(sit === bfFiltroSit ? '' : sit)}
+                      style={{
+                        padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                        border: `1.5px solid ${bfFiltroSit === sit ? (SITUACAO_COR[sit] ?? theme.primary) : theme.borderLight}`,
+                        background: bfFiltroSit === sit ? (SITUACAO_COR[sit] ?? theme.primary) : 'transparent',
+                        color: bfFiltroSit === sit ? '#fff' : (SITUACAO_COR[sit] ?? theme.textSecondary),
+                      }}
+                    >
+                      {SITUACAO_LABEL[sit] ?? sit} ({bfAlunos.filter(a => (a.situacao ?? 'ATIVO') === sit).length})
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
 
             {bfLoading ? (
               <div style={{ textAlign: 'center', padding: 40, color: theme.textMuted }}>
@@ -838,25 +881,38 @@ export default function Faltas() {
                       <th style={{ padding: '8px 8px', textAlign: 'center', fontWeight: 700 }}>NIS</th>
                       <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 700 }}>Turma</th>
                       <th style={{ padding: '8px 8px', textAlign: 'center', fontWeight: 700 }}>Situação</th>
+                      <th style={{ padding: '8px 8px', textAlign: 'center', fontWeight: 700, whiteSpace: 'nowrap' }}>Data Movim.</th>
                     </tr>
                   </thead>
                   <tbody>
                     {(() => {
                       const turmaNomeMap = new Map(turmas.map((t: any) => [t.id, t.nome]));
-                      return bfAlunos.map((a, i) => {
+                      const lista = bfFiltroSit
+                        ? bfAlunos.filter(a => (a.situacao ?? 'ATIVO') === bfFiltroSit)
+                        : bfAlunos;
+                      return lista.map((a, i) => {
                         const sit = a.situacao ?? 'ATIVO';
                         const cor = SITUACAO_COR[sit] ?? theme.textSecondary;
+                        const isTran = sit === 'TRAN';
+                        const isSaida = sit === 'TRAN' || sit === 'ABAN' || sit === 'BXTR';
+                        const rowBg = isSaida
+                          ? (isDark ? 'rgba(2,132,199,0.12)' : '#e0f2fe')
+                          : (i % 2 === 0 ? 'var(--row-even)' : 'var(--row-odd)');
                         return (
-                          <tr key={a.id} style={{ background: i % 2 === 0 ? 'var(--row-even)' : 'var(--row-odd)' }}>
+                          <tr key={a.id} style={{ background: rowBg }}>
                             <td style={{ padding: '7px 10px', fontWeight: 600, color: theme.text }}>
+                              {isTran && <span title="Transferido — lançar no Sistema Presença" style={{ marginRight: 5 }}>🔄</span>}
                               {a.nome}
                               {a.deficiencia && <span style={{ fontSize: 10, color: '#7c3aed', marginLeft: 6 }}>♿</span>}
                             </td>
                             <td style={{ padding: '7px 8px', textAlign: 'center', color: theme.textSecondary }}>{a.ra ?? '—'}</td>
-                            <td style={{ padding: '7px 8px', textAlign: 'center', color: theme.textSecondary }}>{a.nis ?? '—'}</td>
+                            <td style={{ padding: '7px 8px', textAlign: 'center', color: theme.textSecondary, fontWeight: 600 }}>{a.nis ?? '—'}</td>
                             <td style={{ padding: '7px 8px', color: theme.textSecondary }}>{turmaNomeMap.get(a.turmaId) ?? '—'}</td>
                             <td style={{ padding: '7px 8px', textAlign: 'center', fontWeight: 700, color: cor }}>
                               {SITUACAO_LABEL[sit] ?? sit}
+                            </td>
+                            <td style={{ padding: '7px 8px', textAlign: 'center', color: isSaida ? cor : theme.textMuted, fontWeight: isSaida ? 700 : 400 }}>
+                              {a.data_movimentacao ?? '—'}
                             </td>
                           </tr>
                         );
@@ -864,6 +920,11 @@ export default function Faltas() {
                     })()}
                   </tbody>
                 </table>
+                {bfFiltroSit && (
+                  <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 8, textAlign: 'right' }}>
+                    Mostrando {bfAlunos.filter(a => (a.situacao ?? 'ATIVO') === bfFiltroSit).length} de {bfAlunos.length} alunos
+                  </div>
+                )}
               </div>
             )}
           </div>
