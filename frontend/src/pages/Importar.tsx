@@ -2097,22 +2097,27 @@ export default function Importar() {
 
       // ─── Espelho fiel: para cada turma importada, apaga o que não veio no relatório ──
       // O relatório SED é a verdade. O banco deve ser cópia exacta do relatório.
-      // Qualquer registo no banco que não conste no ficheiro importado é lixo histórico
-      // e deve ser eliminado — sem SQL manual, sem paliativos.
+      // SEGURANÇA: só apaga registos SEM histórico de faltas lançadas.
+      // Registos com faltas reais (aluno que saiu mas tinha frequência registada)
+      // são preservados para não perder o histórico do ano letivo.
       {
-        // IDs que acabamos de gravar, agrupados por turmaId
         const idsPorTurma = new Map<string, Set<string>>();
         for (const r of upsertDedup) {
           if (!idsPorTurma.has(r.turmaId)) idsPorTurma.set(r.turmaId, new Set());
           idsPorTurma.get(r.turmaId)!.add(r.id);
         }
-        // Para cada turma que foi importada, apaga registos não incluídos neste import
         for (const [turmaId, idsValidos] of idsPorTurma) {
           const { data: existentesDB } = await supabase.from('Aluno')
             .select('id').eq('turmaId', turmaId);
-          const parasApagar = (existentesDB ?? [])
+          const candidatosApagar = (existentesDB ?? [])
             .map(r => r.id)
             .filter(id => !idsValidos.has(id));
+          if (candidatosApagar.length === 0) continue;
+          // Protege registos com faltas lançadas — nunca apagar histórico real
+          const { data: comFaltas } = await supabase.from('Falta')
+            .select('alunoId').in('alunoId', candidatosApagar);
+          const protegidos = new Set((comFaltas ?? []).map(f => f.alunoId));
+          const parasApagar = candidatosApagar.filter(id => !protegidos.has(id));
           if (parasApagar.length > 0) {
             for (let i = 0; i < parasApagar.length; i += 50) {
               await supabase.from('Aluno').delete().in('id', parasApagar.slice(i, i + 50));
