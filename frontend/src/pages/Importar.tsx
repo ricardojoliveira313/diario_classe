@@ -1236,6 +1236,22 @@ export default function Importar() {
             return;
           }
 
+          // ─── Cross-modal: mesmo aluno em turma regular + turma AEE ─────────────────
+          // Alunos AEE frequentam a turma regular E a sala de recursos — entradas independentes.
+          // Sem este bloco, o "Merge normal" colapsa as duas linhas em uma só.
+          if (seriesDiferentes && !mesmaModalidade) {
+            const modalA  = detectarModalidade(a.serie);
+            const modalEx = detectarModalidade(existente.serie);
+            if (modalA === 'AEE' || modalEx === 'AEE') {
+              const aeeEntry     = modalA === 'AEE' ? a : existente;
+              const regularEntry = modalA === 'AEE' ? existente : a;
+              const aeeKey = `${key}|AEE|${normalizeStr(aeeEntry.serie)}`;
+              todosAlunos.set(key, regularEntry);
+              todosAlunos.set(aeeKey, aeeEntry);
+              return;
+            }
+          }
+
           // ─── Retorno após remanejamento: mesmo RA, mesma turma, REMA + ATIVO ──
           // Ex: Isaac em 1°ANO C — REMA nº16 (saiu) + ATIVO nº17 (voltou pra mesma turma)
           // Ambas as linhas devem existir — espelho fiel do relatório SED.
@@ -1267,6 +1283,20 @@ export default function Importar() {
             const tranKey = `${key}|TRAN|${tranEntry.numero || tranEntry.dataMovimentacao || 'X'}`;
             todosAlunos.set(key, ativoEntry);
             todosAlunos.set(tranKey, tranEntry);
+            return;
+          }
+
+          // ─── Outras situações diferentes na mesma turma ──────────────────────
+          // Ex: TRAN + N COM na mesma turma → preservar ambas as entradas.
+          // ehRemaRetornoMesmaTurma e ehTransfRetornoMesmaTurma já trataram REMA/TRAN+ATIVO.
+          if (!seriesDiferentes && existente.situacao !== a.situacao) {
+            const isAtivoA  = a.situacao === 'ATIVO' || !a.situacao;
+            const isAtivoEx = existente.situacao === 'ATIVO' || !existente.situacao;
+            const main       = isAtivoA ? a : (isAtivoEx ? existente : existente);
+            const outroEntry = main === a ? existente : a;
+            const outroKey   = `${key}|${outroEntry.situacao || 'X'}|${outroEntry.numero || outroEntry.dataMovimentacao || 'X'}`;
+            todosAlunos.set(key, main);
+            if (!todosAlunos.has(outroKey)) todosAlunos.set(outroKey, outroEntry);
             return;
           }
 
