@@ -1236,6 +1236,22 @@ export default function Importar() {
             return;
           }
 
+          // ─── Retorno após remanejamento: mesmo RA, mesma turma, REMA + ATIVO ──
+          // Ex: Isaac em 1°ANO C — REMA nº16 (saiu) + ATIVO nº17 (voltou pra mesma turma)
+          // Ambas as linhas devem existir — espelho fiel do relatório SED.
+          const ehRemaRetornoMesmaTurma = !seriesDiferentes && (
+            (existente.situacao === 'REMA' && a.situacao === 'ATIVO') ||
+            (existente.situacao === 'ATIVO' && a.situacao === 'REMA')
+          );
+          if (ehRemaRetornoMesmaTurma) {
+            const remaEntry = existente.situacao === 'REMA' ? existente : a;
+            const ativoEntry = existente.situacao === 'REMA' ? a : existente;
+            const remaKey = `${key}|REMA|${remaEntry.numero || remaEntry.dataMovimentacao || 'X'}`;
+            todosAlunos.set(key, ativoEntry);
+            todosAlunos.set(remaKey, remaEntry);
+            return;
+          }
+
           // ─── Retorno após transferência: mesmo RA, mesma turma, TRAN + ATIVO ──
           // O SED registra dois lançamentos quando um aluno é transferido e volta:
           //   • TRAN  (nº antigo — quando foi embora)
