@@ -1,9 +1,18 @@
 -- ============================================================
 -- PASSO A PASSO COMPLETO — RODE TUDO NO SUPABASE
+-- 0) Recria constraint para permitir TRAN+ATIVO do mesmo RA
 -- 1) Marca AEE
 -- 2) Remove REMA cruzados e repetidos
 -- 3) Cria índices únicos
 -- ============================================================
+
+-- ─── PASSO 0: Recria aluno_ra_uniq excluindo também TRAN ─────
+-- Necessário para suportar aluno transferido que voltou (duas
+-- linhas no SED: TRAN + ATIVO, mesmo RA, mesma turma)
+DROP INDEX IF EXISTS aluno_ra_uniq;
+CREATE UNIQUE INDEX aluno_ra_uniq ON "Aluno" (ra)
+  WHERE ra IS NOT NULL AND situacao NOT IN ('REMA', 'TRAN') AND aee IS NOT TRUE;
+NOTIFY pgrst, 'reload schema';
 
 -- ─── PASSO 1: Marca alunos AEE baseado na turma ─────────────
 ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS aee BOOLEAN DEFAULT FALSE;
@@ -42,6 +51,7 @@ DELETE FROM "Aluno" WHERE id IN (
 );
 
 -- ─── PASSO 4: Remove duplicatas de RA entre regulares ────────
+-- Preserva TRAN+ATIVO do mesmo RA (aluno transferido que voltou)
 DO $$
 DECLARE
   dup RECORD;
@@ -51,18 +61,18 @@ DECLARE
 BEGIN
   FOR dup IN
     SELECT ra FROM "Aluno"
-    WHERE ra IS NOT NULL AND situacao <> 'REMA' AND aee IS NOT TRUE
+    WHERE ra IS NOT NULL AND situacao NOT IN ('REMA', 'TRAN') AND aee IS NOT TRUE
     GROUP BY ra HAVING COUNT(*) > 1
   LOOP
     ra_val := dup.ra;
     SELECT a.id INTO canon_id FROM "Aluno" a
       LEFT JOIN "Falta" f ON f."alunoId" = a.id
-    WHERE a.ra = ra_val AND a.situacao <> 'REMA' AND a.aee IS NOT TRUE
+    WHERE a.ra = ra_val AND a.situacao NOT IN ('REMA', 'TRAN') AND a.aee IS NOT TRUE
     GROUP BY a.id ORDER BY COUNT(f.id) DESC, a.id ASC LIMIT 1;
     FOR extra_id IN
       SELECT id FROM "Aluno"
       WHERE ra = ra_val AND id <> canon_id
-        AND situacao <> 'REMA' AND aee IS NOT TRUE
+        AND situacao NOT IN ('REMA', 'TRAN') AND aee IS NOT TRUE
     LOOP
       DELETE FROM "Falta" WHERE "alunoId" = extra_id;
       DELETE FROM "Aluno" WHERE id = extra_id;

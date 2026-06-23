@@ -121,11 +121,11 @@ ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS aee BOOLEAN DEFAULT FALSE;
 -- Índice único em CPF (parcial: só alunos com CPF) para upsert da Educacenso
 CREATE UNIQUE INDEX IF NOT EXISTS educacenso_cpf_uniq ON "Educacenso" (cpf) WHERE cpf <> '';
 
--- Índice único em RA do Aluno (parcial: exclui REMA e AEE, que legitimamente
--- compartilham RA com ATIVO regular)
--- Impede duplicatas entre alunos regulares mesmo que a aplicação falhe
+-- Índice único em RA do Aluno (parcial: exclui REMA, TRAN e AEE, que legitimamente
+-- compartilham RA com ATIVO regular — TRAN pode coexistir com ATIVO na mesma turma
+-- quando o aluno foi transferido e voltou, gerando dois lançamentos no SED)
 CREATE UNIQUE INDEX IF NOT EXISTS aluno_ra_uniq ON "Aluno" (ra)
-  WHERE ra IS NOT NULL AND situacao <> 'REMA' AND aee IS NOT TRUE;
+  WHERE ra IS NOT NULL AND situacao NOT IN ('REMA', 'TRAN') AND aee IS NOT TRUE;
 
 -- Índice único em nome da Turma (parcial: ignora nomes vazios)
 -- Garante que não se criem duas turmas com o mesmo nome
