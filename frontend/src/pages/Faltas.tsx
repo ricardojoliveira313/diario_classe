@@ -82,6 +82,9 @@ export default function Faltas() {
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showBF, setShowBF] = useState(false);
+  const [bfAlunos, setBfAlunos] = useState<any[]>([]);
+  const [bfLoading, setBfLoading] = useState(false);
 
   const isMobile = window.innerWidth < 640;
 
@@ -188,6 +191,33 @@ export default function Faltas() {
     const dias = diasAluno[a.id] ?? [];
     return ct(dias, 'F') + ct(dias, 'J') + ct(dias, 'A') >= limiteAlerta;
   });
+
+  const abrirBolsaFamilia = async () => {
+    setShowBF(true);
+    setBfLoading(true);
+    const todos = await api.getAllAlunos();
+    const bf = todos
+      .filter((a: any) => a.bolsa_familia)
+      .sort((a: any, b: any) => a.nome.localeCompare(b.nome, 'pt-BR'));
+    setBfAlunos(bf);
+    setBfLoading(false);
+  };
+
+  const exportarBFExcel = () => {
+    const turmaNomeMap = new Map(turmas.map((t: any) => [t.id, t.nome]));
+    const dados = bfAlunos.map(a => ({
+      'Nome': a.nome,
+      'RA': a.ra ?? '',
+      'NIS': a.nis ?? '',
+      'Turma': turmaNomeMap.get(a.turmaId) ?? '',
+      'Situação': a.situacao ?? 'ATIVO',
+      'Deficiência': a.deficiencia ?? '',
+    }));
+    const ws = XLSX.utils.json_to_sheet(dados);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Bolsa Família');
+    XLSX.writeFile(wb, `BolsaFamilia_${ano}.xlsx`);
+  };
 
   const exportarPDF = () => {
     const turmaObj = turmas.find(t => t.id === turmaId);
@@ -689,15 +719,18 @@ export default function Faltas() {
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
           <h1 style={{ fontSize: 26, fontWeight: 800, color: theme.text }}>📋 Lançamento de Faltas</h1>
-          {alunos.length > 0 && (
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              <button onClick={exportarFolhaOCR} style={btn('primary', { small: true, outline: true })} title="Folha simples (A4 retrato) para professor preencher número de faltas — fácil de fotografar">📋 Folha</button>
-              <button onClick={exportarGradeDias} style={btn('primary', { small: true, outline: true })} title="Grade com X por dia (A4 paisagem) para fotografar e ler com OCR">📅 Grade OCR</button>
-              <button onClick={exportarDiario} style={btn('warning', { small: true, outline: true })} title="Diário tradicional com todos os dias do mês">🖨️ Diário</button>
-              <button onClick={exportarExcel} style={btn('success', { small: true, outline: true })}>📊 Excel</button>
-              <button onClick={exportarPDF} style={btn('danger', { small: true, outline: true })}>📄 PDF</button>
-            </div>
-          )}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <button onClick={abrirBolsaFamilia} style={btn('success', { small: true })} title="Ver todos os alunos com Bolsa Família de todas as turmas (qualquer situação)">💚 Bolsa Família</button>
+            {alunos.length > 0 && (
+              <>
+                <button onClick={exportarFolhaOCR} style={btn('primary', { small: true, outline: true })} title="Folha simples (A4 retrato) para professor preencher número de faltas — fácil de fotografar">📋 Folha</button>
+                <button onClick={exportarGradeDias} style={btn('primary', { small: true, outline: true })} title="Grade com X por dia (A4 paisagem) para fotografar e ler com OCR">📅 Grade OCR</button>
+                <button onClick={exportarDiario} style={btn('warning', { small: true, outline: true })} title="Diário tradicional com todos os dias do mês">🖨️ Diário</button>
+                <button onClick={exportarExcel} style={btn('success', { small: true, outline: true })}>📊 Excel</button>
+                <button onClick={exportarPDF} style={btn('danger', { small: true, outline: true })}>📄 PDF</button>
+              </>
+            )}
+          </div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
           <div>
@@ -745,6 +778,97 @@ export default function Faltas() {
           <span style={{ fontSize: 11, color: theme.textMuted }}>· Clique na célula para alternar</span>
         </div>
       </div>
+
+      {/* ── Modal Bolsa Família ─────────────────────────────────────────── */}
+      {showBF && (
+        <div
+          onClick={() => setShowBF(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            background: 'rgba(0,0,0,0.55)', display: 'flex',
+            alignItems: 'flex-start', justifyContent: 'center',
+            padding: '40px 16px',
+            overflowY: 'auto',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: theme.card, borderRadius: theme.radiusMd,
+              boxShadow: '0 8px 40px rgba(0,0,0,0.4)',
+              border: `1px solid ${theme.borderLight}`,
+              width: '100%', maxWidth: 700,
+              padding: 24,
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div>
+                <h2 style={{ fontSize: 20, fontWeight: 800, color: '#15803d', margin: 0 }}>
+                  💚 Alunos com Bolsa Família
+                </h2>
+                {!bfLoading && (
+                  <div style={{ fontSize: 12, color: theme.textMuted, marginTop: 4 }}>
+                    {bfAlunos.length} aluno{bfAlunos.length !== 1 ? 's' : ''} — todas as turmas, todas as situações
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                {!bfLoading && bfAlunos.length > 0 && (
+                  <button onClick={exportarBFExcel} style={btn('success', { small: true, outline: true })}>
+                    📊 Excel
+                  </button>
+                )}
+                <button onClick={() => setShowBF(false)} style={btn('danger', { small: true, outline: true })}>✕ Fechar</button>
+              </div>
+            </div>
+
+            {bfLoading ? (
+              <div style={{ textAlign: 'center', padding: 40, color: theme.textMuted }}>
+                <Spinner size={32} /> <div style={{ marginTop: 12 }}>Carregando...</div>
+              </div>
+            ) : bfAlunos.length === 0 ? (
+              <EmptyState icon="💚" message="Nenhum aluno com Bolsa Família cadastrado." />
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: '#15803d', color: '#fff' }}>
+                      <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 700 }}>Nome</th>
+                      <th style={{ padding: '8px 8px', textAlign: 'center', fontWeight: 700, whiteSpace: 'nowrap' }}>RA</th>
+                      <th style={{ padding: '8px 8px', textAlign: 'center', fontWeight: 700 }}>NIS</th>
+                      <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 700 }}>Turma</th>
+                      <th style={{ padding: '8px 8px', textAlign: 'center', fontWeight: 700 }}>Situação</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(() => {
+                      const turmaNomeMap = new Map(turmas.map((t: any) => [t.id, t.nome]));
+                      return bfAlunos.map((a, i) => {
+                        const sit = a.situacao ?? 'ATIVO';
+                        const cor = SITUACAO_COR[sit] ?? theme.textSecondary;
+                        return (
+                          <tr key={a.id} style={{ background: i % 2 === 0 ? 'var(--row-even)' : 'var(--row-odd)' }}>
+                            <td style={{ padding: '7px 10px', fontWeight: 600, color: theme.text }}>
+                              {a.nome}
+                              {a.deficiencia && <span style={{ fontSize: 10, color: '#7c3aed', marginLeft: 6 }}>♿</span>}
+                            </td>
+                            <td style={{ padding: '7px 8px', textAlign: 'center', color: theme.textSecondary }}>{a.ra ?? '—'}</td>
+                            <td style={{ padding: '7px 8px', textAlign: 'center', color: theme.textSecondary }}>{a.nis ?? '—'}</td>
+                            <td style={{ padding: '7px 8px', color: theme.textSecondary }}>{turmaNomeMap.get(a.turmaId) ?? '—'}</td>
+                            <td style={{ padding: '7px 8px', textAlign: 'center', fontWeight: 700, color: cor }}>
+                              {SITUACAO_LABEL[sit] ?? sit}
+                            </td>
+                          </tr>
+                        );
+                      });
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {loading ? <Loading /> : alunos.length === 0 && (
         <EmptyState icon="📋" message={turmas.length === 0 ? 'Cadastre turmas e alunos primeiro.' : 'Nenhum aluno nesta turma.'} />
