@@ -1236,6 +1236,24 @@ export default function Importar() {
             return;
           }
 
+          // ─── Retorno após transferência: mesmo RA, mesma turma, TRAN + ATIVO ──
+          // O SED registra dois lançamentos quando um aluno é transferido e volta:
+          //   • TRAN  (nº antigo — quando foi embora)
+          //   • ATIVO (nº novo  — quando voltou, mesma turma)
+          // Ambas as linhas devem existir — espelho fiel do relatório SED.
+          const ehTransfRetornoMesmaTurma = !seriesDiferentes && (
+            (existente.situacao === 'TRAN' && a.situacao === 'ATIVO') ||
+            (existente.situacao === 'ATIVO' && a.situacao === 'TRAN')
+          );
+          if (ehTransfRetornoMesmaTurma) {
+            const tranEntry = existente.situacao === 'TRAN' ? existente : a;
+            const ativoEntry = existente.situacao === 'TRAN' ? a : existente;
+            const tranKey = `${key}|TRAN|${tranEntry.numero || tranEntry.dataMovimentacao || 'X'}`;
+            todosAlunos.set(key, ativoEntry);
+            todosAlunos.set(tranKey, tranEntry);
+            return;
+          }
+
           // ─── Merge normal ─────────────────────────────────────────────────────
           existente.bolsaFamilia = existente.bolsaFamilia || a.bolsaFamilia;
           existente.nis = existente.nis || a.nis;
@@ -1990,7 +2008,7 @@ export default function Importar() {
       {
         const rasBatch = new Set<string>();
         const limpo = upsertDedup.filter(a => {
-          if (!a.ra || a.situacao === 'REMA' || a.aee) return true;
+          if (!a.ra || a.situacao === 'REMA' || a.situacao === 'TRAN' || a.aee) return true;
           const k = String(a.ra);
           if (rasBatch.has(k)) return false;
           rasBatch.add(k);
