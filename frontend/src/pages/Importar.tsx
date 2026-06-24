@@ -552,13 +552,14 @@ export default function Importar() {
               // EJA: séries numéricas 9 e 10 → turmas específicas
               if (serie === '9') serie = 'EJA I ALFABETIZACAO';
               else if (serie === '10') serie = 'EJA I POS ALFABETIZACAO';
-              // AEE: série "0" é código interno do SED — usar serie vazia para que o PDF
-              // preencha o nome correto da turma via merge, mas preservar data_inicio_matricula
+              // AEE: série "0" é código interno do SED — converte para '' e pula o alunosMap.
+              // Deficiência, CPF e Cor/Raça vêm do Educacenso; BF vem do PDF BolsaFamília.
+              // Manter este entry causaria turmaId=null no DB (destrói o registo da turma regular).
               const tipoEnsinoNorm = normalizeStr(String(nr['TIPO DE ENSINO'] ?? ''));
               if (/^\d{1,3}$/.test(serie) && tipoEnsinoNorm.includes('ATENDIMENTO')) serie = '';
-              // Séries numéricas não-AEE (FUNDAMENTAL 1-5, INFANTIL, etc.):
+              // Séries numéricas não-AEE (FUNDAMENTAL 1-5, INFANTIL, etc.) e entradas AEE sem série:
               // PDF é a base — Excel só fornece datas; não entram no alunosMap
-              if (!nome || /^\d{1,3}$/.test(serie)) {
+              if (!nome || !serie || /^\d{1,3}$/.test(serie)) {
                 if (datesOnly && nome && /^\d{1,3}$/.test(String(nr['SERIE'] ?? nr['TURMA'] ?? '').trim())) {
                   const raNum = parseInt(String(nr['RA'] ?? '')) || null;
                   if (raNum) {
@@ -1152,13 +1153,10 @@ export default function Importar() {
       const mkKey = (a: AlunoUnificado) => {
         if (!a.ra) return `${a.nomeNorm}|${normalizarData(a.nascimento)}`;
         const turmaNorm = normSerieKey(a.serie ?? '');
-        const num = a.numero ? String(a.numero) : '';
         const sit = a.situacao ?? 'ATIVO';
-        // Chave única por linha do SED: cada combinação RA+turma+número+situação é uma entrada separada
-        if (num && turmaNorm) return `RA:${a.ra}|${turmaNorm}|${num}|${sit}`;
-        // Sem número (cruzamento entre arquivos): RA+turma+situação
+        // Chave: RA+turma+situação — permite Excel e PDF mesclarem para o mesmo aluno
+        // (não inclui número: PDF e Excel podem ter numerações diferentes, mas são o mesmo aluno)
         if (turmaNorm) return `RA:${a.ra}|${turmaNorm}|${sit}`;
-        // Sem turma (dados complementares puros, ex: AEE do Excel): só RA
         return `RA:${a.ra}`;
       };
       // Prioridade: Excel primeiro (dados mais completos), depois PDF
