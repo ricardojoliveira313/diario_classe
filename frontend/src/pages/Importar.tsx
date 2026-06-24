@@ -294,8 +294,10 @@ export default function Importar() {
           const pages = new Set([...nrAll2.map(n => n.page), ...raAll.map(r => r.page)]);
 
           for (const pg of pages) {
-            const nrs = nrAll2.filter(n => n.page === pg).sort((a, b) => b.y - a.y);
-            const ras = raAll.filter(r => r.page === pg).sort((a, b) => b.y - a.y);
+            // Ascendente em Y (topo da página primeiro) — aluno Nr 1 é sempre processado antes
+            // dos demais, evitando que gaps na sequência (ex: Nr 7 ausente) causem mapeamento errado.
+            const nrs = nrAll2.filter(n => n.page === pg).sort((a, b) => a.y - b.y);
+            const ras = raAll.filter(r => r.page === pg).sort((a, b) => a.y - b.y);
 
             if (nrs.length === ras.length) {
               for (let i = 0; i < nrs.length; i++) {
