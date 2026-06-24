@@ -2038,7 +2038,9 @@ export default function Importar() {
           } else if (a.situacao === 'TRAN') {
             existente = freshTran.get(raKey) ?? freshRegular.get(raKey);
           } else {
-            existente = freshRegular.get(raKey);
+            // Se o registo no banco estava erroneamente marcado como AEE (import anterior),
+            // recupera-o de freshAEE para reutilizar o mesmo UUID e corrigir aee→false.
+            existente = freshRegular.get(raKey) ?? freshAEE.get(raKey);
           }
         }
 
@@ -2115,8 +2117,13 @@ export default function Importar() {
             const { error: e2 } = await supabase.from('Aluno').upsert([record], { onConflict: 'id' });
             if (e2 && e2.message.includes('aluno_ra_uniq')) {
               // Busca o verdadeiro dono deste RA no banco e actualiza-o directamente
-              const { data: owner } = await supabase.from('Aluno')
+              // Se não há registo regular (aee=false), aceita também registo AEE (mal classificado)
+              const { data: ownerRegular } = await supabase.from('Aluno')
                 .select('id').eq('ra', record.ra).neq('aee', true).limit(1).maybeSingle();
+              const { data: ownerAny } = !ownerRegular && !record.aee
+                ? await supabase.from('Aluno').select('id').eq('ra', record.ra).limit(1).maybeSingle()
+                : { data: null };
+              const owner = ownerRegular ?? ownerAny;
               if (owner) {
                 const { id: _id, ...rest } = record as any;
                 await supabase.from('Aluno').update(rest).eq('id', owner.id);
