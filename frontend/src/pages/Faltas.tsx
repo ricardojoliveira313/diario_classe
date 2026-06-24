@@ -126,7 +126,12 @@ export default function Faltas() {
     if (!turmaId) { setLoading(false); return; }
     setLoading(true);
     Promise.all([api.getAlunos(turmaId), api.getFaltas(turmaId, mes, ano)]).then(([al, fa]) => {
-      setAlunos([...al].sort((a: any, b: any) => a.nome.localeCompare(b.nome, 'pt-BR')));
+      setAlunos([...al].sort((a: any, b: any) => {
+        const nA = a.numero || 9999;
+        const nB = b.numero || 9999;
+        if (nA !== nB) return nA - nB;
+        return a.nome.localeCompare(b.nome, 'pt-BR');
+      }));
       const mapDias: Record<string, Status[]> = {};
       const mapTextos: Record<string, string> = {};
       fa.forEach((f: any) => {
@@ -1030,7 +1035,7 @@ export default function Faltas() {
                         borderRight: '2px solid var(--border-light)',
                       }}>
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
-                          <span style={{ fontSize: 11, color: theme.textMuted, paddingTop: 2, minWidth: 18 }}>{i + 1}</span>
+                          <span style={{ fontSize: 11, color: theme.textMuted, paddingTop: 2, minWidth: 18 }}>{a.numero || (i + 1)}</span>
                           <div>
                             <div style={{ fontSize: 13, fontWeight: 600, color: theme.text, display: 'flex', alignItems: 'center', gap: 4 }}>
                               {emAlerta && <span title="Frequência abaixo de 75%">⚠️</span>}
