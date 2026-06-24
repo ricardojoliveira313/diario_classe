@@ -1128,18 +1128,37 @@ export default function Importar() {
 
       // ─── Cruzamento ───
       const todosAlunos = new Map<string, AlunoUnificado>();
+
+      // Normaliza nome de série para chave de merge: remove sufixos verbosos do SED
+      // (MANHA/TARDE/NOITE/ANUAL/PRE ESCOLA) e aplica aliases EJA.
+      // Garante que "EJA I - ALFABETIZAÇÃO A NOITE ANUAL" (PDF) e "EJA I ALFABETIZACAO"
+      // (Excel) produzam a mesma chave → o mesmo aluno não fica duplicado entre fontes.
+      const normSerieKey = (s: string): string => {
+        if (!s) return '';
+        const n = normalizeStr(s)
+          .replace(/[-–—]/g, ' ')
+          .replace(/\bPRE\s*ESCOLA\b/g, '')
+          .replace(/\b(MANHA|TARDE|NOTURNO|MATUTINO|VESPERTINO|NOITE|ANUAL|INTEGRAL|SEMI\s*INTEGRAL)\b/g, '')
+          .replace(/\s+/g, ' ').trim();
+        if (n.includes('MULTISSERIADA') || (n.includes('ALFABETIZACAO') && !n.includes('POS')))
+          return 'EJA I ALFABETIZACAO';
+        if ((n.includes('POS') && n.includes('ALFABETIZACAO')) || /\bTERMO\b/.test(n))
+          return 'EJA I POS ALFABETIZACAO';
+        return n;
+      };
+
       // Chave: RA (quando disponível) para cruzar PDF + Excel mesmo sem data de nascimento
       // Usa normalizarData para garantir formato YYYYMMDD consistente com a dedup
       const mkKey = (a: AlunoUnificado) => {
         if (!a.ra) return `${a.nomeNorm}|${normalizarData(a.nascimento)}`;
-        const turmaNorm = normalizeStr(a.serie ?? '');
+        const turmaNorm = normSerieKey(a.serie ?? '');
         const num = a.numero ? String(a.numero) : '';
         const sit = a.situacao ?? 'ATIVO';
         // Chave única por linha do SED: cada combinação RA+turma+número+situação é uma entrada separada
-        if (num) return `RA:${a.ra}|${turmaNorm}|${num}|${sit}`;
+        if (num && turmaNorm) return `RA:${a.ra}|${turmaNorm}|${num}|${sit}`;
         // Sem número (cruzamento entre arquivos): RA+turma+situação
         if (turmaNorm) return `RA:${a.ra}|${turmaNorm}|${sit}`;
-        // Sem turma (dados complementares puros): só RA
+        // Sem turma (dados complementares puros, ex: AEE do Excel): só RA
         return `RA:${a.ra}`;
       };
       // Prioridade: Excel primeiro (dados mais completos), depois PDF
@@ -1156,8 +1175,10 @@ export default function Importar() {
           // ⚠️ Só vale se as turmas forem da MESMA modalidade:
           //    Regular→Regular, AEE→AEE, EJA→EJA, Infantil→Infantil
           //    NUNCA cruzando modalidades (ex: AEE→Regular)
+          // Usa normSerieKey para evitar falso "seriesDiferentes" entre variantes de nome
+          // do mesmo PDF/Excel (ex: "EJA I - ALFABETIZAÇÃO A NOITE" vs "EJA I ALFABETIZACAO")
           const seriesDiferentes = existente.serie && a.serie
-            && normalizeStr(existente.serie) !== normalizeStr(a.serie);
+            && normSerieKey(existente.serie) !== normSerieKey(a.serie);
 
           const detectarModalidade = (serie: string): string => {
             const n = normalizeStr(serie);
@@ -1467,13 +1488,17 @@ export default function Importar() {
         }
       }
 
-      // Turmas únicas — prefere professora não-vazia
+      // Turmas únicas — chaveadas por nome normalizado para evitar duplicatas
+      // (ex: "EJA I - ALFABETIZAÇÃO A NOITE" e "EJA I ALFABETIZACAO" → mesma turma).
+      // Alunos sem série (ex: AEE do Excel, serie='') são ignorados: o PDF fornece o nome correto.
       const turmasUnicas = new Map<string, { nome: string; professora: string }>();
       for (const a of alunosArr) {
-        if (!turmasUnicas.has(a.serie)) {
-          turmasUnicas.set(a.serie, { nome: a.serie, professora: a.professora });
-        } else if (a.professora && !turmasUnicas.get(a.serie)!.professora) {
-          turmasUnicas.get(a.serie)!.professora = a.professora;
+        const key = normSerieKey(a.serie ?? '');
+        if (!key) continue; // ignora séries vazias (alunos AEE vindos só do Excel)
+        if (!turmasUnicas.has(key)) {
+          turmasUnicas.set(key, { nome: a.serie, professora: a.professora });
+        } else if (a.professora && !turmasUnicas.get(key)!.professora) {
+          turmasUnicas.get(key)!.professora = a.professora;
         }
       }
 
