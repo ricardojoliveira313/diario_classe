@@ -362,8 +362,8 @@ export default function Alunos() {
   };
 
   const COLUNAS = role === 'admin'
-    ? '44px 1fr 110px 85px 100px 40px 110px 130px 125px 90px 36px'
-    : '44px 1fr 110px 85px 100px 40px 110px 130px 125px 90px';
+    ? '44px 1fr 110px 85px 100px 40px 110px 130px 125px 90px 30px 36px'
+    : '44px 1fr 110px 85px 100px 40px 110px 130px 125px 90px 30px';
   const formataCPF = (cpf: string) => cpf ? cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : '';
   const copiar = async (texto: string, label: string) => {
     try { await navigator.clipboard.writeText(texto); setCopiado(label); setTimeout(() => setCopiado(''), 1500); } catch {}
@@ -620,6 +620,7 @@ export default function Alunos() {
             <span>Docente</span><span>Turma</span>
             <span style={{ textAlign: 'center' }}>CPF</span>
             <span style={{ textAlign: 'center' }}>Cor/Raça</span>
+            <span style={{ textAlign: 'center' }}>SED</span>
             {role === 'admin' && <span />}
           </div>
 
@@ -714,6 +715,26 @@ export default function Alunos() {
                       onClick={() => { if (!a.cor_raca && podeEditarCorRaca) { if (!aberto) toggleDetalhes(a.id); setEditandoCor(a.id); } }}
                       title={!a.cor_raca && podeEditarCorRaca ? 'Clique para adicionar Cor/Raça' : ''}>
                       {a.cor_raca || (podeEditarCorRaca ? <span style={{ color: '#3b82f6', cursor: 'pointer' }}>+ raça</span> : <span style={{ color: theme.textMuted }}>—</span>)}
+                    </span>
+                    <span style={{ textAlign: 'center' }}>
+                      <button
+                        onClick={e => {
+                          e.stopPropagation();
+                          if (a.ra) copiar(String(a.ra), `sed-${a.id}`);
+                          window.open('https://sed.educacao.sp.gov.br/', '_blank', 'noopener,noreferrer');
+                        }}
+                        title={a.ra ? `Copiar RA ${a.ra} e abrir SED` : 'Abrir SED'}
+                        style={{
+                          background: 'none', border: 'none', cursor: 'pointer',
+                          fontSize: 15, padding: '2px 4px', borderRadius: 4, lineHeight: 1,
+                          color: copiado === `sed-${a.id}` ? '#16a34a' : '#2563eb',
+                          transition: 'color 0.15s',
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.opacity = '0.7'; }}
+                        onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}
+                      >
+                        {copiado === `sed-${a.id}` ? '✅' : '🔗'}
+                      </button>
                     </span>
                     {role === 'admin' && (
                       deletandoId === a.id ? (
