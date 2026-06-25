@@ -193,6 +193,10 @@ export default function Faltas() {
   const freqGeral = alunos.length > 0
     ? ((numDias * alunos.length - totalAusencias) / (numDias * alunos.length) * 100).toFixed(1)
     : '0.0';
+  // Freq. c/ atestado: conta só F+J como ausência (A = presença justificada)
+  const freqGeralAt = alunos.length > 0
+    ? ((numDias * alunos.length - (totalF + totalJ)) / (numDias * alunos.length) * 100).toFixed(1)
+    : '0.0';
   const alertas = alunos.filter(a => {
     const dias = diasAluno[a.id] ?? [];
     return ct(dias, 'F') + ct(dias, 'J') + ct(dias, 'A') >= limiteAlerta;
@@ -1015,6 +1019,7 @@ export default function Faltas() {
                   <th style={{ width: 30, textAlign: 'center', fontSize: 11, color: '#fdba74', padding: '8px 2px' }}>J</th>
                   <th style={{ width: 30, textAlign: 'center', fontSize: 11, color: '#c4b5fd', padding: '8px 2px' }}>A</th>
                   <th style={{ width: 52, textAlign: 'center', fontSize: 11, padding: '8px 4px' }}>Freq.</th>
+                  <th style={{ width: 58, textAlign: 'center', fontSize: 10, padding: '8px 4px', color: '#a5f3fc' }} title="Frequência considerando atestado como presença">Freq.<br/>c/At.</th>
                 </tr>
               </thead>
               <tbody>
@@ -1025,6 +1030,7 @@ export default function Faltas() {
                   const ausencias = nF + nJ + nA;
                   const emAlerta = !statusTxt && ausencias >= limiteAlerta;
                   const freq = ((numDias - ausencias) / numDias * 100).toFixed(0);
+                  const freqAt = ((numDias - (nF + nJ)) / numDias * 100).toFixed(0);
                   const rowBg = emAlerta ? 'var(--row-alerta)' : i % 2 === 0 ? 'var(--row-even)' : 'var(--row-odd)';
                   return (
                     <tr key={a.id} style={{ background: rowBg }}>
@@ -1100,6 +1106,9 @@ export default function Faltas() {
                           <td style={{ textAlign: 'center', fontWeight: 700, fontSize: 13, padding: '0 4px', color: Number(freq) >= 85 ? ST_COR.P : Number(freq) >= 75 ? '#ea580c' : ST_COR.F }}>
                             {freq}%
                           </td>
+                          <td style={{ textAlign: 'center', fontWeight: 700, fontSize: 12, padding: '0 4px', color: Number(freqAt) >= 85 ? ST_COR.P : Number(freqAt) >= 75 ? '#ea580c' : ST_COR.F }} title="Frequência considerando atestado como presença">
+                            {freqAt}%
+                          </td>
                         </>
                       )}
                     </tr>
@@ -1122,6 +1131,7 @@ export default function Faltas() {
                   <td style={{ textAlign: 'center', color: totalJ > 0 ? ST_COR.J : theme.textMuted, fontWeight: 700, fontSize: 13 }}>{totalJ > 0 ? totalJ : '—'}</td>
                   <td style={{ textAlign: 'center', color: totalA > 0 ? ST_COR.A : theme.textMuted, fontWeight: 700, fontSize: 13 }}>{totalA > 0 ? totalA : '—'}</td>
                   <td style={{ textAlign: 'center', fontWeight: 700, fontSize: 13, padding: '0 4px', color: Number(freqGeral) >= 85 ? ST_COR.P : theme.danger }}>{freqGeral}%</td>
+                  <td style={{ textAlign: 'center', fontWeight: 700, fontSize: 12, padding: '0 4px', color: Number(freqGeralAt) >= 85 ? ST_COR.P : theme.danger }} title="Freq. geral c/ atestado como presença">{freqGeralAt}%</td>
                 </tr>
               </tbody>
             </table>
