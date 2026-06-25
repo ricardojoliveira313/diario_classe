@@ -196,7 +196,6 @@ interface AlunoUnificado {
   turmaDestino: string;
   professoraDestino: string;
   faltas: Record<number, { faltas: number; frequencia: string }>;
-  _autoNumero?: boolean;
 }
 
 const normalizeFileName = (s: string) => s.toUpperCase();
@@ -1212,6 +1211,11 @@ export default function Importar() {
             ativo.deficiencia   = ativo.deficiencia   || rema.deficiencia;
             if (!ativo.nascimento && rema.nascimento) ativo.nascimento = rema.nascimento;
             Object.assign(ativo.faltas, rema.faltas);
+            // Nr de chamada da turma de DESTINO (ATIVO) — não herdar o da turma de origem (REMA)
+            const nrDestino = ativo.numero > 0 ? ativo.numero
+              : (a.situacao === 'ATIVO' && a.numero > 0 ? a.numero : 0)
+              || (existente.situacao === 'ATIVO' && existente.numero > 0 ? existente.numero : 0);
+            if (nrDestino > 0) ativo.numero = nrDestino;
 
             // Preservar datas do ATIVO já armazenado (não sobrescrever com vazio)
             const existAtivo = todosAlunos.get(key);
@@ -1401,37 +1405,28 @@ export default function Importar() {
       // Enriquece com professor da tabela TURMA-PROFESSORES
       const alunosArr = Array.from(todosAlunos.values());
 
-      // Renumeração de alunos sem número (numero=0): recebem número sequencial no fim da turma,
-      // ordenados por data_inicio_matricula (alunos que entraram mais tarde ficam por último).
-      const porSerie = new Map<string, AlunoUnificado[]>();
-      for (const a of alunosArr) {
-        // Normaliza a chave da turma para evitar grupos separados por variantes de formatação
-        // (ex: "2° ANO D MANHÃ" vs "2 ANO D MANHA" são a mesma turma)
-        const s = normSerieKey(a.serie || '') || a.serie || '';
-        if (!porSerie.has(s)) porSerie.set(s, []);
-        porSerie.get(s)!.push(a);
-      }
-      for (const grupo of porSerie.values()) {
-        const comNum = grupo.filter(a => a.numero > 0);
-        // Exclui REMA, BXTR, TRAN e ABAN do auto-assign: esses alunos têm número oficial da SED
-        // e não devem receber numeração sequencial — preservar o número do banco se numero=0
-        const semNum = grupo.filter(a => !a.numero
-          && a.situacao !== 'REMA'
-          && a.situacao !== 'BXTR'
-          && a.situacao !== 'TRAN'
-          && a.situacao !== 'ABAN');
-        if (!semNum.length) continue;
-        const maxNum = comNum.reduce((m, a) => Math.max(m, a.numero), 0);
-        // Ordena sem número por data de início de matrícula (mais antiga primeiro)
-        semNum.sort((a, b) => {
-          const da = normalizarData(a.dataInicioMatricula);
-          const db = normalizarData(b.dataInicioMatricula);
-          if (da && db) return da.localeCompare(db);
-          if (da) return -1;
-          if (db) return 1;
-          return a.nomeNorm.localeCompare(b.nomeNorm);
-        });
-        semNum.forEach((a, i) => { a.numero = maxNum + i + 1; a._autoNumero = true; });
+      // Vincula REMA↔ATIVO entre turmas (chaves separadas por turma no mkKey)
+      {
+        const porRa = new Map<number, AlunoUnificado[]>();
+        for (const a of alunosArr) {
+          if (!a.ra) continue;
+          const list = porRa.get(a.ra) ?? [];
+          list.push(a);
+          porRa.set(a.ra, list);
+        }
+        for (const grupo of porRa.values()) {
+          const remas = grupo.filter(x => x.situacao === 'REMA');
+          const ativos = grupo.filter(x => x.situacao === 'ATIVO');
+          for (const rema of remas) {
+            for (const ativo of ativos) {
+              if (normSerieKey(rema.serie) === normSerieKey(ativo.serie)) continue;
+              if (!ativo.turmaOrigem) ativo.turmaOrigem = rema.serie;
+              if (!ativo.professoraOrigem) ativo.professoraOrigem = rema.professora;
+              if (!rema.turmaDestino) rema.turmaDestino = ativo.serie;
+              if (!rema.professoraDestino) rema.professoraDestino = ativo.professora;
+            }
+          }
+        }
       }
 
       // Rastreio de NIS do BF que foram cruzados com algum aluno do arquivo
@@ -1983,7 +1978,11 @@ export default function Importar() {
           freshAEE.set(raStr, e);
         } else if (e.situacao === 'TRAN') {
           freshTran.set(raStr, e);
+          if (e.turmaId) freshTran.set(`${raStr}|TID:${e.turmaId}`, e);
         } else {
+          if (e.turmaId) freshRegular.set(`${raStr}|TID:${e.turmaId}`, e);
+          const turmaNome = e.turmaId ? (turmaIdToNome.get(e.turmaId) ?? '') : '';
+          if (turmaNome) freshRegular.set(`${raStr}|${normalizeStr(turmaNome)}`, e);
           freshRegular.set(raStr, e);
         }
       }
@@ -2045,13 +2044,24 @@ export default function Importar() {
           } else if (isAEE) {
             existente = freshAEE.get(raKey);
           } else if (a.situacao === 'TRAN') {
-            existente = freshTran.get(raKey) ?? freshRegular.get(raKey);
+            existente = (targetTurmaId ? freshTran.get(`${raKey}|TID:${targetTurmaId}`) : null)
+              ?? freshTran.get(raKey)
+              ?? null;
           } else {
             // Só usa fallback freshAEE para registos mal classificados (turmaId=null).
             // Alunos AEE com turmaId válido (sala de recursos legítima) não devem ser demotados.
             const aeeRecord = freshAEE.get(raKey);
             const malClassificado = aeeRecord && (!aeeRecord.turmaId || !aeeturmaIds.has(aeeRecord.turmaId));
-            existente = freshRegular.get(raKey) ?? (malClassificado ? aeeRecord : null);
+            const serieKey = normSerieKey(a.serie ?? '');
+            existente = (targetTurmaId ? freshRegular.get(`${raKey}|TID:${targetTurmaId}`) : null)
+              ?? (serieKey ? freshRegular.get(`${raKey}|${serieKey}`) : null)
+              ?? null;
+            if (!existente) {
+              const legado = freshRegular.get(raKey);
+              if (legado && targetTurmaId && legado.turmaId === targetTurmaId) existente = legado;
+              else if (legado && !targetTurmaId) existente = legado;
+            }
+            if (!existente && malClassificado) existente = aeeRecord;
           }
         }
 
@@ -2072,11 +2082,10 @@ export default function Importar() {
           nome: a.nome,
           turmaId: targetTurmaId,
           ra: a.ra,
-          // Se o número foi auto-atribuído (não veio da SED), prioriza o valor já salvo no banco
-          // para não sobrescrever o número correto de alunos que não foram reimportados via PDF
-          numero: a._autoNumero
-            ? (existente?.numero || a.numero || 0)
-            : (a.numero || existente?.numero || 0),
+          // Nr da SED (PDF) sempre ganha; nunca reutilizar Nr de outra turma no banco
+          numero: a.numero > 0
+            ? a.numero
+            : (existente?.turmaId === targetTurmaId ? (existente?.numero ?? 0) : 0),
           data_nascimento: a.nascimento,
           data_inicio_matricula: a.dataInicioMatricula || existente?.data_inicio_matricula || null,
           data_fim_matricula: a.dataFimMatricula || existente?.data_fim_matricula || null,
@@ -2107,12 +2116,12 @@ export default function Importar() {
       const upsertDedup = Array.from(
         alunosParaUpsert.reduce((m, a) => { m.set(a.id, a); return m; }, new Map<string, typeof alunosParaUpsert[0]>()).values()
       );
-      // Dedup por RA no batch: evita que ficheiros com RA repetido violem aluno_ra_uniq
+      // Dedup por RA+turma no batch: mesmo RA em turmas diferentes é permitido (espelho SED)
       {
         const rasBatch = new Set<string>();
         const limpo = upsertDedup.filter(a => {
           if (!a.ra || a.situacao === 'REMA' || a.situacao === 'TRAN' || a.aee) return true;
-          const k = String(a.ra);
+          const k = `${a.ra}|${a.turmaId ?? 'X'}`;
           if (rasBatch.has(k)) return false;
           rasBatch.add(k);
           return true;
