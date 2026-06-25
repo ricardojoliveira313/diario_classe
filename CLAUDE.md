@@ -52,6 +52,20 @@ Confirmar sempre que o merge foi feito e o sistema está actualizado.
 - `frontend/src/pages/Turmas.tsx` — gestão de turmas
 - `frontend/src/pages/Alunos.tsx` — listagem de alunos
 
+---
+
+## 🧠 Regra de Diagnóstico
+
+**Antes de qualquer alteração de código, ir direto à raiz do problema.**
+
+- Ler o código relevante primeiro, completamente, antes de formar hipóteses
+- Identificar TODAS as causas raiz de uma vez — não corrigir uma por vez às cegas
+- Nunca ficar rodando em hipóteses sem confirmar no código
+- Se o bug é em X, ler X até o fim, mapear o fluxo completo, depois corrigir
+- Uma análise completa no início vale mais do que dez tentativas erradas
+
+---
+
 ### Regras de negócio importantes
 - **ATIVO**: `situacao === 'ATIVO'` OU `situacao` vazio/nulo
 - **Excluídos das contagens**: REMA, TRAN, BXTR
