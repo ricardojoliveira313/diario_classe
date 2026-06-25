@@ -418,11 +418,12 @@ export default function Importar() {
         const nomeMatch = before.match(/([A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ][A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ\s'-]{3,})$/);
         if (!nomeMatch) continue;
         const preNome = before.substring(0, nomeMatch.index);
-        // XY map é mais confiável (usa coordenadas 2D reais); texto é fallback
-        // O stream do pdfjs nem sempre preserva a ordem esquerda→direita dentro da linha
+        // XY usa coordenadas 2D reais; texto extrai directamente do stream antes do nome
+        // Quando divergem, prefere texto — mais directo para PDFs SED de coluna única
         const xyNr = raNumeroByPos.get(raStr);
-        const nrMatch = xyNr ? null : preNome.trimEnd().match(/(\d{1,3})\s*$/);
-        const numero = xyNr || (nrMatch ? parseInt(nrMatch[1]) : 0);
+        const nrMatch = preNome.trimEnd().match(/(\d{1,3})\s*$/);
+        const textNr = nrMatch ? parseInt(nrMatch[1]) : 0;
+        const numero = (xyNr && textNr && xyNr !== textNr) ? textNr : (xyNr || textNr);
         const nome = nomeMatch[1].trim();
         if (!nome || nome.length < 4) continue;
 
@@ -2024,6 +2025,8 @@ export default function Importar() {
       const ativosRAsNoImport = new Set<string>(
         alunos.filter(a => a.ra && a.situacao !== 'REMA').map(a => String(a.ra))
       );
+      // Rastreia nr do banco por id de registo: aplicado após dedup para evitar duplicados
+      const _numDB = new Map<string, number>();
 
       const alunosParaUpsert = alunos.map(a => {
         const isRema = a.situacao === 'REMA';
@@ -2074,15 +2077,16 @@ export default function Importar() {
         }
 
         const alunoId = existente?.id ?? crypto.randomUUID();
+        // Nr do banco só usado se PDF não forneceu — guardado separado para dedup pós-batch
+        const _nrDB = a.numero > 0 ? 0 : (targetTurmaId && existente?.turmaId === targetTurmaId ? (existente?.numero ?? 0) : 0);
+        if (_nrDB > 0) _numDB.set(alunoId, _nrDB);
         return {
           id: alunoId,
           nome: a.nome,
           turmaId: targetTurmaId,
           ra: a.ra,
-          // Nr da SED (PDF) sempre ganha; nunca reutilizar Nr de outra turma no banco
-          numero: a.numero > 0
-            ? a.numero
-            : (existente?.turmaId === targetTurmaId ? (existente?.numero ?? 0) : 0),
+          // Nr da SED (PDF) sempre ganha; fallback DB aplicado após dedup sem conflito
+          numero: a.numero > 0 ? a.numero : 0,
           data_nascimento: a.nascimento,
           data_inicio_matricula: a.dataInicioMatricula || existente?.data_inicio_matricula || null,
           data_fim_matricula: a.dataFimMatricula || existente?.data_fim_matricula || null,
@@ -2124,6 +2128,30 @@ export default function Importar() {
           return true;
         });
         upsertDedup.splice(0, upsertDedup.length, ...limpo);
+      }
+      // ── Aplica fallback do banco — só se nr não conflita com outro aluno da turma ──
+      // Garante que um aluno com numero=0 no PDF não herda nr do banco se outro aluno
+      // dessa turma já ficou com esse nr (evita Nr de chamada duplicado).
+      {
+        const usedNums = new Map<string, Set<number>>();
+        for (const a of upsertDedup) {
+          if (!a.turmaId || a.numero <= 0 || a.situacao === 'REMA' || a.situacao === 'TRAN' || a.aee) continue;
+          const s = usedNums.get(a.turmaId) ?? new Set<number>();
+          if (!usedNums.has(a.turmaId)) usedNums.set(a.turmaId, s);
+          s.add(a.numero);
+        }
+        for (const a of upsertDedup) {
+          if (a.numero > 0 || !a.turmaId) continue;
+          const dbNr = _numDB.get(a.id) ?? 0;
+          if (!dbNr) continue;
+          const used = usedNums.get(a.turmaId) ?? new Set<number>();
+          if (!used.has(dbNr)) {
+            a.numero = dbNr;
+            used.add(dbNr);
+            if (!usedNums.has(a.turmaId)) usedNums.set(a.turmaId, used);
+          }
+          // se conflito: mantém 0 (sem nr é melhor do que nr errado)
+        }
       }
 
       for (let i = 0; i < upsertDedup.length; i += 80) {
