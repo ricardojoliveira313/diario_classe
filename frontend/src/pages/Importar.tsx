@@ -304,52 +304,20 @@ export default function Importar() {
         // Toma a coluna mais à DIREITA (Nr de chamada) — não a coluna Série (mais à esquerda)
         const nrCol = [...xBuckets.entries()].filter(([, b]) => b.length >= 3).sort((a, b) => b[0] - a[0])[0];
 
-        if (nrCol) {
-          const colX = nrCol[0];
-          const nrAll2 = numCands.filter(n => Math.abs(n.x - colX) <= 10);
-          const pages = new Set([...nrAll2.map(n => n.page), ...raAll.map(r => r.page)]);
-
-          for (const pg of pages) {
-            // Ascendente em Y (topo da página primeiro) — aluno Nr 1 é sempre processado antes
-            // dos demais, evitando que gaps na sequência (ex: Nr 7 ausente) causem mapeamento errado.
-            const nrs = nrAll2.filter(n => n.page === pg).sort((a, b) => a.y - b.y);
-            const ras = raAll.filter(r => r.page === pg).sort((a, b) => a.y - b.y);
-
-            if (nrs.length === ras.length) {
-              for (let i = 0; i < nrs.length; i++) {
-                const nr = parseInt(nrs[i].str);
-                if (nr >= 1 && nr <= 200) raNumeroByPos.set(ras[i].str, nr);
-              }
-            } else {
-              const used = new Set<number>();
-              for (const ra of ras) {
-                let bestI = -1, bestD = Infinity;
-                for (let i = 0; i < nrs.length; i++) {
-                  if (used.has(i)) continue;
-                  const d = Math.abs(nrs[i].y - ra.y);
-                  if (d < bestD) { bestD = d; bestI = i; }
-                }
-                if (bestI >= 0 && bestD <= 60) {
-                  raNumeroByPos.set(ra.str, parseInt(nrs[bestI].str));
-                  used.add(bestI);
-                }
-              }
-            }
-          }
-        }
-
-        // Detecção direta por RA: fallback para RAs não mapeados pela detecção de coluna
+        // ── Passo 1: detecção DIRECTA por RA (mais robusta — usa X+Y por aluno) ──
+        // Para cada RA, encontra o número à esquerda na mesma linha (±30 Y).
+        // Filtrado pela coluna Nr (se detectada) para evitar pegar série/cabeçalho.
+        const colX = nrCol ? nrCol[0] : null;
         for (const raItem of raAll) {
-          if (raNumeroByPos.has(raItem.str)) continue; // coluna já mapeou — não sobrescrever
           const candidates = allPdfItems.filter(c =>
             /^\d{1,3}$/.test(c.str) &&
             parseInt(c.str) >= 1 && parseInt(c.str) <= 200 &&
             c.page === raItem.page &&
             c.x < raItem.x &&
-            Math.abs(c.y - raItem.y) <= 30
+            Math.abs(c.y - raItem.y) <= 30 &&
+            (colX === null || Math.abs(c.x - colX) <= 15)
           );
           if (candidates.length > 0) {
-            // Mais próximo em Y (mesma linha); empate → mais à direita em X (Nr, não Série)
             candidates.sort((a, b) => {
               const dya = Math.abs(a.y - raItem.y);
               const dyb = Math.abs(b.y - raItem.y);
@@ -360,6 +328,54 @@ export default function Importar() {
             if (nr >= 1 && nr <= 200) raNumeroByPos.set(raItem.str, nr);
           }
         }
+
+        // ── Passo 2: fallback por coluna — closest-Y para RAs não mapeados ──
+        if (nrCol) {
+          const nrAll2 = numCands.filter(n => Math.abs(n.x - colX!) <= 10);
+          const pages = new Set([...nrAll2.map(n => n.page), ...raAll.map(r => r.page)]);
+
+          for (const pg of pages) {
+            const nrs = nrAll2.filter(n => n.page === pg).sort((a, b) => a.y - b.y);
+            const ras = raAll.filter(r => r.page === pg && !raNumeroByPos.has(r.str)).sort((a, b) => a.y - b.y);
+            if (!ras.length) continue;
+            const used = new Set<number>();
+            for (const ra of ras) {
+              let bestI = -1, bestD = Infinity;
+              for (let i = 0; i < nrs.length; i++) {
+                if (used.has(i)) continue;
+                const d = Math.abs(nrs[i].y - ra.y);
+                if (d < bestD) { bestD = d; bestI = i; }
+              }
+              if (bestI >= 0 && bestD <= 60) {
+                raNumeroByPos.set(ra.str, parseInt(nrs[bestI].str));
+                used.add(bestI);
+              }
+            }
+          }
+        }
+
+        // ── Passo 3: fallback sem restrição de coluna (PDFs sem coluna detectável) ──
+        for (const raItem of raAll) {
+          if (raNumeroByPos.has(raItem.str)) continue;
+          const candidates = allPdfItems.filter(c =>
+            /^\d{1,3}$/.test(c.str) &&
+            parseInt(c.str) >= 1 && parseInt(c.str) <= 200 &&
+            c.page === raItem.page &&
+            c.x < raItem.x &&
+            Math.abs(c.y - raItem.y) <= 30
+          );
+          if (candidates.length > 0) {
+            candidates.sort((a, b) => {
+              const dya = Math.abs(a.y - raItem.y);
+              const dyb = Math.abs(b.y - raItem.y);
+              if (Math.abs(dya - dyb) > 2) return dya - dyb;
+              return b.x - a.x;
+            });
+            const nr = parseInt(candidates[0].str);
+            if (nr >= 1 && nr <= 200) raNumeroByPos.set(raItem.str, nr);
+          }
+        }
+        console.log('[Import PDF] raNumeroByPos:', Object.fromEntries(raNumeroByPos));
       }
 
       // Preserva espaços múltiplos — são delimitadores de coluna nos PDFs SED
@@ -2129,28 +2145,35 @@ export default function Importar() {
         });
         upsertDedup.splice(0, upsertDedup.length, ...limpo);
       }
-      // ── Aplica fallback do banco — só se nr não conflita com outro aluno da turma ──
-      // Garante que um aluno com numero=0 no PDF não herda nr do banco se outro aluno
-      // dessa turma já ficou com esse nr (evita Nr de chamada duplicado).
+      // ── Dedup Nr: detecta e resolve duplicados de numero na mesma turma ──
+      // Segurança final: mesmo que o PDF extraia nr errado para algum aluno,
+      // nunca grava dois alunos com o mesmo Nr na mesma turma.
       {
-        const usedNums = new Map<string, Set<number>>();
+        const usedNums = new Map<string, Map<number, string>>();
         for (const a of upsertDedup) {
           if (!a.turmaId || a.numero <= 0 || a.situacao === 'REMA' || a.situacao === 'TRAN' || a.aee) continue;
-          const s = usedNums.get(a.turmaId) ?? new Set<number>();
-          if (!usedNums.has(a.turmaId)) usedNums.set(a.turmaId, s);
-          s.add(a.numero);
+          if (!usedNums.has(a.turmaId)) usedNums.set(a.turmaId, new Map());
+          const turmaMap = usedNums.get(a.turmaId)!;
+          if (turmaMap.has(a.numero)) {
+            console.warn(`[Import] Nr duplicado ${a.numero} na turma: ${a.nome} conflita com outro aluno — zerando`);
+            a.numero = 0;
+          } else {
+            turmaMap.set(a.numero, a.id);
+          }
         }
+        // Aplica fallback do banco para alunos sem nr
+        const usedSets = new Map<string, Set<number>>();
+        for (const [tid, m] of usedNums) usedSets.set(tid, new Set(m.keys()));
         for (const a of upsertDedup) {
           if (a.numero > 0 || !a.turmaId) continue;
           const dbNr = _numDB.get(a.id) ?? 0;
           if (!dbNr) continue;
-          const used = usedNums.get(a.turmaId) ?? new Set<number>();
+          const used = usedSets.get(a.turmaId) ?? new Set<number>();
           if (!used.has(dbNr)) {
             a.numero = dbNr;
             used.add(dbNr);
-            if (!usedNums.has(a.turmaId)) usedNums.set(a.turmaId, used);
+            if (!usedSets.has(a.turmaId)) usedSets.set(a.turmaId, used);
           }
-          // se conflito: mantém 0 (sem nr é melhor do que nr errado)
         }
       }
 
