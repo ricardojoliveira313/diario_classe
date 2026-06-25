@@ -159,11 +159,18 @@ export default function Alunos() {
   const totalAtivos = alunos.filter(isAtivo).length;
   const totalBolsa  = alunos.filter(a => a.bolsa_familia && isAtivo(a)).length;
 
-  // Defi. Regular: alunos activos em ensino regular (aee≠true) com deficiência declarada
-  // Defi. AEE: alunos activos com flag aee=true (matriculados em sala de recursos AEE)
-  // A deficiência está sempre no registo regular; o flag aee=true identifica AEE independentemente.
-  const totalDefiRegular = alunos.filter(a => isAtivo(a) && a.aee !== true && a.deficiencia).length;
-  const totalDefiAEE     = alunos.filter(a => isAtivo(a) && a.aee === true).length;
+  // Defi. Regular = total de alunos activos com deficiência (inclui os que também estão em AEE)
+  // Defi. AEE = alunos activos em sala de recursos (turmaId aponta para turma AEE)
+  const rasComDefi = new Set(
+    alunos.filter(a => isAtivo(a) && a.deficiencia).map(a => a.ra ? String(a.ra) : a.id)
+  );
+  const isAEETurma = (t: any) => t?.tipo === 'AEE' || /^AEE\b/i.test(t?.nome ?? '');
+  const rasEmAEE = new Set(
+    alunos.filter(a => isAtivo(a) && isAEETurma(turmaMap.get(a.turmaId)) && a.ra)
+      .map(a => String(a.ra))
+  );
+  const totalDefiAEE     = [...rasEmAEE].filter(ra => rasComDefi.has(ra)).length;
+  const totalDefiRegular = rasComDefi.size;
 
   // Agrupa por turma quando "Todas as turmas" — cada turma com numeração independente
   const renderRows = useMemo(() => {
