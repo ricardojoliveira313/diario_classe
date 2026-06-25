@@ -2038,9 +2038,11 @@ export default function Importar() {
           } else if (a.situacao === 'TRAN') {
             existente = freshTran.get(raKey) ?? freshRegular.get(raKey);
           } else {
-            // Se o registo no banco estava erroneamente marcado como AEE (import anterior),
-            // recupera-o de freshAEE para reutilizar o mesmo UUID e corrigir aee→false.
-            existente = freshRegular.get(raKey) ?? freshAEE.get(raKey);
+            // Só usa fallback freshAEE para registos mal classificados (turmaId=null).
+            // Alunos AEE com turmaId válido (sala de recursos legítima) não devem ser demotados.
+            const aeeRecord = freshAEE.get(raKey);
+            const malClassificado = aeeRecord && (!aeeRecord.turmaId || !aeeturmaIds.has(aeeRecord.turmaId));
+            existente = freshRegular.get(raKey) ?? (malClassificado ? aeeRecord : null);
           }
         }
 
@@ -2117,13 +2119,13 @@ export default function Importar() {
             const { error: e2 } = await supabase.from('Aluno').upsert([record], { onConflict: 'id' });
             if (e2 && e2.message.includes('aluno_ra_uniq')) {
               // Busca o verdadeiro dono deste RA no banco e actualiza-o directamente
-              // Se não há registo regular (aee=false), aceita também registo AEE (mal classificado)
+              // Fallback AEE: só para registos com turmaId=null (importados errado via AEE.xlsx)
               const { data: ownerRegular } = await supabase.from('Aluno')
                 .select('id').eq('ra', record.ra).neq('aee', true).limit(1).maybeSingle();
-              const { data: ownerAny } = !ownerRegular && !record.aee
-                ? await supabase.from('Aluno').select('id').eq('ra', record.ra).limit(1).maybeSingle()
+              const { data: ownerMisclassified } = !ownerRegular && !record.aee
+                ? await supabase.from('Aluno').select('id, turmaId').eq('ra', record.ra).eq('aee', true).is('turmaId', null).limit(1).maybeSingle()
                 : { data: null };
-              const owner = ownerRegular ?? ownerAny;
+              const owner = ownerRegular ?? ownerMisclassified;
               if (owner) {
                 const { id: _id, ...rest } = record as any;
                 await supabase.from('Aluno').update(rest).eq('id', owner.id);
