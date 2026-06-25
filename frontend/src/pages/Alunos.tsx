@@ -719,7 +719,7 @@ export default function Alunos() {
                         onClick={e => {
                           e.stopPropagation();
                           if (a.ra) copiar(String(a.ra), `sed-${a.id}`);
-                          window.open('https://sed.educacao.sp.gov.br/', 'sed_diario');
+                          window.open('https://sed.educacao.sp.gov.br/', '_blank', 'noopener,noreferrer');
                         }}
                         title={a.ra ? `Copiar RA ${a.ra} e abrir SED` : 'Abrir SED'}
                         style={{

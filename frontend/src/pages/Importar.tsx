@@ -137,6 +137,22 @@ function normalizeStr(s: string): string {
   return s.toUpperCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[ªº°]/g, '');
 }
 
+// Normaliza nome de série para chave de merge e agrupamento (nível de módulo para
+// evitar problemas de escopo entre analisar/importar).
+function normSerieKey(s: string): string {
+  if (!s) return '';
+  const n = normalizeStr(s)
+    .replace(/[-\u2013\u2014]/g, ' ')
+    .replace(/\bPRE\s*ESCOLA\b/g, '')
+    .replace(/\b(MANHA|TARDE|NOTURNO|MATUTINO|VESPERTINO|NOITE|ANUAL|INTEGRAL|SEMI\s*INTEGRAL)\b/g, '')
+    .replace(/\s+/g, ' ').trim();
+  if (n.includes('MULTISSERIADA') || (n.includes('ALFABETIZACAO') && !n.includes('POS')))
+    return 'EJA I ALFABETIZACAO';
+  if ((n.includes('POS') && n.includes('ALFABETIZACAO')) || /\bTERMO\b/.test(n))
+    return 'EJA I POS ALFABETIZACAO';
+  return n;
+}
+
 const ARTIGOS = new Set(['DE', 'DA', 'DO', 'DOS', 'DAS', 'E', 'NO', 'NA']);
 
 /** Normalização COMPLETA para nomes de alunos — fecha o cerco do cruzamento.
@@ -1129,25 +1145,6 @@ export default function Importar() {
 
       // ─── Cruzamento ───
       const todosAlunos = new Map<string, AlunoUnificado>();
-
-      // Normaliza nome de série para chave de merge: remove sufixos verbosos do SED
-      // (MANHA/TARDE/NOITE/ANUAL/PRE ESCOLA) e aplica aliases EJA.
-      // Garante que "EJA I - ALFABETIZAÇÃO A NOITE ANUAL" (PDF) e "EJA I ALFABETIZACAO"
-      // (Excel) produzam a mesma chave → o mesmo aluno não fica duplicado entre fontes.
-      const normSerieKey = (s: string): string => {
-        if (!s) return '';
-        const n = normalizeStr(s)
-          .replace(/[-–—]/g, ' ')
-          .replace(/\bPRE\s*ESCOLA\b/g, '')
-          .replace(/\b(MANHA|TARDE|NOTURNO|MATUTINO|VESPERTINO|NOITE|ANUAL|INTEGRAL|SEMI\s*INTEGRAL)\b/g, '')
-          .replace(/\s+/g, ' ').trim();
-        if (n.includes('MULTISSERIADA') || (n.includes('ALFABETIZACAO') && !n.includes('POS')))
-          return 'EJA I ALFABETIZACAO';
-        if ((n.includes('POS') && n.includes('ALFABETIZACAO')) || /\bTERMO\b/.test(n))
-          return 'EJA I POS ALFABETIZACAO';
-        return n;
-      };
-
       // Chave: RA (quando disponível) para cruzar PDF + Excel mesmo sem data de nascimento
       // Usa normalizarData para garantir formato YYYYMMDD consistente com a dedup
       const mkKey = (a: AlunoUnificado) => {
