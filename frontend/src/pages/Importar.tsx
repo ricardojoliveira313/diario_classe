@@ -196,6 +196,7 @@ interface AlunoUnificado {
   turmaDestino: string;
   professoraDestino: string;
   faltas: Record<number, { faltas: number; frequencia: string }>;
+  _autoNumero?: boolean;
 }
 
 const normalizeFileName = (s: string) => s.toUpperCase();
@@ -1404,13 +1405,21 @@ export default function Importar() {
       // ordenados por data_inicio_matricula (alunos que entraram mais tarde ficam por último).
       const porSerie = new Map<string, AlunoUnificado[]>();
       for (const a of alunosArr) {
-        const s = a.serie || '';
+        // Normaliza a chave da turma para evitar grupos separados por variantes de formatação
+        // (ex: "2° ANO D MANHÃ" vs "2 ANO D MANHA" são a mesma turma)
+        const s = normSerieKey(a.serie || '') || a.serie || '';
         if (!porSerie.has(s)) porSerie.set(s, []);
         porSerie.get(s)!.push(a);
       }
       for (const grupo of porSerie.values()) {
         const comNum = grupo.filter(a => a.numero > 0);
-        const semNum = grupo.filter(a => !a.numero && a.situacao !== 'REMA');
+        // Exclui REMA, BXTR, TRAN e ABAN do auto-assign: esses alunos têm número oficial da SED
+        // e não devem receber numeração sequencial — preservar o número do banco se numero=0
+        const semNum = grupo.filter(a => !a.numero
+          && a.situacao !== 'REMA'
+          && a.situacao !== 'BXTR'
+          && a.situacao !== 'TRAN'
+          && a.situacao !== 'ABAN');
         if (!semNum.length) continue;
         const maxNum = comNum.reduce((m, a) => Math.max(m, a.numero), 0);
         // Ordena sem número por data de início de matrícula (mais antiga primeiro)
@@ -1422,7 +1431,7 @@ export default function Importar() {
           if (db) return 1;
           return a.nomeNorm.localeCompare(b.nomeNorm);
         });
-        semNum.forEach((a, i) => { a.numero = maxNum + i + 1; });
+        semNum.forEach((a, i) => { a.numero = maxNum + i + 1; a._autoNumero = true; });
       }
 
       // Rastreio de NIS do BF que foram cruzados com algum aluno do arquivo
@@ -2063,7 +2072,11 @@ export default function Importar() {
           nome: a.nome,
           turmaId: targetTurmaId,
           ra: a.ra,
-          numero: a.numero || existente?.numero || 0,
+          // Se o número foi auto-atribuído (não veio da SED), prioriza o valor já salvo no banco
+          // para não sobrescrever o número correto de alunos que não foram reimportados via PDF
+          numero: a._autoNumero
+            ? (existente?.numero || a.numero || 0)
+            : (a.numero || existente?.numero || 0),
           data_nascimento: a.nascimento,
           data_inicio_matricula: a.dataInicioMatricula || existente?.data_inicio_matricula || null,
           data_fim_matricula: a.dataFimMatricula || existente?.data_fim_matricula || null,
