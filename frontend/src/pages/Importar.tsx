@@ -137,6 +137,22 @@ function normalizeStr(s: string): string {
   return s.toUpperCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[ªº°]/g, '');
 }
 
+// Normaliza nome de série para chave de merge e agrupamento (nível de módulo para
+// evitar problemas de escopo entre analisar/importar).
+function normSerieKey(s: string): string {
+  if (!s) return '';
+  const n = normalizeStr(s)
+    .replace(/[-\u2013\u2014]/g, ' ')
+    .replace(/\bPRE\s*ESCOLA\b/g, '')
+    .replace(/\b(MANHA|TARDE|NOTURNO|MATUTINO|VESPERTINO|NOITE|ANUAL|INTEGRAL|SEMI\s*INTEGRAL)\b/g, '')
+    .replace(/\s+/g, ' ').trim();
+  if (n.includes('MULTISSERIADA') || (n.includes('ALFABETIZACAO') && !n.includes('POS')))
+    return 'EJA I ALFABETIZACAO';
+  if ((n.includes('POS') && n.includes('ALFABETIZACAO')) || /\bTERMO\b/.test(n))
+    return 'EJA I POS ALFABETIZACAO';
+  return n;
+}
+
 const ARTIGOS = new Set(['DE', 'DA', 'DO', 'DOS', 'DAS', 'E', 'NO', 'NA']);
 
 /** Normalização COMPLETA para nomes de alunos — fecha o cerco do cruzamento.
@@ -288,39 +304,10 @@ export default function Importar() {
         // Toma a coluna mais à DIREITA (Nr de chamada) — não a coluna Série (mais à esquerda)
         const nrCol = [...xBuckets.entries()].filter(([, b]) => b.length >= 3).sort((a, b) => b[0] - a[0])[0];
 
-        if (nrCol) {
-          const colX = nrCol[0];
-          const nrAll2 = numCands.filter(n => Math.abs(n.x - colX) <= 10);
-          const pages = new Set([...nrAll2.map(n => n.page), ...raAll.map(r => r.page)]);
-
-          for (const pg of pages) {
-            const nrs = nrAll2.filter(n => n.page === pg).sort((a, b) => b.y - a.y);
-            const ras = raAll.filter(r => r.page === pg).sort((a, b) => b.y - a.y);
-
-            if (nrs.length === ras.length) {
-              for (let i = 0; i < nrs.length; i++) {
-                const nr = parseInt(nrs[i].str);
-                if (nr >= 1 && nr <= 200) raNumeroByPos.set(ras[i].str, nr);
-              }
-            } else {
-              const used = new Set<number>();
-              for (const ra of ras) {
-                let bestI = -1, bestD = Infinity;
-                for (let i = 0; i < nrs.length; i++) {
-                  if (used.has(i)) continue;
-                  const d = Math.abs(nrs[i].y - ra.y);
-                  if (d < bestD) { bestD = d; bestI = i; }
-                }
-                if (bestI >= 0 && bestD <= 60) {
-                  raNumeroByPos.set(ra.str, parseInt(nrs[bestI].str));
-                  used.add(bestI);
-                }
-              }
-            }
-          }
-        }
-
-        // Detecção direta por RA: fallback para RAs não mapeados pela detecção de coluna
+        // ── Passo 1: detecção DIRECTA por RA (mais robusta — usa X+Y por aluno) ──
+        // Para cada RA, encontra o número à esquerda na mesma linha (±30 Y).
+        // Filtrado pela coluna Nr (se detectada) para evitar pegar série/cabeçalho.
+        const colX = nrCol ? nrCol[0] : null;
         for (const raItem of raAll) {
           if (raNumeroByPos.has(raItem.str)) continue; // coluna já mapeou — não sobrescrever
           const candidates = allPdfItems.filter(c =>
@@ -328,10 +315,10 @@ export default function Importar() {
             parseInt(c.str) >= 1 && parseInt(c.str) <= 200 &&
             c.page === raItem.page &&
             c.x < raItem.x &&
-            Math.abs(c.y - raItem.y) <= 30
+            Math.abs(c.y - raItem.y) <= 30 &&
+            (colX === null || Math.abs(c.x - colX) <= 15)
           );
           if (candidates.length > 0) {
-            // Mais próximo em Y (mesma linha); empate → mais à direita em X (Nr, não Série)
             candidates.sort((a, b) => {
               const dya = Math.abs(a.y - raItem.y);
               const dyb = Math.abs(b.y - raItem.y);
@@ -342,6 +329,54 @@ export default function Importar() {
             if (nr >= 1 && nr <= 200) raNumeroByPos.set(raItem.str, nr);
           }
         }
+
+        // ── Passo 2: fallback por coluna — closest-Y para RAs não mapeados ──
+        if (nrCol) {
+          const nrAll2 = numCands.filter(n => Math.abs(n.x - colX!) <= 10);
+          const pages = new Set([...nrAll2.map(n => n.page), ...raAll.map(r => r.page)]);
+
+          for (const pg of pages) {
+            const nrs = nrAll2.filter(n => n.page === pg).sort((a, b) => a.y - b.y);
+            const ras = raAll.filter(r => r.page === pg && !raNumeroByPos.has(r.str)).sort((a, b) => a.y - b.y);
+            if (!ras.length) continue;
+            const used = new Set<number>();
+            for (const ra of ras) {
+              let bestI = -1, bestD = Infinity;
+              for (let i = 0; i < nrs.length; i++) {
+                if (used.has(i)) continue;
+                const d = Math.abs(nrs[i].y - ra.y);
+                if (d < bestD) { bestD = d; bestI = i; }
+              }
+              if (bestI >= 0 && bestD <= 60) {
+                raNumeroByPos.set(ra.str, parseInt(nrs[bestI].str));
+                used.add(bestI);
+              }
+            }
+          }
+        }
+
+        // ── Passo 3: fallback sem restrição de coluna (PDFs sem coluna detectável) ──
+        for (const raItem of raAll) {
+          if (raNumeroByPos.has(raItem.str)) continue;
+          const candidates = allPdfItems.filter(c =>
+            /^\d{1,3}$/.test(c.str) &&
+            parseInt(c.str) >= 1 && parseInt(c.str) <= 200 &&
+            c.page === raItem.page &&
+            c.x < raItem.x &&
+            Math.abs(c.y - raItem.y) <= 30
+          );
+          if (candidates.length > 0) {
+            candidates.sort((a, b) => {
+              const dya = Math.abs(a.y - raItem.y);
+              const dyb = Math.abs(b.y - raItem.y);
+              if (Math.abs(dya - dyb) > 2) return dya - dyb;
+              return b.x - a.x;
+            });
+            const nr = parseInt(candidates[0].str);
+            if (nr >= 1 && nr <= 200) raNumeroByPos.set(raItem.str, nr);
+          }
+        }
+        console.log('[Import PDF] raNumeroByPos:', Object.fromEntries(raNumeroByPos));
       }
 
       // Preserva espaços múltiplos — são delimitadores de coluna nos PDFs SED
@@ -400,11 +435,12 @@ export default function Importar() {
         const nomeMatch = before.match(/([A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ][A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ\s'-]{3,})$/);
         if (!nomeMatch) continue;
         const preNome = before.substring(0, nomeMatch.index);
-        // XY map é mais confiável (usa coordenadas 2D reais); texto é fallback
-        // O stream do pdfjs nem sempre preserva a ordem esquerda→direita dentro da linha
+        // XY usa coordenadas 2D reais; texto extrai directamente do stream antes do nome
+        // Quando divergem, prefere texto — mais directo para PDFs SED de coluna única
         const xyNr = raNumeroByPos.get(raStr);
-        const nrMatch = xyNr ? null : preNome.trimEnd().match(/(\d{1,3})\s*$/);
-        const numero = xyNr || (nrMatch ? parseInt(nrMatch[1]) : 0);
+        const nrMatch = preNome.trimEnd().match(/(\d{1,3})\s*$/);
+        const textNr = nrMatch ? parseInt(nrMatch[1]) : 0;
+        const numero = (xyNr && textNr && xyNr !== textNr) ? textNr : (xyNr || textNr);
         const nome = nomeMatch[1].trim();
         if (!nome || nome.length < 4) continue;
 
@@ -550,13 +586,14 @@ export default function Importar() {
               // EJA: séries numéricas 9 e 10 → turmas específicas
               if (serie === '9') serie = 'EJA I ALFABETIZACAO';
               else if (serie === '10') serie = 'EJA I POS ALFABETIZACAO';
-              // AEE: série "0" é código interno do SED — usar serie vazia para que o PDF
-              // preencha o nome correto da turma via merge, mas preservar data_inicio_matricula
+              // AEE: série "0" é código interno do SED — converte para '' e pula o alunosMap.
+              // Deficiência, CPF e Cor/Raça vêm do Educacenso; BF vem do PDF BolsaFamília.
+              // Manter este entry causaria turmaId=null no DB (destrói o registo da turma regular).
               const tipoEnsinoNorm = normalizeStr(String(nr['TIPO DE ENSINO'] ?? ''));
               if (/^\d{1,3}$/.test(serie) && tipoEnsinoNorm.includes('ATENDIMENTO')) serie = '';
-              // Séries numéricas não-AEE (FUNDAMENTAL 1-5, INFANTIL, etc.):
+              // Séries numéricas não-AEE (FUNDAMENTAL 1-5, INFANTIL, etc.) e entradas AEE sem série:
               // PDF é a base — Excel só fornece datas; não entram no alunosMap
-              if (!nome || /^\d{1,3}$/.test(serie)) {
+              if (!nome || !serie || /^\d{1,3}$/.test(serie)) {
                 if (datesOnly && nome && /^\d{1,3}$/.test(String(nr['SERIE'] ?? nr['TURMA'] ?? '').trim())) {
                   const raNum = parseInt(String(nr['RA'] ?? '')) || null;
                   if (raNum) {
@@ -1128,8 +1165,15 @@ export default function Importar() {
       const todosAlunos = new Map<string, AlunoUnificado>();
       // Chave: RA (quando disponível) para cruzar PDF + Excel mesmo sem data de nascimento
       // Usa normalizarData para garantir formato YYYYMMDD consistente com a dedup
-      const mkKey = (a: AlunoUnificado) =>
-        a.ra ? `RA:${a.ra}` : `${a.nomeNorm}|${normalizarData(a.nascimento)}`;
+      const mkKey = (a: AlunoUnificado) => {
+        if (!a.ra) return `${a.nomeNorm}|${normalizarData(a.nascimento)}`;
+        const turmaNorm = normSerieKey(a.serie ?? '');
+        const sit = a.situacao ?? 'ATIVO';
+        // Chave: RA+turma+situação — permite Excel e PDF mesclarem para o mesmo aluno
+        // (não inclui número: PDF e Excel podem ter numerações diferentes, mas são o mesmo aluno)
+        if (turmaNorm) return `RA:${a.ra}|${turmaNorm}|${sit}`;
+        return `RA:${a.ra}`;
+      };
       // Prioridade: Excel primeiro (dados mais completos), depois PDF
       const mergeAluno = (a: AlunoUnificado) => {
         const key = mkKey(a);
@@ -1144,8 +1188,10 @@ export default function Importar() {
           // ⚠️ Só vale se as turmas forem da MESMA modalidade:
           //    Regular→Regular, AEE→AEE, EJA→EJA, Infantil→Infantil
           //    NUNCA cruzando modalidades (ex: AEE→Regular)
+          // Usa normSerieKey para evitar falso "seriesDiferentes" entre variantes de nome
+          // do mesmo PDF/Excel (ex: "EJA I - ALFABETIZAÇÃO A NOITE" vs "EJA I ALFABETIZACAO")
           const seriesDiferentes = existente.serie && a.serie
-            && normalizeStr(existente.serie) !== normalizeStr(a.serie);
+            && normSerieKey(existente.serie) !== normSerieKey(a.serie);
 
           const detectarModalidade = (serie: string): string => {
             const n = normalizeStr(serie);
@@ -1180,6 +1226,11 @@ export default function Importar() {
             ativo.deficiencia   = ativo.deficiencia   || rema.deficiencia;
             if (!ativo.nascimento && rema.nascimento) ativo.nascimento = rema.nascimento;
             Object.assign(ativo.faltas, rema.faltas);
+            // Nr de chamada da turma de DESTINO (ATIVO) — não herdar o da turma de origem (REMA)
+            const nrDestino = ativo.numero > 0 ? ativo.numero
+              : (a.situacao === 'ATIVO' && a.numero > 0 ? a.numero : 0)
+              || (existente.situacao === 'ATIVO' && existente.numero > 0 ? existente.numero : 0);
+            if (nrDestino > 0) ativo.numero = nrDestino;
 
             // Preservar datas do ATIVO já armazenado (não sobrescrever com vazio)
             const existAtivo = todosAlunos.get(key);
@@ -1233,6 +1284,70 @@ export default function Importar() {
             } else {
               todosAlunos.set(remaKey, { ...a, situacao: 'REMA' });
             }
+            return;
+          }
+
+          // ─── Cross-modal: mesmo aluno em turma regular + turma AEE ─────────────────
+          // Alunos AEE frequentam a turma regular E a sala de recursos — entradas independentes.
+          // Sem este bloco, o "Merge normal" colapsa as duas linhas em uma só.
+          if (seriesDiferentes && !mesmaModalidade) {
+            const modalA  = detectarModalidade(a.serie);
+            const modalEx = detectarModalidade(existente.serie);
+            if (modalA === 'AEE' || modalEx === 'AEE') {
+              const aeeEntry     = modalA === 'AEE' ? a : existente;
+              const regularEntry = modalA === 'AEE' ? existente : a;
+              const aeeKey = `${key}|AEE|${normalizeStr(aeeEntry.serie)}`;
+              todosAlunos.set(key, regularEntry);
+              todosAlunos.set(aeeKey, aeeEntry);
+              return;
+            }
+          }
+
+          // ─── Retorno após remanejamento: mesmo RA, mesma turma, REMA + ATIVO ──
+          // Ex: Isaac em 1°ANO C — REMA nº16 (saiu) + ATIVO nº17 (voltou pra mesma turma)
+          // Ambas as linhas devem existir — espelho fiel do relatório SED.
+          const ehRemaRetornoMesmaTurma = !seriesDiferentes && (
+            (existente.situacao === 'REMA' && a.situacao === 'ATIVO') ||
+            (existente.situacao === 'ATIVO' && a.situacao === 'REMA')
+          );
+          if (ehRemaRetornoMesmaTurma) {
+            const remaEntry = existente.situacao === 'REMA' ? existente : a;
+            const ativoEntry = existente.situacao === 'REMA' ? a : existente;
+            const remaKey = `${key}|REMA|${remaEntry.numero || remaEntry.dataMovimentacao || 'X'}`;
+            todosAlunos.set(key, ativoEntry);
+            todosAlunos.set(remaKey, remaEntry);
+            return;
+          }
+
+          // ─── Retorno após transferência: mesmo RA, mesma turma, TRAN + ATIVO ──
+          // O SED registra dois lançamentos quando um aluno é transferido e volta:
+          //   • TRAN  (nº antigo — quando foi embora)
+          //   • ATIVO (nº novo  — quando voltou, mesma turma)
+          // Ambas as linhas devem existir — espelho fiel do relatório SED.
+          const ehTransfRetornoMesmaTurma = !seriesDiferentes && (
+            (existente.situacao === 'TRAN' && a.situacao === 'ATIVO') ||
+            (existente.situacao === 'ATIVO' && a.situacao === 'TRAN')
+          );
+          if (ehTransfRetornoMesmaTurma) {
+            const tranEntry = existente.situacao === 'TRAN' ? existente : a;
+            const ativoEntry = existente.situacao === 'TRAN' ? a : existente;
+            const tranKey = `${key}|TRAN|${tranEntry.numero || tranEntry.dataMovimentacao || 'X'}`;
+            todosAlunos.set(key, ativoEntry);
+            todosAlunos.set(tranKey, tranEntry);
+            return;
+          }
+
+          // ─── Outras situações diferentes na mesma turma ──────────────────────
+          // Ex: TRAN + N COM na mesma turma → preservar ambas as entradas.
+          // ehRemaRetornoMesmaTurma e ehTransfRetornoMesmaTurma já trataram REMA/TRAN+ATIVO.
+          if (!seriesDiferentes && existente.situacao !== a.situacao) {
+            const isAtivoA  = a.situacao === 'ATIVO' || !a.situacao;
+            const isAtivoEx = existente.situacao === 'ATIVO' || !existente.situacao;
+            const main       = isAtivoA ? a : (isAtivoEx ? existente : existente);
+            const outroEntry = main === a ? existente : a;
+            const outroKey   = `${key}|${outroEntry.situacao || 'X'}|${outroEntry.numero || outroEntry.dataMovimentacao || 'X'}`;
+            todosAlunos.set(key, main);
+            if (!todosAlunos.has(outroKey)) todosAlunos.set(outroKey, outroEntry);
             return;
           }
 
@@ -1305,29 +1420,28 @@ export default function Importar() {
       // Enriquece com professor da tabela TURMA-PROFESSORES
       const alunosArr = Array.from(todosAlunos.values());
 
-      // Renumeração de alunos sem número (numero=0): recebem número sequencial no fim da turma,
-      // ordenados por data_inicio_matricula (alunos que entraram mais tarde ficam por último).
-      const porSerie = new Map<string, AlunoUnificado[]>();
-      for (const a of alunosArr) {
-        const s = a.serie || '';
-        if (!porSerie.has(s)) porSerie.set(s, []);
-        porSerie.get(s)!.push(a);
-      }
-      for (const grupo of porSerie.values()) {
-        const comNum = grupo.filter(a => a.numero > 0);
-        const semNum = grupo.filter(a => !a.numero && a.situacao !== 'REMA');
-        if (!semNum.length) continue;
-        const maxNum = comNum.reduce((m, a) => Math.max(m, a.numero), 0);
-        // Ordena sem número por data de início de matrícula (mais antiga primeiro)
-        semNum.sort((a, b) => {
-          const da = normalizarData(a.dataInicioMatricula);
-          const db = normalizarData(b.dataInicioMatricula);
-          if (da && db) return da.localeCompare(db);
-          if (da) return -1;
-          if (db) return 1;
-          return a.nomeNorm.localeCompare(b.nomeNorm);
-        });
-        semNum.forEach((a, i) => { a.numero = maxNum + i + 1; });
+      // Vincula REMA↔ATIVO entre turmas (chaves separadas por turma no mkKey)
+      {
+        const porRa = new Map<number, AlunoUnificado[]>();
+        for (const a of alunosArr) {
+          if (!a.ra) continue;
+          const list = porRa.get(a.ra) ?? [];
+          list.push(a);
+          porRa.set(a.ra, list);
+        }
+        for (const grupo of porRa.values()) {
+          const remas = grupo.filter(x => x.situacao === 'REMA');
+          const ativos = grupo.filter(x => x.situacao === 'ATIVO');
+          for (const rema of remas) {
+            for (const ativo of ativos) {
+              if (normSerieKey(rema.serie) === normSerieKey(ativo.serie)) continue;
+              if (!ativo.turmaOrigem) ativo.turmaOrigem = rema.serie;
+              if (!ativo.professoraOrigem) ativo.professoraOrigem = rema.professora;
+              if (!rema.turmaDestino) rema.turmaDestino = ativo.serie;
+              if (!rema.professoraDestino) rema.professoraDestino = ativo.professora;
+            }
+          }
+        }
       }
 
       // Rastreio de NIS do BF que foram cruzados com algum aluno do arquivo
@@ -1391,13 +1505,17 @@ export default function Importar() {
         }
       }
 
-      // Turmas únicas — prefere professora não-vazia
+      // Turmas únicas — chaveadas por nome normalizado para evitar duplicatas
+      // (ex: "EJA I - ALFABETIZAÇÃO A NOITE" e "EJA I ALFABETIZACAO" → mesma turma).
+      // Alunos sem série (ex: AEE do Excel, serie='') são ignorados: o PDF fornece o nome correto.
       const turmasUnicas = new Map<string, { nome: string; professora: string }>();
       for (const a of alunosArr) {
-        if (!turmasUnicas.has(a.serie)) {
-          turmasUnicas.set(a.serie, { nome: a.serie, professora: a.professora });
-        } else if (a.professora && !turmasUnicas.get(a.serie)!.professora) {
-          turmasUnicas.get(a.serie)!.professora = a.professora;
+        const key = normSerieKey(a.serie ?? '');
+        if (!key) continue; // ignora séries vazias (alunos AEE vindos só do Excel)
+        if (!turmasUnicas.has(key)) {
+          turmasUnicas.set(key, { nome: a.serie, professora: a.professora });
+        } else if (a.professora && !turmasUnicas.get(key)!.professora) {
+          turmasUnicas.get(key)!.professora = a.professora;
         }
       }
 
@@ -1856,7 +1974,8 @@ export default function Importar() {
       const { data: existentesAtualizados } = await supabase
         .from('Aluno').select('id, ra, nome, situacao, cpf, nis, responsavel, bolsa_familia, turmaId, data_nascimento, cor_raca, deficiencia, aee, data_inicio_matricula, data_fim_matricula, data_movimentacao').range(0, 99999);
       const existentesFrescos = existentesAtualizados ?? existentes ?? [];
-      const freshRegular = new Map<string, any>();  // RA → registo (não-REMA, não-AEE)
+      const freshRegular = new Map<string, any>();  // RA → registo ATIVO (não-REMA, não-TRAN, não-AEE)
+      const freshTran = new Map<string, any>();     // RA → registo TRAN (separado para não colidir com ATIVO)
       const freshAEE = new Map<string, any>();      // RA → registo AEE
       const freshRema = new Map<string, any>();     // RA|turmaNome → registo REMA
       const freshByName = new Map<string, any[]>(); // nome|nasc → registos (para alunos sem RA)
@@ -1872,7 +1991,13 @@ export default function Importar() {
           if (e.turmaId) freshRema.set(`${raStr}|TID:${e.turmaId}`, e);
         } else if (e.aee === true || (e.turmaId && aeeturmaIds.has(e.turmaId))) {
           freshAEE.set(raStr, e);
+        } else if (e.situacao === 'TRAN') {
+          freshTran.set(raStr, e);
+          if (e.turmaId) freshTran.set(`${raStr}|TID:${e.turmaId}`, e);
         } else {
+          if (e.turmaId) freshRegular.set(`${raStr}|TID:${e.turmaId}`, e);
+          const turmaNome = e.turmaId ? (turmaIdToNome.get(e.turmaId) ?? '') : '';
+          if (turmaNome) freshRegular.set(`${raStr}|${normalizeStr(turmaNome)}`, e);
           freshRegular.set(raStr, e);
         }
       }
@@ -1917,6 +2042,8 @@ export default function Importar() {
       const ativosRAsNoImport = new Set<string>(
         alunos.filter(a => a.ra && a.situacao !== 'REMA').map(a => String(a.ra))
       );
+      // Rastreia nr do banco por id de registo: aplicado após dedup para evitar duplicados
+      const _numDB = new Map<string, number>();
 
       const alunosParaUpsert = alunos.map(a => {
         const isRema = a.situacao === 'REMA';
@@ -1933,8 +2060,25 @@ export default function Importar() {
               ?? (!ativosRAsNoImport.has(raKey) ? freshRegular.get(raKey) : null);
           } else if (isAEE) {
             existente = freshAEE.get(raKey);
+          } else if (a.situacao === 'TRAN') {
+            existente = (targetTurmaId ? freshTran.get(`${raKey}|TID:${targetTurmaId}`) : null)
+              ?? freshTran.get(raKey)
+              ?? null;
           } else {
-            existente = freshRegular.get(raKey);
+            // Só usa fallback freshAEE para registos mal classificados (turmaId=null).
+            // Alunos AEE com turmaId válido (sala de recursos legítima) não devem ser demotados.
+            const aeeRecord = freshAEE.get(raKey);
+            const malClassificado = aeeRecord && (!aeeRecord.turmaId || !aeeturmaIds.has(aeeRecord.turmaId));
+            const serieKey = normSerieKey(a.serie ?? '');
+            existente = (targetTurmaId ? freshRegular.get(`${raKey}|TID:${targetTurmaId}`) : null)
+              ?? (serieKey ? freshRegular.get(`${raKey}|${serieKey}`) : null)
+              ?? null;
+            if (!existente) {
+              const legado = freshRegular.get(raKey);
+              if (legado && targetTurmaId && legado.turmaId === targetTurmaId) existente = legado;
+              else if (legado && !targetTurmaId) existente = legado;
+            }
+            if (!existente && malClassificado) existente = aeeRecord;
           }
         }
 
@@ -1950,12 +2094,16 @@ export default function Importar() {
         }
 
         const alunoId = existente?.id ?? crypto.randomUUID();
+        // Nr do banco só usado se PDF não forneceu — guardado separado para dedup pós-batch
+        const _nrDB = a.numero > 0 ? 0 : (targetTurmaId && existente?.turmaId === targetTurmaId ? (existente?.numero ?? 0) : 0);
+        if (_nrDB > 0) _numDB.set(alunoId, _nrDB);
         return {
           id: alunoId,
           nome: a.nome,
           turmaId: targetTurmaId,
           ra: a.ra,
-          numero: a.numero || existente?.numero || 0,
+          // Nr da SED (PDF) sempre ganha; fallback DB aplicado após dedup sem conflito
+          numero: a.numero > 0 ? a.numero : 0,
           data_nascimento: a.nascimento,
           data_inicio_matricula: a.dataInicioMatricula || existente?.data_inicio_matricula || null,
           data_fim_matricula: a.dataFimMatricula || existente?.data_fim_matricula || null,
@@ -1986,17 +2134,48 @@ export default function Importar() {
       const upsertDedup = Array.from(
         alunosParaUpsert.reduce((m, a) => { m.set(a.id, a); return m; }, new Map<string, typeof alunosParaUpsert[0]>()).values()
       );
-      // Dedup por RA no batch: evita que ficheiros com RA repetido violem aluno_ra_uniq
+      // Dedup por RA+turma no batch: mesmo RA em turmas diferentes é permitido (espelho SED)
       {
         const rasBatch = new Set<string>();
         const limpo = upsertDedup.filter(a => {
-          if (!a.ra || a.situacao === 'REMA' || a.aee) return true;
-          const k = String(a.ra);
+          if (!a.ra || a.situacao === 'REMA' || a.situacao === 'TRAN' || a.aee) return true;
+          const k = `${a.ra}|${a.turmaId ?? 'X'}`;
           if (rasBatch.has(k)) return false;
           rasBatch.add(k);
           return true;
         });
         upsertDedup.splice(0, upsertDedup.length, ...limpo);
+      }
+      // ── Dedup Nr: detecta e resolve duplicados de numero na mesma turma ──
+      // Segurança final: mesmo que o PDF extraia nr errado para algum aluno,
+      // nunca grava dois alunos com o mesmo Nr na mesma turma.
+      {
+        const usedNums = new Map<string, Map<number, string>>();
+        for (const a of upsertDedup) {
+          if (!a.turmaId || a.numero <= 0 || a.situacao === 'REMA' || a.situacao === 'TRAN' || a.aee) continue;
+          if (!usedNums.has(a.turmaId)) usedNums.set(a.turmaId, new Map());
+          const turmaMap = usedNums.get(a.turmaId)!;
+          if (turmaMap.has(a.numero)) {
+            console.warn(`[Import] Nr duplicado ${a.numero} na turma: ${a.nome} conflita com outro aluno — zerando`);
+            a.numero = 0;
+          } else {
+            turmaMap.set(a.numero, a.id);
+          }
+        }
+        // Aplica fallback do banco para alunos sem nr
+        const usedSets = new Map<string, Set<number>>();
+        for (const [tid, m] of usedNums) usedSets.set(tid, new Set(m.keys()));
+        for (const a of upsertDedup) {
+          if (a.numero > 0 || !a.turmaId) continue;
+          const dbNr = _numDB.get(a.id) ?? 0;
+          if (!dbNr) continue;
+          const used = usedSets.get(a.turmaId) ?? new Set<number>();
+          if (!used.has(dbNr)) {
+            a.numero = dbNr;
+            used.add(dbNr);
+            if (!usedSets.has(a.turmaId)) usedSets.set(a.turmaId, used);
+          }
+        }
       }
 
       for (let i = 0; i < upsertDedup.length; i += 80) {
@@ -2011,8 +2190,13 @@ export default function Importar() {
             const { error: e2 } = await supabase.from('Aluno').upsert([record], { onConflict: 'id' });
             if (e2 && e2.message.includes('aluno_ra_uniq')) {
               // Busca o verdadeiro dono deste RA no banco e actualiza-o directamente
-              const { data: owner } = await supabase.from('Aluno')
+              // Fallback AEE: só para registos com turmaId=null (importados errado via AEE.xlsx)
+              const { data: ownerRegular } = await supabase.from('Aluno')
                 .select('id').eq('ra', record.ra).neq('aee', true).limit(1).maybeSingle();
+              const { data: ownerMisclassified } = !ownerRegular && !record.aee
+                ? await supabase.from('Aluno').select('id, turmaId').eq('ra', record.ra).eq('aee', true).is('turmaId', null).limit(1).maybeSingle()
+                : { data: null };
+              const owner = ownerRegular ?? ownerMisclassified;
               if (owner) {
                 const { id: _id, ...rest } = record as any;
                 await supabase.from('Aluno').update(rest).eq('id', owner.id);
@@ -2024,6 +2208,37 @@ export default function Importar() {
         }
         setProgresso(Math.min(i + 80, upsertDedup.length));
         setStatus(`Atualizando alunos... ${Math.min(i + 80, upsertDedup.length)}/${upsertDedup.length}`);
+      }
+
+      // ─── Espelho fiel: para cada turma importada, apaga o que não veio no relatório ──
+      // O relatório SED é a verdade. O banco deve ser cópia exacta do relatório.
+      // SEGURANÇA: só apaga registos SEM histórico de faltas lançadas.
+      // Registos com faltas reais (aluno que saiu mas tinha frequência registada)
+      // são preservados para não perder o histórico do ano letivo.
+      {
+        const idsPorTurma = new Map<string, Set<string>>();
+        for (const r of upsertDedup) {
+          if (!idsPorTurma.has(r.turmaId)) idsPorTurma.set(r.turmaId, new Set());
+          idsPorTurma.get(r.turmaId)!.add(r.id);
+        }
+        for (const [turmaId, idsValidos] of idsPorTurma) {
+          const { data: existentesDB } = await supabase.from('Aluno')
+            .select('id').eq('turmaId', turmaId);
+          const candidatosApagar = (existentesDB ?? [])
+            .map(r => r.id)
+            .filter(id => !idsValidos.has(id));
+          if (candidatosApagar.length === 0) continue;
+          // Protege registos com faltas lançadas — nunca apagar histórico real
+          const { data: comFaltas } = await supabase.from('Falta')
+            .select('alunoId').in('alunoId', candidatosApagar);
+          const protegidos = new Set((comFaltas ?? []).map(f => f.alunoId));
+          const parasApagar = candidatosApagar.filter(id => !protegidos.has(id));
+          if (parasApagar.length > 0) {
+            for (let i = 0; i < parasApagar.length; i += 50) {
+              await supabase.from('Aluno').delete().in('id', parasApagar.slice(i, i + 50));
+            }
+          }
+        }
       }
 
       snapAlunosDeletados.push(...snapFantasmas);
