@@ -309,6 +309,7 @@ export default function Importar() {
         // Filtrado pela coluna Nr (se detectada) para evitar pegar série/cabeçalho.
         const colX = nrCol ? nrCol[0] : null;
         for (const raItem of raAll) {
+          if (raNumeroByPos.has(raItem.str)) continue; // coluna já mapeou — não sobrescrever
           const candidates = allPdfItems.filter(c =>
             /^\d{1,3}$/.test(c.str) &&
             parseInt(c.str) >= 1 && parseInt(c.str) <= 200 &&

@@ -126,11 +126,21 @@ export default function Faltas() {
     if (!turmaId) { setLoading(false); return; }
     setLoading(true);
     Promise.all([api.getAlunos(turmaId), api.getFaltas(turmaId, mes, ano)]).then(([al, fa]) => {
-      setAlunos([...al].sort((a: any, b: any) => {
-        const nA = a.numero || 9999;
-        const nB = b.numero || 9999;
-        if (nA !== nB) return nA - nB;
-        return a.nome.localeCompare(b.nome, 'pt-BR');
+      // Ordena pelo NR oficial do PDF (numero); empate: ATIVO antes de não-ATIVO
+      const sorted = [...al].sort((a: any, b: any) => {
+        const diff = (a.numero || 9999) - (b.numero || 9999);
+        if (diff !== 0) return diff;
+        const aAtivo = !a.situacao || a.situacao === 'ATIVO';
+        const bAtivo = !b.situacao || b.situacao === 'ATIVO';
+        if (aAtivo && !bAtivo) return -1;
+        if (!aAtivo && bAtivo) return 1;
+        return 0;
+      });
+      // Para duplicatas de NR (ex: TRAN e ATIVO com mesmo numero), o segundo fica sem NR
+      const vistos = new Set<number>();
+      setAlunos(sorted.map((a: any) => {
+        if (a.numero && !vistos.has(a.numero)) { vistos.add(a.numero); return a; }
+        return { ...a, _nrDisplay: 0 };
       }));
       const mapDias: Record<string, Status[]> = {};
       const mapTextos: Record<string, string> = {};
@@ -1041,7 +1051,7 @@ export default function Faltas() {
                         borderRight: '2px solid var(--border-light)',
                       }}>
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
-                          <span style={{ fontSize: 11, color: theme.textMuted, paddingTop: 2, minWidth: 18 }}>{a.numero || (i + 1)}</span>
+                          <span style={{ fontSize: 11, color: theme.textMuted, paddingTop: 2, minWidth: 18 }}>{(a._nrDisplay === 0 ? '—' : a.numero) || '—'}</span>
                           <div>
                             <div style={{ fontSize: 13, fontWeight: 600, color: theme.text, display: 'flex', alignItems: 'center', gap: 4 }}>
                               {emAlerta && <span title="Frequência abaixo de 75%">⚠️</span>}
