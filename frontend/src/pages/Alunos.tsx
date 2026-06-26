@@ -719,9 +719,9 @@ export default function Alunos() {
                         onClick={e => {
                           e.stopPropagation();
                           if (a.ra) copiar(String(a.ra), `sed-${a.id}`);
-                          window.open('https://sed.educacao.sp.gov.br/', '_blank', 'noopener,noreferrer');
+                          window.open('https://sed.educacao.sp.gov.br/NCA/FichaAluno/Index', '_blank', 'noopener,noreferrer');
                         }}
-                        title={a.ra ? `Copiar RA ${a.ra} e abrir SED` : 'Abrir SED'}
+                        title={a.ra ? `Copiar RA ${a.ra} e abrir Ficha do Aluno no SED` : 'Abrir Ficha do Aluno no SED'}
                         style={{
                           background: 'none', border: 'none', cursor: 'pointer',
                           fontSize: 15, padding: '2px 4px', borderRadius: 4, lineHeight: 1,
