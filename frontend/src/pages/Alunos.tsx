@@ -718,19 +718,10 @@ export default function Alunos() {
                       <button
                         onClick={e => {
                           e.stopPropagation();
-                          if (a.ra) {
-                            copiar(String(a.ra), `sed-${a.id}`);
-                            const params = new URLSearchParams();
-                            params.set('AnoLetivo', String(new Date().getFullYear()));
-                            params.set('Ra', String(a.ra));
-                            if (a.dig_ra) params.set('DigitoRa', String(a.dig_ra));
-                            params.set('Uf', 'SP');
-                            window.open(`https://sed.educacao.sp.gov.br/NCA/FichaAluno/Index?${params.toString()}`, '_blank');
-                          } else {
-                            window.open('https://sed.educacao.sp.gov.br/NCA/FichaAluno/Index', '_blank');
-                          }
+                          if (a.ra) copiar(String(a.ra), `sed-${a.id}`);
+                          window.open('https://sed.educacao.sp.gov.br/NCA/FichaAluno/Index', '_blank');
                         }}
-                        title={a.ra ? `Abrir Ficha do Aluno no SED (RA ${a.ra}-${a.dig_ra ?? ''}/SP)` : 'Abrir Ficha do Aluno no SED'}
+                        title={a.ra ? `RA ${a.ra} copiado — cole com Ctrl+V no campo da SED` : 'Abrir Ficha do Aluno no SED'}
                         style={{
                           background: 'none', border: 'none', cursor: 'pointer',
                           fontSize: 15, padding: '2px 4px', borderRadius: 4, lineHeight: 1,
