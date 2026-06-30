@@ -1,5 +1,11 @@
 # Diário de Classe — Instruções para Claude
 
+## Idioma e Localização
+
+O utilizador é do **Brasil**. A língua de comunicação é **português do Brasil (pt-BR)**. Todas as respostas, mensagens de commit, descrições de PR e comentários devem ser escritos em português brasileiro.
+
+---
+
 ## 🚨 REGRA OBRIGATÓRIA: Fluxo Git Completo
 
 **SEMPRE que fizeres qualquer alteração de código**, deves completar TODO o fluxo abaixo sem exceção:
@@ -45,6 +51,20 @@ Confirmar sempre que o merge foi feito e o sistema está actualizado.
 - `frontend/src/pages/Faltas.tsx` — lançamento de faltas
 - `frontend/src/pages/Turmas.tsx` — gestão de turmas
 - `frontend/src/pages/Alunos.tsx` — listagem de alunos
+
+---
+
+## 🧠 Regra de Diagnóstico
+
+**Antes de qualquer alteração de código, ir direto à raiz do problema.**
+
+- Ler o código relevante primeiro, completamente, antes de formar hipóteses
+- Identificar TODAS as causas raiz de uma vez — não corrigir uma por vez às cegas
+- Nunca ficar rodando em hipóteses sem confirmar no código
+- Se o bug é em X, ler X até o fim, mapear o fluxo completo, depois corrigir
+- Uma análise completa no início vale mais do que dez tentativas erradas
+
+---
 
 ### Regras de negócio importantes
 - **ATIVO**: `situacao === 'ATIVO'` OU `situacao` vazio/nulo

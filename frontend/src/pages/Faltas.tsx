@@ -82,6 +82,10 @@ export default function Faltas() {
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showBF, setShowBF] = useState(false);
+  const [bfAlunos, setBfAlunos] = useState<any[]>([]);
+  const [bfLoading, setBfLoading] = useState(false);
+  const [bfFiltroSit, setBfFiltroSit] = useState('');
 
   const isMobile = window.innerWidth < 640;
 
@@ -122,7 +126,22 @@ export default function Faltas() {
     if (!turmaId) { setLoading(false); return; }
     setLoading(true);
     Promise.all([api.getAlunos(turmaId), api.getFaltas(turmaId, mes, ano)]).then(([al, fa]) => {
-      setAlunos([...al].sort((a: any, b: any) => (a.numero || 9999) - (b.numero || 9999)));
+      // Ordena pelo NR oficial do PDF (numero); empate: ATIVO antes de não-ATIVO
+      const sorted = [...al].sort((a: any, b: any) => {
+        const diff = (a.numero || 9999) - (b.numero || 9999);
+        if (diff !== 0) return diff;
+        const aAtivo = !a.situacao || a.situacao === 'ATIVO';
+        const bAtivo = !b.situacao || b.situacao === 'ATIVO';
+        if (aAtivo && !bAtivo) return -1;
+        if (!aAtivo && bAtivo) return 1;
+        return 0;
+      });
+      // Para duplicatas de NR (ex: TRAN e ATIVO com mesmo numero), o segundo fica sem NR
+      const vistos = new Set<number>();
+      setAlunos(sorted.map((a: any) => {
+        if (a.numero && !vistos.has(a.numero)) { vistos.add(a.numero); return a; }
+        return { ...a, _nrDisplay: 0 };
+      }));
       const mapDias: Record<string, Status[]> = {};
       const mapTextos: Record<string, string> = {};
       fa.forEach((f: any) => {
@@ -184,10 +203,44 @@ export default function Faltas() {
   const freqGeral = alunos.length > 0
     ? ((numDias * alunos.length - totalAusencias) / (numDias * alunos.length) * 100).toFixed(1)
     : '0.0';
+  // Freq. c/ atestado: conta só F+J como ausência (A = presença justificada)
+  const freqGeralAt = alunos.length > 0
+    ? ((numDias * alunos.length - (totalF + totalJ)) / (numDias * alunos.length) * 100).toFixed(1)
+    : '0.0';
   const alertas = alunos.filter(a => {
     const dias = diasAluno[a.id] ?? [];
     return ct(dias, 'F') + ct(dias, 'J') + ct(dias, 'A') >= limiteAlerta;
   });
+
+  const abrirBolsaFamilia = async () => {
+    setShowBF(true);
+    setBfLoading(true);
+    const todos = await api.getAllAlunos();
+    const bf = todos
+      .filter((a: any) => a.bolsa_familia)
+      .sort((a: any, b: any) => a.nome.localeCompare(b.nome, 'pt-BR'));
+    setBfAlunos(bf);
+    setBfLoading(false);
+  };
+
+  const exportarBFExcel = () => {
+    const turmaNomeMap = new Map(turmas.map((t: any) => [t.id, t.nome]));
+    const toRow = (a: any) => ({
+      'Nome': a.nome,
+      'RA': a.ra ?? '',
+      'NIS': a.nis ?? '',
+      'Turma': turmaNomeMap.get(a.turmaId) ?? '',
+      'Situação': SITUACAO_LABEL[a.situacao ?? 'ATIVO'] ?? (a.situacao ?? 'ATIVO'),
+      'Data Movimentação': a.data_movimentacao ?? '',
+      'Deficiência': a.deficiencia ?? '',
+    });
+    const ativos = bfAlunos.filter(a => !a.situacao || a.situacao === 'ATIVO');
+    const saidas = bfAlunos.filter(a => a.situacao && a.situacao !== 'ATIVO');
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ativos.map(toRow)), 'Ativos');
+    if (saidas.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(saidas.map(toRow)), 'Transferidos e Outros');
+    XLSX.writeFile(wb, `BolsaFamilia_${ano}.xlsx`);
+  };
 
   const exportarPDF = () => {
     const turmaObj = turmas.find(t => t.id === turmaId);
@@ -689,15 +742,18 @@ export default function Faltas() {
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
           <h1 style={{ fontSize: 26, fontWeight: 800, color: theme.text }}>📋 Lançamento de Faltas</h1>
-          {alunos.length > 0 && (
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              <button onClick={exportarFolhaOCR} style={btn('primary', { small: true, outline: true })} title="Folha simples (A4 retrato) para professor preencher número de faltas — fácil de fotografar">📋 Folha</button>
-              <button onClick={exportarGradeDias} style={btn('primary', { small: true, outline: true })} title="Grade com X por dia (A4 paisagem) para fotografar e ler com OCR">📅 Grade OCR</button>
-              <button onClick={exportarDiario} style={btn('warning', { small: true, outline: true })} title="Diário tradicional com todos os dias do mês">🖨️ Diário</button>
-              <button onClick={exportarExcel} style={btn('success', { small: true, outline: true })}>📊 Excel</button>
-              <button onClick={exportarPDF} style={btn('danger', { small: true, outline: true })}>📄 PDF</button>
-            </div>
-          )}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <button onClick={abrirBolsaFamilia} style={btn('success', { small: true })} title="Ver todos os alunos com Bolsa Família de todas as turmas (qualquer situação)">💚 Bolsa Família</button>
+            {alunos.length > 0 && (
+              <>
+                <button onClick={exportarFolhaOCR} style={btn('primary', { small: true, outline: true })} title="Folha simples (A4 retrato) para professor preencher número de faltas — fácil de fotografar">📋 Folha</button>
+                <button onClick={exportarGradeDias} style={btn('primary', { small: true, outline: true })} title="Grade com X por dia (A4 paisagem) para fotografar e ler com OCR">📅 Grade OCR</button>
+                <button onClick={exportarDiario} style={btn('warning', { small: true, outline: true })} title="Diário tradicional com todos os dias do mês">🖨️ Diário</button>
+                <button onClick={exportarExcel} style={btn('success', { small: true, outline: true })}>📊 Excel</button>
+                <button onClick={exportarPDF} style={btn('danger', { small: true, outline: true })}>📄 PDF</button>
+              </>
+            )}
+          </div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
           <div>
@@ -745,6 +801,154 @@ export default function Faltas() {
           <span style={{ fontSize: 11, color: theme.textMuted }}>· Clique na célula para alternar</span>
         </div>
       </div>
+
+      {/* ── Modal Bolsa Família ─────────────────────────────────────────── */}
+      {showBF && (
+        <div
+          onClick={() => setShowBF(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            background: 'rgba(0,0,0,0.55)', display: 'flex',
+            alignItems: 'flex-start', justifyContent: 'center',
+            padding: '40px 16px',
+            overflowY: 'auto',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: theme.card, borderRadius: theme.radiusMd,
+              boxShadow: '0 8px 40px rgba(0,0,0,0.4)',
+              border: `1px solid ${theme.borderLight}`,
+              width: '100%', maxWidth: 800,
+              padding: 24,
+            }}
+          >
+            {/* Cabeçalho */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+              <div>
+                <h2 style={{ fontSize: 20, fontWeight: 800, color: '#15803d', margin: 0 }}>
+                  💚 Alunos com Bolsa Família
+                </h2>
+                {!bfLoading && (
+                  <div style={{ fontSize: 12, color: theme.textMuted, marginTop: 4 }}>
+                    {bfAlunos.length} total · {bfAlunos.filter(a => !a.situacao || a.situacao === 'ATIVO').length} ativos ·{' '}
+                    <span style={{ color: '#0284c7', fontWeight: 700 }}>
+                      {bfAlunos.filter(a => a.situacao === 'TRAN').length} transferidos
+                    </span>
+                    {' '}— todas as turmas
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                {!bfLoading && bfAlunos.length > 0 && (
+                  <button onClick={exportarBFExcel} style={btn('success', { small: true, outline: true })} title="Excel com duas abas: Ativos e Transferidos/Outros">
+                    📊 Excel (2 abas)
+                  </button>
+                )}
+                <button onClick={() => setShowBF(false)} style={btn('danger', { small: true, outline: true })}>✕ Fechar</button>
+              </div>
+            </div>
+
+            {/* Filtro por situação */}
+            {!bfLoading && bfAlunos.length > 0 && (() => {
+              const situacoes = Array.from(new Set(bfAlunos.map(a => a.situacao ?? 'ATIVO'))).sort();
+              return (
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+                  <button
+                    onClick={() => setBfFiltroSit('')}
+                    style={{
+                      padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                      border: `1.5px solid ${bfFiltroSit === '' ? '#15803d' : theme.borderLight}`,
+                      background: bfFiltroSit === '' ? '#15803d' : 'transparent',
+                      color: bfFiltroSit === '' ? '#fff' : theme.textSecondary,
+                    }}
+                  >
+                    Todas ({bfAlunos.length})
+                  </button>
+                  {situacoes.map(sit => (
+                    <button
+                      key={sit}
+                      onClick={() => setBfFiltroSit(sit === bfFiltroSit ? '' : sit)}
+                      style={{
+                        padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                        border: `1.5px solid ${bfFiltroSit === sit ? (SITUACAO_COR[sit] ?? theme.primary) : theme.borderLight}`,
+                        background: bfFiltroSit === sit ? (SITUACAO_COR[sit] ?? theme.primary) : 'transparent',
+                        color: bfFiltroSit === sit ? '#fff' : (SITUACAO_COR[sit] ?? theme.textSecondary),
+                      }}
+                    >
+                      {SITUACAO_LABEL[sit] ?? sit} ({bfAlunos.filter(a => (a.situacao ?? 'ATIVO') === sit).length})
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
+
+            {bfLoading ? (
+              <div style={{ textAlign: 'center', padding: 40, color: theme.textMuted }}>
+                <Spinner size={32} /> <div style={{ marginTop: 12 }}>Carregando...</div>
+              </div>
+            ) : bfAlunos.length === 0 ? (
+              <EmptyState icon="💚" message="Nenhum aluno com Bolsa Família cadastrado." />
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: '#15803d', color: '#fff' }}>
+                      <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 700 }}>Nome</th>
+                      <th style={{ padding: '8px 8px', textAlign: 'center', fontWeight: 700, whiteSpace: 'nowrap' }}>RA</th>
+                      <th style={{ padding: '8px 8px', textAlign: 'center', fontWeight: 700 }}>NIS</th>
+                      <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 700 }}>Turma</th>
+                      <th style={{ padding: '8px 8px', textAlign: 'center', fontWeight: 700 }}>Situação</th>
+                      <th style={{ padding: '8px 8px', textAlign: 'center', fontWeight: 700, whiteSpace: 'nowrap' }}>Data Movim.</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(() => {
+                      const turmaNomeMap = new Map(turmas.map((t: any) => [t.id, t.nome]));
+                      const lista = bfFiltroSit
+                        ? bfAlunos.filter(a => (a.situacao ?? 'ATIVO') === bfFiltroSit)
+                        : bfAlunos;
+                      return lista.map((a, i) => {
+                        const sit = a.situacao ?? 'ATIVO';
+                        const cor = SITUACAO_COR[sit] ?? theme.textSecondary;
+                        const isTran = sit === 'TRAN';
+                        const isSaida = sit === 'TRAN' || sit === 'ABAN' || sit === 'BXTR';
+                        const rowBg = isSaida
+                          ? (isDark ? 'rgba(2,132,199,0.12)' : '#e0f2fe')
+                          : (i % 2 === 0 ? 'var(--row-even)' : 'var(--row-odd)');
+                        return (
+                          <tr key={a.id} style={{ background: rowBg }}>
+                            <td style={{ padding: '7px 10px', fontWeight: 600, color: theme.text }}>
+                              {isTran && <span title="Transferido — lançar no Sistema Presença" style={{ marginRight: 5 }}>🔄</span>}
+                              {a.nome}
+                              {a.deficiencia && <span style={{ fontSize: 10, color: '#7c3aed', marginLeft: 6 }}>♿</span>}
+                            </td>
+                            <td style={{ padding: '7px 8px', textAlign: 'center', color: theme.textSecondary }}>{a.ra ?? '—'}</td>
+                            <td style={{ padding: '7px 8px', textAlign: 'center', color: theme.textSecondary, fontWeight: 600 }}>{a.nis ?? '—'}</td>
+                            <td style={{ padding: '7px 8px', color: theme.textSecondary }}>{turmaNomeMap.get(a.turmaId) ?? '—'}</td>
+                            <td style={{ padding: '7px 8px', textAlign: 'center', fontWeight: 700, color: cor }}>
+                              {SITUACAO_LABEL[sit] ?? sit}
+                            </td>
+                            <td style={{ padding: '7px 8px', textAlign: 'center', color: isSaida ? cor : theme.textMuted, fontWeight: isSaida ? 700 : 400 }}>
+                              {a.data_movimentacao ?? '—'}
+                            </td>
+                          </tr>
+                        );
+                      });
+                    })()}
+                  </tbody>
+                </table>
+                {bfFiltroSit && (
+                  <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 8, textAlign: 'right' }}>
+                    Mostrando {bfAlunos.filter(a => (a.situacao ?? 'ATIVO') === bfFiltroSit).length} de {bfAlunos.length} alunos
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {loading ? <Loading /> : alunos.length === 0 && (
         <EmptyState icon="📋" message={turmas.length === 0 ? 'Cadastre turmas e alunos primeiro.' : 'Nenhum aluno nesta turma.'} />
@@ -825,6 +1029,7 @@ export default function Faltas() {
                   <th style={{ width: 30, textAlign: 'center', fontSize: 11, color: '#fdba74', padding: '8px 2px' }}>J</th>
                   <th style={{ width: 30, textAlign: 'center', fontSize: 11, color: '#c4b5fd', padding: '8px 2px' }}>A</th>
                   <th style={{ width: 52, textAlign: 'center', fontSize: 11, padding: '8px 4px' }}>Freq.</th>
+                  <th style={{ width: 58, textAlign: 'center', fontSize: 10, padding: '8px 4px', color: '#a5f3fc' }} title="Frequência considerando atestado como presença">Freq.<br/>c/At.</th>
                 </tr>
               </thead>
               <tbody>
@@ -835,6 +1040,7 @@ export default function Faltas() {
                   const ausencias = nF + nJ + nA;
                   const emAlerta = !statusTxt && ausencias >= limiteAlerta;
                   const freq = ((numDias - ausencias) / numDias * 100).toFixed(0);
+                  const freqAt = ((numDias - (nF + nJ)) / numDias * 100).toFixed(0);
                   const rowBg = emAlerta ? 'var(--row-alerta)' : i % 2 === 0 ? 'var(--row-even)' : 'var(--row-odd)';
                   return (
                     <tr key={a.id} style={{ background: rowBg }}>
@@ -845,7 +1051,7 @@ export default function Faltas() {
                         borderRight: '2px solid var(--border-light)',
                       }}>
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
-                          <span style={{ fontSize: 11, color: theme.textMuted, paddingTop: 2, minWidth: 18 }}>{a.numero || (i + 1)}</span>
+                          <span style={{ fontSize: 11, color: theme.textMuted, paddingTop: 2, minWidth: 18 }}>{(a._nrDisplay === 0 ? '—' : a.numero) || '—'}</span>
                           <div>
                             <div style={{ fontSize: 13, fontWeight: 600, color: theme.text, display: 'flex', alignItems: 'center', gap: 4 }}>
                               {emAlerta && <span title="Frequência abaixo de 75%">⚠️</span>}
@@ -859,6 +1065,11 @@ export default function Faltas() {
                             {a.deficiencia && (
                               <span style={{ fontSize: 10, color: '#7c3aed', fontWeight: 600, display: 'block' }}>
                                 ♿ {a.deficiencia}
+                              </span>
+                            )}
+                            {a.bolsa_familia && (
+                              <span style={{ fontSize: 10, color: '#15803d', fontWeight: 600, display: 'block' }}>
+                                💚 Bolsa Família
                               </span>
                             )}
                           </div>
@@ -905,6 +1116,9 @@ export default function Faltas() {
                           <td style={{ textAlign: 'center', fontWeight: 700, fontSize: 13, padding: '0 4px', color: Number(freq) >= 85 ? ST_COR.P : Number(freq) >= 75 ? '#ea580c' : ST_COR.F }}>
                             {freq}%
                           </td>
+                          <td style={{ textAlign: 'center', fontWeight: 700, fontSize: 12, padding: '0 4px', color: Number(freqAt) >= 85 ? ST_COR.P : Number(freqAt) >= 75 ? '#ea580c' : ST_COR.F }} title="Frequência considerando atestado como presença">
+                            {freqAt}%
+                          </td>
                         </>
                       )}
                     </tr>
@@ -927,6 +1141,7 @@ export default function Faltas() {
                   <td style={{ textAlign: 'center', color: totalJ > 0 ? ST_COR.J : theme.textMuted, fontWeight: 700, fontSize: 13 }}>{totalJ > 0 ? totalJ : '—'}</td>
                   <td style={{ textAlign: 'center', color: totalA > 0 ? ST_COR.A : theme.textMuted, fontWeight: 700, fontSize: 13 }}>{totalA > 0 ? totalA : '—'}</td>
                   <td style={{ textAlign: 'center', fontWeight: 700, fontSize: 13, padding: '0 4px', color: Number(freqGeral) >= 85 ? ST_COR.P : theme.danger }}>{freqGeral}%</td>
+                  <td style={{ textAlign: 'center', fontWeight: 700, fontSize: 12, padding: '0 4px', color: Number(freqGeralAt) >= 85 ? ST_COR.P : theme.danger }} title="Freq. geral c/ atestado como presença">{freqGeralAt}%</td>
                 </tr>
               </tbody>
             </table>

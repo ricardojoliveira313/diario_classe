@@ -31,6 +31,26 @@ function matchScore(a: string, b: string): number {
   return intersect / Math.max(na.length, nb.length);
 }
 
+// Alunos matriculados após 15/04 ficam por último na chamada
+function isLateEnrollment(a: any): boolean {
+  const d = a.data_inicio_matricula;
+  if (!d) return false;
+  const parts = String(d).split('/');
+  if (parts.length < 2) return false;
+  const day = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10);
+  if (isNaN(day) || isNaN(month)) return false;
+  return month > 4 || (month === 4 && day > 15);
+}
+
+function sortByNr(a: any, b: any): number {
+  const aLate = isLateEnrollment(a);
+  const bLate = isLateEnrollment(b);
+  if (aLate && !bLate) return 1;
+  if (!aLate && bLate) return -1;
+  return (a.numero || 9999) - (b.numero || 9999);
+}
+
 export default function Alunos() {
   const [turmas, setTurmas] = useState<any[]>([]);
   const [turmaId, setTurmaId] = useState('__all__');
@@ -58,7 +78,15 @@ export default function Alunos() {
   const [corRacaInputs, setCorRacaInputs] = useState<Record<string, string>>({});
   const [cpfSalvos, setCpfSalvos] = useState<Set<string>>(new Set());
   const [cpfSalvando, setCpfSalvando] = useState<Set<string>>(new Set());
+  const [deletandoId, setDeletandoId] = useState<string | null>(null);
   const { role, podeEditarCpf, podeEditarCorRaca } = useAuth();
+
+  const excluirAluno = async (id: string) => {
+    await supabase.from('Falta').delete().eq('alunoId', id);
+    await supabase.from('Aluno').delete().eq('id', id);
+    setAlunos(prev => prev.filter(a => a.id !== id));
+    setDeletandoId(null);
+  };
 
   const enriquecerEducacenso = async () => {
     setEnriquecendo(true);
@@ -125,16 +153,14 @@ export default function Alunos() {
     if (filtroProfessora && turmaMap.get(a.turmaId)?.professora !== filtroProfessora) return false;
     if (filtroDefi && a.deficiencia !== filtroDefi) return false;
     return true;
-  }).sort((a, b) => (a.numero || 9999) - (b.numero || 9999));
+  }).sort(sortByNr);
 
   const isAtivo = (a: any) => !a.situacao || a.situacao === 'ATIVO';
   const totalAtivos = alunos.filter(isAtivo).length;
   const totalBolsa  = alunos.filter(a => a.bolsa_familia && isAtivo(a)).length;
 
-  // Contagem de deficiências sem dupla-contagem:
-  // Registo AEE pode ter deficiência vazia (só o registo regular tem preenchida).
-  // Por isso: 1) reúne todos os RAs com deficiência; 2) reúne todos os RAs em AEE;
-  // 3) se RA tem deficiência E está em AEE → conta em AEE; caso contrário → Regular.
+  // Defi. Regular = total de alunos activos com deficiência (inclui os que também estão em AEE)
+  // Defi. AEE = alunos activos em sala de recursos (turmaId aponta para turma AEE)
   const rasComDefi = new Set(
     alunos.filter(a => isAtivo(a) && a.deficiencia).map(a => a.ra ? String(a.ra) : a.id)
   );
@@ -162,7 +188,7 @@ export default function Alunos() {
     );
     for (const [tid, arr] of gruposOrdenados) {
       const t = turmaMap.get(tid);
-      arr.sort((a, b) => (a.numero || 9999) - (b.numero || 9999));
+      arr.sort(sortByNr);
       linhas.push({ tipo: 'header', nome: t ? `📚 ${t.nome} — ${labelDocente(t.professora || '')} ${t.professora || ''}` : 'Sem turma', key: tid, total: arr.length });
       arr.forEach((a, idx) => linhas.push({ tipo: 'aluno', a, idx }));
     }
@@ -262,25 +288,67 @@ export default function Alunos() {
 
   const exportarPDF = () => {
     const turmaSel = turmas.find(t => t.id === turmaId);
-    const linhas = alunosFiltrados.map((a, i) => {
-      const nome = String(a.nome ?? '').padEnd(38);
-      const ra = String(a.ra ?? '').padEnd(12);
-      const sit = (SITUACAO_LABEL[a.situacao] ?? a.situacao ?? '').padEnd(14);
-      const defi = (a.deficiencia ?? '').substring(0, 22).padEnd(22);
-      return `${String(i + 1).padStart(2)} ${nome} ${ra} ${sit} ${defi}`;
-    });
+    const blocos: string[] = [];
+
+    if (turmaSel) {
+      // Turma específica selecionada
+      const linhas = alunosFiltrados.map((a, i) => {
+        const nome = String(a.nome ?? '').padEnd(38);
+        const ra = String(a.ra ?? '').padEnd(12);
+        const sit = (SITUACAO_LABEL[a.situacao] ?? a.situacao ?? '').padEnd(14);
+        const defi = (a.deficiencia ?? '').substring(0, 22).padEnd(22);
+        return `${String(i + 1).padStart(2)} ${nome} ${ra} ${sit} ${defi}`;
+      });
+      const prof = turmaSel.professora ? `  ${labelDocente(turmaSel.professora)} ${turmaSel.professora}` : '';
+      blocos.push([
+        '='.repeat(100),
+        `  ${turmaSel.nome}${prof}`,
+        '='.repeat(100),
+        '',
+        ` Nº  Nome                                    RA             Situação       Deficiência`,
+        '─'.repeat(100),
+        ...linhas,
+        '─'.repeat(100),
+        `  Total: ${alunosFiltrados.length} alunos`,
+      ].join('\n'));
+    } else {
+      // Todas as turmas — separar por turma
+      const grupos = new Map<string, any[]>();
+      for (const a of alunosFiltrados) {
+        if (!grupos.has(a.turmaId)) grupos.set(a.turmaId, []);
+        grupos.get(a.turmaId)!.push(a);
+      }
+      const gruposOrdenados = [...grupos.entries()].sort(([tidA], [tidB]) =>
+        ordemTurma(turmaMap.get(tidA)?.nome ?? '').localeCompare(ordemTurma(turmaMap.get(tidB)?.nome ?? ''))
+      );
+      for (const [tid, arr] of gruposOrdenados) {
+        const t = turmaMap.get(tid);
+        arr.sort(sortByNr);
+        const prof = t?.professora ? `  ${labelDocente(t.professora)} ${t.professora}` : '';
+        const nomeTurma = t?.nome ?? 'Sem turma';
+        const linhas = arr.map((a: any, i: number) => {
+          const nome = String(a.nome ?? '').padEnd(38);
+          const ra = String(a.ra ?? '').padEnd(12);
+          const sit = (SITUACAO_LABEL[a.situacao] ?? a.situacao ?? '').padEnd(14);
+          const defi = (a.deficiencia ?? '').substring(0, 22).padEnd(22);
+          return `${String(i + 1).padStart(2)} ${nome} ${ra} ${sit} ${defi}`;
+        });
+        blocos.push([
+          '='.repeat(100),
+          `  ${nomeTurma} —${prof}`,
+          '='.repeat(100),
+          '',
+          ` Nº  Nome                                    RA             Situação       Deficiência`,
+          '─'.repeat(100),
+          ...linhas,
+          '─'.repeat(100),
+          `  Total: ${arr.length} alunos`,
+        ].join('\n'));
+      }
+    }
+
     const titulo = `RELAÇÃO DE ALUNOS — ${turmaSel?.nome ?? 'Todas as Turmas'}`;
-    const conteudo = [
-      '='.repeat(100),
-      `  ${titulo}`,
-      '='.repeat(100),
-      '',
-      ` Nº  Nome                                    RA             Situação       Deficiência`,
-      '─'.repeat(100),
-      ...linhas,
-      '─'.repeat(100),
-      `  Total: ${alunosFiltrados.length} alunos`,
-    ].join('\n');
+    const conteudo = blocos.join('\n\n\n');
     const win = window.open('', '_blank');
     if (!win) return;
     win.document.write(`<html><head><title>${titulo}</title>
@@ -291,7 +359,9 @@ export default function Alunos() {
     win.document.close();
   };
 
-  const COLUNAS = '44px 1fr 110px 85px 100px 40px 110px 130px 125px 90px';
+  const COLUNAS = role === 'admin'
+    ? '44px 1fr 110px 85px 100px 40px 110px 130px 125px 90px 30px 36px'
+    : '44px 1fr 110px 85px 100px 40px 110px 130px 125px 90px 30px';
   const formataCPF = (cpf: string) => cpf ? cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : '';
   const copiar = async (texto: string, label: string) => {
     try { await navigator.clipboard.writeText(texto); setCopiado(label); setTimeout(() => setCopiado(''), 1500); } catch {}
@@ -548,6 +618,8 @@ export default function Alunos() {
             <span>Docente</span><span>Turma</span>
             <span style={{ textAlign: 'center' }}>CPF</span>
             <span style={{ textAlign: 'center' }}>Cor/Raça</span>
+            <span style={{ textAlign: 'center' }}>SED</span>
+            {role === 'admin' && <span />}
           </div>
 
           {renderRows.map((item, globalIdx) =>
@@ -588,7 +660,7 @@ export default function Alunos() {
                     }}
                     onMouseEnter={e => { if (editandoId !== a.id) e.currentTarget.style.background = 'var(--ghost-bg)'; }}
                     onMouseLeave={e => { if (editandoId !== a.id) e.currentTarget.style.background = ''; }}>
-<span style={{ fontSize: 13, color: theme.textMuted }}>{a.numero || i + 1}</span>
+<span style={{ fontSize: 13, color: theme.textMuted }}>{i + 1}</span>
                   <div>
                       <div style={{ fontSize: 15, fontWeight: 600, color: theme.text }}>{a.nome}</div>
                       <div style={{ fontSize: 12, color: theme.textMuted, marginTop: 2 }}>
@@ -642,6 +714,48 @@ export default function Alunos() {
                       title={!a.cor_raca && podeEditarCorRaca ? 'Clique para adicionar Cor/Raça' : ''}>
                       {a.cor_raca || (podeEditarCorRaca ? <span style={{ color: '#3b82f6', cursor: 'pointer' }}>+ raça</span> : <span style={{ color: theme.textMuted }}>—</span>)}
                     </span>
+                    <span style={{ textAlign: 'center' }}>
+                      <button
+                        onClick={e => {
+                          e.stopPropagation();
+                          if (a.ra) copiar(String(a.ra), `sed-${a.id}`);
+                          window.open('https://sed.educacao.sp.gov.br/NCA/FichaAluno/Index', '_blank');
+                        }}
+                        title={a.ra ? `RA ${a.ra} copiado — cole com Ctrl+V no campo da SED` : 'Abrir Ficha do Aluno no SED'}
+                        style={{
+                          background: 'none', border: 'none', cursor: 'pointer',
+                          fontSize: 15, padding: '2px 4px', borderRadius: 4, lineHeight: 1,
+                          color: copiado === `sed-${a.id}` ? '#16a34a' : '#2563eb',
+                          transition: 'color 0.15s',
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.opacity = '0.7'; }}
+                        onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}
+                      >
+                        {copiado === `sed-${a.id}` ? '✅' : '🔗'}
+                      </button>
+                    </span>
+                    {role === 'admin' && (
+                      deletandoId === a.id ? (
+                        <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                          <button onClick={e => { e.stopPropagation(); excluirAluno(a.id); }}
+                            style={{ fontSize: 10, fontWeight: 700, background: '#ef4444', color: 'white', border: 'none', borderRadius: 3, padding: '2px 5px', cursor: 'pointer' }}>
+                            ✓
+                          </button>
+                          <button onClick={e => { e.stopPropagation(); setDeletandoId(null); }}
+                            style={{ fontSize: 10, background: theme.border, color: theme.text, border: 'none', borderRadius: 3, padding: '2px 5px', cursor: 'pointer' }}>
+                            ✕
+                          </button>
+                        </span>
+                      ) : (
+                        <button onClick={e => { e.stopPropagation(); setDeletandoId(a.id); }}
+                          title="Excluir aluno"
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: theme.textMuted, padding: '2px 4px', borderRadius: 4, lineHeight: 1 }}
+                          onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; }}
+                          onMouseLeave={e => { e.currentTarget.style.color = theme.textMuted; }}>
+                          🗑️
+                        </button>
+                      )
+                    )}
                   </div>
 
                   {/* Detalhes expandidos */}
