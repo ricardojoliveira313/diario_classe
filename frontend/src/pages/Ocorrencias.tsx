@@ -6,13 +6,16 @@ import { useAuth } from '../AuthContext';
 const selectStyle = { ...input, cursor: 'pointer' as const, appearance: 'menulist' as const, WebkitAppearance: 'menulist' as const };
 
 const TIPOS = [
-  { value: 'falta_bonada',   label: 'Falta Bonada',       color: '#ef4444' },
-  { value: 'falta_medica',   label: 'Falta Médica',       color: '#f59e0b' },
-  { value: 'licenca_medica', label: 'Licença Médica',     color: '#8b5cf6' },
-  { value: 'doacao_sangue',  label: 'Doação de Sangue',   color: '#ec4899' },
-  { value: 'tre',            label: 'TRE',                 color: '#3b82f6' },
-  { value: 'choveu',         label: 'Choveu',              color: '#06b6d4' },
-  { value: 'outras',         label: 'Outras',              color: '#6b7280' },
+  { value: 'falta_abonada',       label: 'Falta Abonada',          color: '#ef4444' },
+  { value: 'atestado_medico',     label: 'Atestado Médico',        color: '#f59e0b' },
+  { value: 'licenca_medica',      label: 'Licença Médica',         color: '#8b5cf6' },
+  { value: 'ltpf',                label: 'LTPF',                   color: '#a855f7' },
+  { value: 'doacao_sangue',       label: 'Doação de Sangue',       color: '#ec4899' },
+  { value: 'tre',                 label: 'TRE',                    color: '#3b82f6' },
+  { value: 'pedido_justificacao', label: 'Pedido de Justificação', color: '#10b981' },
+  { value: 'falta_justificada',   label: 'Falta Justificada',      color: '#f97316' },
+  { value: 'choveu',              label: 'Choveu',                 color: '#06b6d4' },
+  { value: 'outras',              label: 'Outras',                 color: '#6b7280' },
 ];
 
 function formatDate(d: string) {
@@ -40,7 +43,7 @@ export default function Ocorrencias() {
   const [filtroDataFim, setFiltroDataFim] = useState('');
   const [modal, setModal] = useState(false);
   const [editando, setEditando] = useState<any | null>(null);
-  const [form, setForm] = useState({ servidor: '', tipo: 'falta_bonada', data: '', dias: 1, descricao: '' });
+  const [form, setForm] = useState({ servidor: '', tipo: 'falta_abonada', data: '', dias: 1, descricao: '' });
   const [servidorUnico, setServidorUnico] = useState('');
 
   const carregar = async () => {
@@ -65,7 +68,7 @@ export default function Ocorrencias() {
 
   const abrirNovo = () => {
     setEditando(null);
-    setForm({ servidor: servidorUnico, tipo: 'falta_bonada', data: '', dias: 1, descricao: '' });
+    setForm({ servidor: servidorUnico, tipo: 'falta_abonada', data: '', dias: 1, descricao: '' });
     setModal(true);
   };
 
@@ -184,7 +187,7 @@ export default function Ocorrencias() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
           <div>
             <h1 style={{ fontSize: 24, fontWeight: 800, color: theme.text, margin: 0 }}>📋 Ocorrências</h1>
-            <p style={{ color: theme.textMuted, fontSize: 13, margin: '2px 0 0' }}>Registro de faltas de servidores — bonada, médica, licença, doação, TRE, chuva e outras</p>
+            <p style={{ color: theme.textMuted, fontSize: 13, margin: '2px 0 0' }}>Registro de faltas de servidores — abonada, atestado, licença, LTPF, TRE, doação e outras</p>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button onClick={exportarPDF} style={{ ...btn.secondary, fontSize: 13 }} disabled={ocorrencias.length === 0}>📄 Relatório PDF</button>
