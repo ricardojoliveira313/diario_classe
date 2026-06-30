@@ -122,6 +122,31 @@ export const api = {
     return count ?? 0;
   },
 
+  // --- OCORRENCIAS (faltas de servidores) ---
+  getOcorrencias: async (filtros?: { servidor?: string; tipo?: string; dataInicio?: string; dataFim?: string }) => {
+    let q = supabase.from('Ocorrencia').select('*').order('data', { ascending: false }).order('created_at', { ascending: false });
+    if (filtros?.servidor) q = q.ilike('servidor', `%${filtros.servidor}%`);
+    if (filtros?.tipo) q = q.eq('tipo', filtros.tipo);
+    if (filtros?.dataInicio) q = q.gte('data', filtros.dataInicio);
+    if (filtros?.dataFim) q = q.lte('data', filtros.dataFim);
+    const { data, error } = await q;
+    if (error) throw error;
+    return data ?? [];
+  },
+  createOcorrencia: async (o: { servidor: string; tipo: string; data: string; dias?: number; descricao?: string; registrado_por: string }) => {
+    const { data, error } = await supabase.from('Ocorrencia').insert(o).select().single();
+    if (error) throw error;
+    return data;
+  },
+  updateOcorrencia: async (id: string, updates: any) => {
+    const { error } = await supabase.from('Ocorrencia').update(updates).eq('id', id);
+    if (error) throw error;
+  },
+  deleteOcorrencia: async (id: string) => {
+    const { error } = await supabase.from('Ocorrencia').delete().eq('id', id);
+    if (error) throw error;
+  },
+
   reloadSchema: async () => {
     const { error } = await supabase.rpc('pgrst_reload_schema' as any);
     if (error) {
