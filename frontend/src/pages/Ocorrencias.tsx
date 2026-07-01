@@ -6,11 +6,13 @@ import { useAuth } from '../AuthContext';
 const selectStyle = { ...input, cursor: 'pointer' as const, appearance: 'menulist' as const, WebkitAppearance: 'menulist' as const };
 
 const TIPOS = [
-  { value: 'falta_abonada',   label: 'Falta Abonada',    color: '#ef4444' },
-  { value: 'atestado_medico', label: 'Atestado Médico',  color: '#f59e0b' },
-  { value: 'licenca_medica',  label: 'Licença Médica',   color: '#8b5cf6' },
-  { value: 'ltpf',            label: 'LTPF',             color: '#a855f7' },
-  { value: 'tre',             label: 'TRE',              color: '#3b82f6' },
+  { value: 'falta_abonada',       label: 'Falta Abonada',          color: '#ef4444' },
+  { value: 'atestado_medico',     label: 'Atestado Médico',        color: '#f59e0b' },
+  { value: 'licenca_medica',      label: 'Licença Médica',         color: '#8b5cf6' },
+  { value: 'ltpf',                label: 'LTPF',                   color: '#a855f7' },
+  { value: 'tre',                 label: 'TRE',                    color: '#3b82f6' },
+  { value: 'pedido_justificacao', label: 'Pedido de Justificação', color: '#10b981' },
+  { value: 'doacao_sangue',       label: 'Doação de Sangue',       color: '#ec4899' },
 ];
 
 function formatDate(d: string) {
@@ -182,7 +184,7 @@ export default function Ocorrencias() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
           <div>
             <h1 style={{ fontSize: 24, fontWeight: 800, color: theme.text, margin: 0 }}>📋 Ocorrências</h1>
-            <p style={{ color: theme.textMuted, fontSize: 13, margin: '2px 0 0' }}>Registro de faltas de servidores — Falta Abonada, Atestado Médico, Licença Médica, LTPF e TRE</p>
+            <p style={{ color: theme.textMuted, fontSize: 13, margin: '2px 0 0' }}>Registro de faltas de servidores — Falta Abonada, Atestado Médico, Licença Médica, LTPF, TRE, Ped. Justificação e Doação de Sangue</p>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button onClick={exportarPDF} style={{ ...btn.secondary, fontSize: 13 }} disabled={ocorrencias.length === 0}>📄 Relatório PDF</button>
