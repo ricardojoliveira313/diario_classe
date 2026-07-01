@@ -60,6 +60,17 @@ CREATE TABLE IF NOT EXISTS "Pendente" (
   created_at       TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS "Ocorrencia" (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  servidor        TEXT NOT NULL,
+  tipo            TEXT NOT NULL,
+  data            DATE NOT NULL,
+  dias            INTEGER DEFAULT 1,
+  descricao       TEXT DEFAULT '',
+  registrado_por  TEXT NOT NULL DEFAULT '',
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ─── 2. Colunas extras (caso as tabelas já existam sem elas) ──
 
 ALTER TABLE "Aluno" ADD COLUMN IF NOT EXISTS ra                    BIGINT;
@@ -153,7 +164,8 @@ ON CONFLICT (nome) DO NOTHING;
 ALTER TABLE "Turma"    DISABLE ROW LEVEL SECURITY;
 ALTER TABLE "Aluno"    DISABLE ROW LEVEL SECURITY;
 ALTER TABLE "Falta"    DISABLE ROW LEVEL SECURITY;
-ALTER TABLE "Pendente" DISABLE ROW LEVEL SECURITY;
+ALTER TABLE "Pendente"   DISABLE ROW LEVEL SECURITY;
+ALTER TABLE "Ocorrencia" DISABLE ROW LEVEL SECURITY;
 ALTER TABLE "Usuario"    DISABLE ROW LEVEL SECURITY;
 ALTER TABLE "Educacenso" DISABLE ROW LEVEL SECURITY;
 

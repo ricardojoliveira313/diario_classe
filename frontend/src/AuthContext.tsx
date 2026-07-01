@@ -35,6 +35,7 @@ export const PAGINAS_VIEWER = [
   { key: 'turmas',     label: '👩‍🏫 Turmas' },
   { key: 'alunos',     label: '👥 Alunos' },
   { key: 'faltas',     label: '📋 Faltas' },
+  { key: 'ocorrencias',label: '📋 Ocorrências' },
   { key: 'distorcao',  label: '📐 Distorção' },
   { key: 'pendentes',  label: '📋 Ata de Resultados' },
 ] as const;

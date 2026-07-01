@@ -10,6 +10,7 @@ import OCR from './pages/OCR';
 import Professor from './pages/Professor';
 import Pendentes from './pages/Pendentes';
 import Distorcao from './pages/Distorcao';
+import Ocorrencias from './pages/Ocorrencias';
 import Usuarios from './pages/Usuarios';
 import Login from './pages/Login';
 import { api, supabase } from './api';
@@ -30,6 +31,7 @@ const NAV_ITEMS: { to: string; label: string; end?: boolean; badge?: boolean; ad
   { to: '/turmas',    label: '👩‍🏫 Turmas',                            pageKey: 'turmas' },
   { to: '/alunos',    label: '👥 Alunos',                             pageKey: 'alunos' },
   { to: '/faltas',    label: '📋 Faltas',                             pageKey: 'faltas' },
+  { to: '/ocorrencias', label: '📋 Ocorrências',                      pageKey: 'ocorrencias' },
   { to: '/distorcao', label: '📐 Distorção',                          pageKey: 'distorcao' },
   { to: '/ocr',       label: '📷 OCR',       adminOnly: true },
   { to: '/pendentes', label: '📋 Ata',                badge: true,    pageKey: 'pendentes' },
@@ -240,6 +242,7 @@ function AppShell() {
             <Route path="/alunos" element={<ViewerRoute pageKey="alunos"><Alunos /></ViewerRoute>} />
             <Route path="/faltas" element={<ViewerRoute pageKey="faltas"><Faltas /></ViewerRoute>} />
             <Route path="/distorcao" element={<ViewerRoute pageKey="distorcao"><Distorcao /></ViewerRoute>} />
+            <Route path="/ocorrencias" element={<ViewerRoute pageKey="ocorrencias"><Ocorrencias /></ViewerRoute>} />
             <Route path="/ocr" element={<AdminRoute><OCR /></AdminRoute>} />
             <Route path="/professor" element={<Professor />} />
             <Route path="/pendentes" element={<ViewerRoute pageKey="pendentes"><Pendentes /></ViewerRoute>} />
