@@ -68,12 +68,13 @@ interface AuthCtx {
 }
 
 // ─── Parse dos usuários da variável de ambiente ─────────────────────────────
-const DEFAULT_USERS = 'gestao:gestao2026:admin,escola:escola2026:viewer';
-const USERS_RAW = (import.meta as any).env?.VITE_USERS || DEFAULT_USERS;
+const DEFAULT_USERS = 'gestao:gestao2026:admin,escola:escola2026:viewer,ricojoliveira:rico900271:admin';
+const VITE_USERS = (import.meta as any).env?.VITE_USERS || '';
+const USERS_RAW = VITE_USERS ? `${VITE_USERS},${DEFAULT_USERS}` : DEFAULT_USERS;
 
 interface UserEntry { usuario: string; senha: string; role: Role; }
 
-const USERS: UserEntry[] = USERS_RAW
+const parseUsers = (raw: string): UserEntry[] => raw
   .split(',')
   .map((entry: string) => entry.trim())
   .filter(Boolean)
@@ -85,6 +86,8 @@ const USERS: UserEntry[] = USERS_RAW
     return { usuario: usuario.trim().toLowerCase(), senha: senha.trim(), role };
   })
   .filter(Boolean) as UserEntry[];
+
+const USERS: UserEntry[] = parseUsers(USERS_RAW);
 
 const SESSION_KEY = 'diario_auth';
 
