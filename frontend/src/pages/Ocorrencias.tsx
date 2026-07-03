@@ -196,8 +196,8 @@ export default function Ocorrencias() {
             <p style={{ color: theme.textMuted, fontSize: 13, margin: '2px 0 0' }}>Registro de faltas de servidores — Falta Abonada, Atestado Médico, Licença Médica, LTPF, TRE, Ped. Justificação e Doação de Sangue</p>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button onClick={exportarPDF} style={{ ...btn.secondary, fontSize: 13 }} disabled={ocorrencias.length === 0}>📄 Relatório PDF</button>
-            <button onClick={abrirNovo} style={{ ...btn.primary, fontSize: 13 }}>+ Nova Ocorrência</button>
+            <button onClick={exportarPDF} style={{ ...btn("ghost"), fontSize: 13 }} disabled={ocorrencias.length === 0}>📄 Relatório PDF</button>
+            <button onClick={abrirNovo} style={{ ...btn("primary"), fontSize: 13 }}>+ Nova Ocorrência</button>
           </div>
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'end' }}>
@@ -222,7 +222,7 @@ export default function Ocorrencias() {
           </div>
           {(filtroServidor || filtroTipo || filtroDataInicio || filtroDataFim) && (
             <button onClick={() => { setFiltroServidor(''); setFiltroTipo(''); setFiltroDataInicio(''); setFiltroDataFim(''); }}
-              style={{ ...btn.danger, fontSize: 12, padding: '7px 12px', marginBottom: 0 }}>Limpar filtros</button>
+              style={{ ...btn("danger"), fontSize: 12, padding: '7px 12px', marginBottom: 0 }}>Limpar filtros</button>
           )}
         </div>
       </div>
@@ -234,7 +234,7 @@ export default function Ocorrencias() {
           <div style={{ textAlign: 'center', padding: 40, color: theme.textMuted }}>
             <div style={{ fontSize: 40, marginBottom: 8 }}>📋</div>
             <p>Nenhuma ocorrência encontrada.</p>
-            <button onClick={abrirNovo} style={{ ...btn.primary, fontSize: 13, marginTop: 8 }}>+ Nova Ocorrência</button>
+            <button onClick={abrirNovo} style={{ ...btn("primary"), fontSize: 13, marginTop: 8 }}>+ Nova Ocorrência</button>
           </div>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
@@ -254,7 +254,7 @@ export default function Ocorrencias() {
                 const tipo = TIPOS.find(t => t.value === o.tipo);
                 return (
                   <tr key={o.id} style={{ borderBottom: `1px solid ${bdr}`, transition: 'background 0.1s' }}
-                    onMouseEnter={e => (e.currentTarget.style.background = theme.hover)}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--ghost-bg)')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                   >
                     <td style={{ padding: '8px 10px', fontWeight: 600, color: theme.text }}>{o.servidor}</td>
@@ -335,8 +335,8 @@ export default function Ocorrencias() {
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'end', marginTop: 20 }}>
-              <button onClick={() => setModal(false)} style={{ ...btn.secondary }} disabled={saving}>Cancelar</button>
-              <button onClick={salvar} style={{ ...btn.primary }} disabled={saving || !form.servidor.trim() || !form.data}>
+              <button onClick={() => setModal(false)} style={{ ...btn("ghost") }} disabled={saving}>Cancelar</button>
+              <button onClick={salvar} style={{ ...btn("primary") }} disabled={saving || !form.servidor.trim() || !form.data}>
                 {saving ? 'Salvando...' : (editando ? 'Salvar' : 'Criar')}
               </button>
             </div>
