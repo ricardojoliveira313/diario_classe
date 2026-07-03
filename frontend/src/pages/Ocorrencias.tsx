@@ -6,14 +6,23 @@ import { useAuth } from '../AuthContext';
 const selectStyle = { ...input, cursor: 'pointer' as const, appearance: 'menulist' as const, WebkitAppearance: 'menulist' as const };
 
 const TIPOS = [
-  { value: 'falta_abonada',       label: 'Falta Abonada',          color: '#ef4444' },
-  { value: 'atestado_medico',     label: 'Atestado Médico',        color: '#f59e0b' },
-  { value: 'licenca_medica',      label: 'Licença Médica',         color: '#8b5cf6' },
-  { value: 'ltpf',                label: 'LTPF',                   color: '#a855f7' },
-  { value: 'tre',                 label: 'TRE',                    color: '#3b82f6' },
-  { value: 'pedido_justificacao', label: 'Pedido de Justificação', color: '#10b981' },
-  { value: 'doacao_sangue',       label: 'Doação de Sangue',       color: '#ec4899' },
+  { value: 'falta_abonada',       label: 'Falta Abonada',                        color: '#ef4444' },
+  { value: 'atestado_medico',     label: 'Atestado Médico (até 14 dias)',        color: '#f59e0b' },
+  { value: 'licenca_medica',      label: 'Licença Médica (15 dias ou mais)',     color: '#8b5cf6' },
+  { value: 'ltpf',                label: 'LTPF',                                 color: '#a855f7' },
+  { value: 'tre',                 label: 'TRE',                                  color: '#3b82f6' },
+  { value: 'pedido_justificacao', label: 'Pedido de Justificação',               color: '#10b981' },
+  { value: 'doacao_sangue',       label: 'Doação de Sangue',                     color: '#ec4899' },
 ];
+
+// Atestado Médico (curto) vs Licença Médica (longo) — classificação automática pelo nº de dias
+const LIMITE_DIAS_LICENCA = 15;
+function classificarPorDias(tipo: string, dias: number): string {
+  if (tipo === 'atestado_medico' || tipo === 'licenca_medica') {
+    return dias >= LIMITE_DIAS_LICENCA ? 'licenca_medica' : 'atestado_medico';
+  }
+  return tipo;
+}
 
 function formatDate(d: string) {
   if (!d) return '';
@@ -296,9 +305,14 @@ export default function Ocorrencias() {
               </div>
               <div>
                 <label style={{ ...label, fontSize: 13 }}>Tipo *</label>
-                <select value={form.tipo} onChange={e => setForm(f => ({ ...f, tipo: e.target.value }))} style={{ ...selectStyle, width: '100%' }}>
+                <select value={form.tipo} onChange={e => setForm(f => ({ ...f, tipo: classificarPorDias(e.target.value, f.dias) }))} style={{ ...selectStyle, width: '100%' }}>
                   {TIPOS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </select>
+                {(form.tipo === 'atestado_medico' || form.tipo === 'licenca_medica') && (
+                  <p style={{ color: theme.textMuted, fontSize: 11, margin: '4px 0 0' }}>
+                    Classificação automática pelos dias: até {LIMITE_DIAS_LICENCA - 1} dias = Atestado Médico; {LIMITE_DIAS_LICENCA} dias ou mais = Licença Médica.
+                  </p>
+                )}
               </div>
               <div style={{ display: 'flex', gap: 12 }}>
                 <div style={{ flex: 1 }}>
@@ -307,7 +321,10 @@ export default function Ocorrencias() {
                 </div>
                 <div style={{ width: 80 }}>
                   <label style={{ ...label, fontSize: 13 }}>Dias</label>
-                  <input type="number" min={1} value={form.dias} onChange={e => setForm(f => ({ ...f, dias: Math.max(1, Number(e.target.value)) }))} style={{ ...input, width: '100%' }} />
+                  <input type="number" min={1} value={form.dias} onChange={e => {
+                    const dias = Math.max(1, Number(e.target.value));
+                    setForm(f => ({ ...f, dias, tipo: classificarPorDias(f.tipo, dias) }));
+                  }} style={{ ...input, width: '100%' }} />
                 </div>
               </div>
               <div>
