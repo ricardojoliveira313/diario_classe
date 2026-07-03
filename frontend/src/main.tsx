@@ -148,7 +148,7 @@ function AppShell() {
 
             {/* Desktop menu */}
             <div className="nav-scroll" style={{ display: 'flex', gap: 1, flex: 1, minWidth: 0 }}>
-              {navItems.map(item => (
+              {navItems.filter(item => item.to !== '/usuarios').map(item => (
                 <NavLink
                   key={item.to} to={item.to} end={item.end}
                   style={({ isActive }) => isActive ? linkActive : linkBase}
@@ -161,6 +161,14 @@ function AppShell() {
                 </NavLink>
               ))}
             </div>
+
+            {/* Usuários — fixo fora da área rolável para nunca ficar escondido (admin) */}
+            {role === 'admin' && (
+              <NavLink to="/usuarios" title="Usuários"
+                style={({ isActive }) => ({ ...(isActive ? linkActive : linkBase), flexShrink: 0 })}>
+                👥 Usuários
+              </NavLink>
+            )}
 
             {/* Badge de perfil + nome do usuário */}
             <span style={{ ...roleBadgeStyle, flexShrink: 0 }} title={`${username || ''} — ${role === 'admin' ? 'Acesso completo' : 'Somente visualização'}`}>
