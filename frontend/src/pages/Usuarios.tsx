@@ -25,7 +25,8 @@ export default function Usuarios() {
 
   const carregar = async () => {
     setLoading(true);
-    const { data } = await supabase.from('Usuario').select('*').order('nome');
+    // Nunca seleciona a coluna "senha" — bloqueada no banco por segurança (ver CORRIGIR_SEGURANCA_SENHAS.sql)
+    const { data } = await supabase.from('Usuario').select('id, nome, perfil, permissoes, turma_id, created_at').order('nome');
     setUsuarios(data ?? []);
     setLoading(false);
   };
