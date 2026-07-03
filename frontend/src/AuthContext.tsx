@@ -132,19 +132,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sessionStorage.setItem(SESSION_KEY, JSON.stringify(s));
       return envUser.role;
     }
-    // 2º: tabela Usuario no Supabase (inclui campo permissoes)
+    // 2º: tabela Usuario no Supabase — senha nunca trafega em claro pela API;
+    // a comparação acontece dentro do banco via função verificar_login (RPC)
     try {
-      const { data } = await supabase
-        .from('Usuario')
-        .select('nome, senha, perfil, permissoes, turma_id')
-        .eq('nome', usuario.trim())
-        .maybeSingle();
-      if (data && data.senha === senha) {
-        const role: Role = data.perfil === 'viewer' ? 'viewer' : 'admin';
+      const { data } = await supabase.rpc('verificar_login', {
+        p_nome: usuario.trim(),
+        p_senha: senha,
+      });
+      const row = Array.isArray(data) ? data[0] : null;
+      if (row) {
+        const role: Role = row.perfil === 'viewer' ? 'viewer' : 'admin';
         // Admin ignora permissoes; viewer usa o campo (null = tudo liberado)
         const permissoes: PermKey[] | null =
-          role === 'admin' ? null : (Array.isArray(data.permissoes) ? data.permissoes : null);
-        const turmaId: string | null = role === 'admin' ? null : (data.turma_id ?? null);
+          role === 'admin' ? null : (Array.isArray(row.permissoes) ? row.permissoes : null);
+        const turmaId: string | null = role === 'admin' ? null : (row.turma_id ?? null);
         const s: SessionState = { role, username: usuario.trim(), permissoes, turmaId };
         setState(s);
         sessionStorage.setItem(SESSION_KEY, JSON.stringify(s));
