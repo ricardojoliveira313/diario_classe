@@ -336,6 +336,19 @@ export default function Faltas() {
     });
   };
 
+  const toggleColumnSelect = (schoolIdx: number) => {
+    const idsElegiveis = alunos.filter(a => !statusTextos[a.id]).map(a => a.id);
+    setSelectedCells(prev => {
+      const next = new Set(prev);
+      const allSelected = idsElegiveis.every(id => next.has(cellKey(id, schoolIdx)));
+      idsElegiveis.forEach(id => {
+        const key = cellKey(id, schoolIdx);
+        if (allSelected) next.delete(key); else next.add(key);
+      });
+      return next;
+    });
+  };
+
   const aplicarStatusLote = (status: Status) => {
     if (selectedCells.size === 0) return;
     setDiasAluno(prev => {
@@ -1444,7 +1457,7 @@ export default function Faltas() {
                 </>
               ) : (
                 <span style={{ fontSize: 12, opacity: 0.85 }}>
-                  Clique nos dias do aluno (ou no nome dele para selecionar o mês todo) e depois escolha a situação para aplicar de uma vez.
+                  Clique nos dias do aluno (nome dele = mês todo · número do dia no topo = a turma toda naquele dia) e depois escolha a situação para aplicar de uma vez.
                 </span>
               )}
               <button
@@ -1483,22 +1496,26 @@ export default function Faltas() {
                              : cd.recesso ? '#1e3a5f'
                              : naoLetivo ? '#4b5563'
                              : undefined;
-                    const tooltip =
-                      cd.feriado ?? (cd.isEmenda ? '⛔ Emenda marcada' : null) ??
-                      cd.recesso ?? (cd.isSabadoLetivo ? '📚 Sábado Letivo' : null) ??
-                      (cd.isWeekend ? 'Final de semana' : `Dia ${cd.dia}`);
+                    const podeSelecionarColuna = selectMode && podeEditar && cd.isLetivo;
+                    const tooltip = podeSelecionarColuna
+                      ? `Clique para selecionar/desmarcar o dia ${cd.dia} de todos os alunos`
+                      : cd.feriado ?? (cd.isEmenda ? '⛔ Emenda marcada' : null) ??
+                        cd.recesso ?? (cd.isSabadoLetivo ? '📚 Sábado Letivo' : null) ??
+                        (cd.isWeekend ? 'Final de semana' : `Dia ${cd.dia}`);
                     return (
                       <th key={cd.dia} title={tooltip}
                         onClick={
-                          role === 'admin' && !cd.isWeekend && !cd.feriado && !cd.recesso
-                            ? () => toggleEmenda(dataStr) : undefined
+                          podeSelecionarColuna
+                            ? () => toggleColumnSelect(cd.schoolIdx)
+                            : role === 'admin' && !cd.isWeekend && !cd.feriado && !cd.recesso
+                              ? () => toggleEmenda(dataStr) : undefined
                         }
                         style={{
                           width: isMobile ? 38 : 24, textAlign: 'center',
                           fontSize: isMobile ? 9 : 10, padding: '6px 1px',
                           fontWeight: 600, background: bg, lineHeight: 1.2,
                           opacity: naoLetivo ? 0.55 : 1,
-                          cursor: role === 'admin' && !cd.isWeekend && !cd.feriado && !cd.recesso
+                          cursor: podeSelecionarColuna || (role === 'admin' && !cd.isWeekend && !cd.feriado && !cd.recesso)
                             ? 'pointer' : 'default',
                         }}
                       >
