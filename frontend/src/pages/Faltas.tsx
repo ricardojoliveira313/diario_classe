@@ -69,7 +69,13 @@ function normVoz(s: string): string {
     .replace(/\s+/g, ' ').trim();
 }
 
-function parseCmdVoz(text: string, alunos: any[], calDays: CalendarDay[]): VoiceCmd | null {
+function parseCmdVoz(
+  text: string,
+  alunos: any[],
+  calDays: CalendarDay[],
+  mesAtual?: number,
+  anoAtual?: number,
+): VoiceCmd | null {
   const norm = normVoz(text);
 
   let status: Status | null = null;
@@ -87,6 +93,15 @@ function parseCmdVoz(text: string, alunos: any[], calDays: CalendarDay[]): Voice
       if (norm.includes('dia ' + word)) { dia = n; break; }
     }
   }
+
+  // Se não falou o dia e estamos no mês atual → usa hoje
+  if (!dia && mesAtual && anoAtual) {
+    const hoje = new Date();
+    if (hoje.getMonth() + 1 === mesAtual && hoje.getFullYear() === anoAtual) {
+      dia = hoje.getDate();
+    }
+  }
+
   if (!dia || dia < 1 || dia > 31) return null;
 
   const calDay = calDays.find(cd => cd.dia === dia);
@@ -277,7 +292,7 @@ export default function Faltas() {
   };
 
   // Mantém parseCmdRef sempre atualizado com alunos/calDays do render atual
-  parseCmdRef.current = (text: string) => parseCmdVoz(text, alunos, calDays);
+  parseCmdRef.current = (text: string) => parseCmdVoz(text, alunos, calDays, mes, ano);
 
   // Limpa histórico ao trocar turma ou mês
   useEffect(() => { setVoiceHistory([]); setVoiceError(''); }, [turmaId, mes]);
@@ -320,7 +335,18 @@ export default function Faltas() {
           setVoiceError('');
           setVoiceTranscript('');
         } else {
-          setVoiceError(`Não entendi: "${finalText.trim()}"`);
+          const n = normVoz(finalText);
+          const temStatus = STATUS_VOZ.some(([kw]) => n.includes(kw));
+          const temDia = /\bdia\b/.test(n) || NUMEROS_PT.some(([w]) => n.includes('dia ' + w));
+          let err: string;
+          if (!temStatus) {
+            err = 'Diga a situação: presente, falta, atestado ou justificado';
+          } else if (temStatus && !temDia) {
+            err = 'Não identificou o dia. Se for mês diferente do atual, diga o dia: "Ana Clara, dia dez, faltou"';
+          } else {
+            err = 'Não reconheci o nome do aluno. Fale mais devagar ou tente o primeiro nome';
+          }
+          setVoiceError(`${err} — Ouvi: "${finalText.trim()}"`);
         }
       }
     };
@@ -987,12 +1013,17 @@ export default function Faltas() {
               <div style={{ fontWeight: 800, fontSize: 15, color: '#3b82f6', marginBottom: 3 }}>
                 Modo Voz Ativo — Fale e o sistema atualiza automaticamente
               </div>
-              <div style={{ fontSize: 12, color: theme.textMuted, lineHeight: 1.6 }}>
-                <strong>Exemplos:</strong>{' '}
-                <em>"Alice, dia dez, presente"</em> ·{' '}
-                <em>"João, dia quinze, falta"</em> ·{' '}
-                <em>"Maria, dia 20, atestado médico"</em> ·{' '}
-                <em>"Pedro, dia 5, justificado"</em>
+              <div style={{ fontSize: 12, color: theme.textMuted, lineHeight: 1.8 }}>
+                <div><strong>Mês atual (sem precisar dizer o dia):</strong>{' '}
+                  <em>"Ana Clara, faltou"</em> ·{' '}
+                  <em>"João, presente"</em> ·{' '}
+                  <em>"Maria, atestado"</em>
+                </div>
+                <div><strong>Qualquer mês (diga o dia):</strong>{' '}
+                  <em>"Alice, dia dez, presente"</em> ·{' '}
+                  <em>"João, dia 15, falta"</em> ·{' '}
+                  <em>"Maria, dia vinte, atestado médico"</em>
+                </div>
               </div>
             </div>
           </div>
