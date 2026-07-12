@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { api } from '../api';
 import { theme, btn, input, label, MESES, SITUACAO_COR, SITUACAO_LABEL, getFeriado, isRecesso, isSabadoLetivo, sortTurmasPedagogico, isInfantilTurma } from '../styles';
@@ -30,6 +30,82 @@ const decodeDias = (freq: string, n: number): Status[] => {
   return initDias(n);
 };
 const ct = (dias: Status[], tipo: Status) => dias.filter(d => d === tipo).length;
+
+// ── Reconhecimento de voz ────────────────────────────────────────────────────
+type VoiceCmd = { alunoId: string; nome: string; dia: number; schoolIdx: number; status: Status };
+
+// Entradas mais longas primeiro para evitar match parcial (ex: "vinte e um" antes de "vinte")
+const NUMEROS_PT: [string, number][] = [
+  ['trinta e uma', 31], ['trinta e um', 31], ['trinta', 30],
+  ['vinte e nove', 29], ['vinte e oito', 28], ['vinte e sete', 27], ['vinte e seis', 26],
+  ['vinte e cinco', 25], ['vinte e quatro', 24], ['vinte e tres', 23],
+  ['vinte e duas', 22], ['vinte e dois', 22], ['vinte e uma', 21], ['vinte e um', 21],
+  ['vinte', 20], ['dezanove', 19], ['dezenove', 19], ['dezoito', 18],
+  ['dezassete', 17], ['dezessete', 17], ['dezasseis', 16], ['dezesseis', 16],
+  ['quinze', 15], ['catorze', 14], ['quatorze', 14], ['treze', 13], ['doze', 12], ['onze', 11],
+  ['decima', 10], ['decimo', 10], ['dez', 10],
+  ['nona', 9], ['nono', 9], ['nove', 9],
+  ['oitava', 8], ['oitavo', 8], ['oito', 8],
+  ['setima', 7], ['setimo', 7], ['sete', 7],
+  ['sexta', 6], ['sexto', 6], ['seis', 6],
+  ['quinta', 5], ['quinto', 5], ['cinco', 5],
+  ['quarta', 4], ['quarto', 4], ['quatro', 4],
+  ['terceira', 3], ['terceiro', 3], ['tres', 3],
+  ['segunda', 2], ['segundo', 2], ['duas', 2], ['dois', 2],
+  ['primeira', 1], ['primeiro', 1], ['uma', 1], ['um', 1],
+];
+
+const STATUS_VOZ: [string, Status][] = [
+  ['atestado medico', 'A'], ['atestado', 'A'], ['medico', 'A'],
+  ['justificada', 'J'], ['justificado', 'J'], ['justificou', 'J'],
+  ['ausente', 'F'], ['faltou', 'F'], ['falta', 'F'],
+  ['presenca', 'P'], ['presente', 'P'], ['compareceu', 'P'], ['veio', 'P'],
+];
+
+function normVoz(s: string): string {
+  return s.toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9 ]/g, '')
+    .replace(/\s+/g, ' ').trim();
+}
+
+function parseCmdVoz(text: string, alunos: any[], calDays: CalendarDay[]): VoiceCmd | null {
+  const norm = normVoz(text);
+
+  let status: Status | null = null;
+  for (const [kw, s] of STATUS_VOZ) {
+    if (norm.includes(kw)) { status = s; break; }
+  }
+  if (!status) return null;
+
+  let dia: number | null = null;
+  const numMatch = norm.match(/\bdia\s+(\d{1,2})\b/);
+  if (numMatch) {
+    dia = parseInt(numMatch[1]);
+  } else {
+    for (const [word, n] of NUMEROS_PT) {
+      if (norm.includes('dia ' + word)) { dia = n; break; }
+    }
+  }
+  if (!dia || dia < 1 || dia > 31) return null;
+
+  const calDay = calDays.find(cd => cd.dia === dia);
+  if (!calDay?.isLetivo) return null;
+
+  let best: any = null;
+  let bestScore = 0;
+  for (const a of alunos) {
+    const nomeNorm = normVoz(a.nome);
+    const palavras = nomeNorm.split(' ').filter((w: string) => w.length > 2);
+    if (!palavras.length) continue;
+    const hits = palavras.filter((w: string) => norm.includes(w)).length;
+    const score = hits / palavras.length;
+    if (score > bestScore && hits >= 1) { bestScore = score; best = a; }
+  }
+  if (!best) return null;
+
+  return { alunoId: best.id, nome: best.nome, dia, schoolIdx: calDay.schoolIdx, status };
+}
 
 interface CalendarDay {
   dia: number;
@@ -86,6 +162,15 @@ export default function Faltas() {
   const [bfAlunos, setBfAlunos] = useState<any[]>([]);
   const [bfLoading, setBfLoading] = useState(false);
   const [bfFiltroSit, setBfFiltroSit] = useState('');
+
+  const [voiceActive, setVoiceActive] = useState(false);
+  const [voiceTranscript, setVoiceTranscript] = useState('');
+  const [voiceError, setVoiceError] = useState('');
+  const [voiceHistory, setVoiceHistory] = useState<Array<{ id: number; nome: string; dia: number; status: Status }>>([]);
+  const recognitionRef = useRef<any>(null);
+  const voiceActiveRef = useRef(false);
+  const voiceIdRef = useRef(0);
+  const parseCmdRef = useRef<(text: string) => VoiceCmd | null>(() => null);
 
   const isMobile = window.innerWidth < 640;
 
@@ -189,6 +274,77 @@ export default function Faltas() {
     await api.upsertFaltasBatch(registros);
     setSaving(false);
     setSaved(true);
+  };
+
+  // Mantém parseCmdRef sempre atualizado com alunos/calDays do render atual
+  parseCmdRef.current = (text: string) => parseCmdVoz(text, alunos, calDays);
+
+  // Limpa histórico ao trocar turma ou mês
+  useEffect(() => { setVoiceHistory([]); setVoiceError(''); }, [turmaId, mes]);
+
+  // Cleanup ao desmontar
+  useEffect(() => () => { voiceActiveRef.current = false; recognitionRef.current?.stop(); }, []);
+
+  const startVoice = () => {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) {
+      alert('Reconhecimento de voz não é suportado neste navegador.\nUse Google Chrome ou Microsoft Edge.');
+      return;
+    }
+    const rec = new SR();
+    rec.lang = 'pt-BR';
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.onresult = (e: any) => {
+      let interim = '';
+      let finalText = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) finalText += t;
+        else interim += t;
+      }
+      setVoiceTranscript(interim || finalText);
+      if (finalText.trim()) {
+        const cmd = parseCmdRef.current(finalText);
+        if (cmd) {
+          setDiasAluno(prev => {
+            const dias = [...(prev[cmd.alunoId] ?? initDias(numDias))];
+            dias[cmd.schoolIdx] = cmd.status;
+            return { ...prev, [cmd.alunoId]: dias };
+          });
+          setSaved(false);
+          setVoiceHistory(prev => [
+            { id: voiceIdRef.current++, nome: cmd.nome, dia: cmd.dia, status: cmd.status },
+            ...prev.slice(0, 9),
+          ]);
+          setVoiceError('');
+          setVoiceTranscript('');
+        } else {
+          setVoiceError(`Não entendi: "${finalText.trim()}"`);
+        }
+      }
+    };
+    rec.onerror = (e: any) => {
+      if (e.error !== 'aborted' && e.error !== 'no-speech') console.warn('Voz:', e.error);
+    };
+    rec.onend = () => {
+      if (voiceActiveRef.current) { try { rec.start(); } catch {} }
+    };
+    rec.start();
+    recognitionRef.current = rec;
+    voiceActiveRef.current = true;
+    setVoiceActive(true);
+    setVoiceHistory([]);
+    setVoiceError('');
+    setVoiceTranscript('');
+  };
+
+  const stopVoice = () => {
+    voiceActiveRef.current = false;
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    setVoiceActive(false);
+    setVoiceTranscript('');
   };
 
   const totalF = alunos.reduce((s, a) => s + ct(diasAluno[a.id] ?? [], 'F'), 0);
@@ -744,6 +900,18 @@ export default function Faltas() {
           <h1 style={{ fontSize: 26, fontWeight: 800, color: theme.text }}>📋 Lançamento de Faltas</h1>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
             <button onClick={abrirBolsaFamilia} style={btn('success', { small: true })} title="Ver todos os alunos com Bolsa Família de todas as turmas (qualquer situação)">💚 Bolsa Família</button>
+            {podeEditar && alunos.length > 0 && (
+              <button
+                onClick={voiceActive ? stopVoice : startVoice}
+                style={{
+                  ...btn(voiceActive ? 'danger' : 'primary', { small: true }),
+                  position: 'relative',
+                }}
+                title={voiceActive ? 'Parar reconhecimento de voz' : 'Lançar faltas por voz — fale o nome do aluno, o dia e a situação'}
+              >
+                {voiceActive ? '⏹ Parar Voz' : '🎤 Voz'}
+              </button>
+            )}
             {alunos.length > 0 && (
               <>
                 <button onClick={exportarFolhaOCR} style={btn('primary', { small: true, outline: true })} title="Folha simples (A4 retrato) para professor preencher número de faltas — fácil de fotografar">📋 Folha</button>
@@ -801,6 +969,100 @@ export default function Faltas() {
           <span style={{ fontSize: 11, color: theme.textMuted }}>· Clique na célula para alternar</span>
         </div>
       </div>
+
+      {/* ── Painel de Lançamento por Voz ──────────────────────────────────── */}
+      {voiceActive && (
+        <div style={{
+          background: isDark ? 'rgba(59,130,246,0.08)' : '#eff6ff',
+          border: `2px solid #3b82f6`,
+          borderRadius: theme.radiusMd,
+          padding: 16,
+          marginBottom: 16,
+          boxShadow: '0 4px 24px rgba(59,130,246,0.15)',
+        }}>
+          <style>{`@keyframes voicePulse{0%,100%{transform:scale(1);opacity:1;}50%{transform:scale(1.25);opacity:0.6;}}`}</style>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
+            <span style={{ fontSize: 30, display: 'inline-block', animation: 'voicePulse 1.4s ease-in-out infinite', flexShrink: 0 }}>🎤</span>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 15, color: '#3b82f6', marginBottom: 3 }}>
+                Modo Voz Ativo — Fale e o sistema atualiza automaticamente
+              </div>
+              <div style={{ fontSize: 12, color: theme.textMuted, lineHeight: 1.6 }}>
+                <strong>Exemplos:</strong>{' '}
+                <em>"Alice, dia dez, presente"</em> ·{' '}
+                <em>"João, dia quinze, falta"</em> ·{' '}
+                <em>"Maria, dia 20, atestado médico"</em> ·{' '}
+                <em>"Pedro, dia 5, justificado"</em>
+              </div>
+            </div>
+          </div>
+
+          {/* Transcrição ao vivo */}
+          <div style={{
+            background: isDark ? 'rgba(0,0,0,0.3)' : '#fff',
+            border: `1px solid ${voiceError ? '#dc2626' : '#3b82f6'}`,
+            borderRadius: 8, padding: '10px 14px',
+            minHeight: 44, fontSize: 14,
+            color: voiceTranscript ? theme.text : theme.textMuted,
+            fontStyle: voiceTranscript ? 'normal' : 'italic',
+            marginBottom: 6,
+          }}>
+            {voiceTranscript || 'Aguardando fala…'}
+          </div>
+
+          {/* Erro de parsing */}
+          {voiceError && (
+            <div style={{ fontSize: 12, color: '#dc2626', marginBottom: 8, paddingLeft: 4 }}>
+              ⚠️ {voiceError}
+            </div>
+          )}
+
+          {/* Legenda de status aceitos */}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10, fontSize: 11 }}>
+            {(Object.keys(ST_LABEL) as Status[]).map(s => (
+              <span key={s} style={{
+                background: ST_BG[s], color: ST_COR[s],
+                padding: '2px 8px', borderRadius: 4, fontWeight: 700,
+                border: `1px solid ${ST_COR[s]}44`,
+              }}>
+                {s} = {ST_LABEL[s]}
+              </span>
+            ))}
+          </div>
+
+          {/* Histórico de comandos */}
+          {voiceHistory.length > 0 && (
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: theme.textMuted, marginBottom: 5, letterSpacing: 0.5 }}>
+                ÚLTIMOS LANÇAMENTOS:
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 200, overflowY: 'auto' }}>
+                {voiceHistory.map((h, idx) => (
+                  <div key={h.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '5px 10px', borderRadius: 6, fontSize: 13,
+                    background: isDark ? 'rgba(255,255,255,0.05)' : '#f8fafc',
+                    border: `1px solid ${theme.borderLight}`,
+                    opacity: idx === 0 ? 1 : 0.6,
+                  }}>
+                    <span style={{
+                      background: ST_BG[h.status], color: ST_COR[h.status],
+                      fontWeight: 800, padding: '2px 8px', borderRadius: 4, fontSize: 12,
+                      border: `1px solid ${ST_COR[h.status]}44`, flexShrink: 0,
+                    }}>{h.status}</span>
+                    <span style={{ fontWeight: 600, color: theme.text, flex: 1 }}>{h.nome}</span>
+                    <span style={{ color: theme.textMuted, fontSize: 12 }}>Dia {h.dia}</span>
+                    <span style={{ fontSize: 11, color: theme.textMuted }}>— {ST_LABEL[h.status]}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 6 }}>
+                ℹ️ Lembre-se de clicar em <strong>Salvar Faltas</strong> ao terminar.
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Modal Bolsa Família ─────────────────────────────────────────── */}
       {showBF && (
