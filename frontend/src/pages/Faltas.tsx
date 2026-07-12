@@ -205,8 +205,7 @@ export default function Faltas() {
   const [bfLoading, setBfLoading] = useState(false);
   const [bfFiltroSit, setBfFiltroSit] = useState('');
 
-  const [selectMode, setSelectMode] = useState(false);
-  const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set());
+  const [paintStatus, setPaintStatus] = useState<Status | null>(null);
 
   const [voiceActive, setVoiceActive] = useState(false);
   const [voiceTranscript, setVoiceTranscript] = useState('');
@@ -304,65 +303,41 @@ export default function Faltas() {
     setSaved(false);
   };
 
-  // ── Seleção em lote — marca vários dias e aplica uma situação de uma vez ──
-  const cellKey = (alunoId: string, schoolIdx: number) => `${alunoId}:${schoolIdx}`;
-
-  const toggleSelectMode = () => {
-    setSelectMode(prev => {
-      if (prev) setSelectedCells(new Set());
-      return !prev;
-    });
+  // ── Modo Pintura — escolhe a situação na legenda e clica pra marcar direto ──
+  const togglePaintStatus = (status: Status) => {
+    setPaintStatus(prev => (prev === status ? null : status));
   };
 
-  const toggleCellSelect = (alunoId: string, schoolIdx: number) => {
-    setSelectedCells(prev => {
-      const next = new Set(prev);
-      const key = cellKey(alunoId, schoolIdx);
-      if (next.has(key)) next.delete(key); else next.add(key);
-      return next;
+  const pintarDia = (alunoId: string, schoolIdx: number, status: Status) => {
+    setDiasAluno(prev => {
+      const dias = [...(prev[alunoId] ?? initDias(numDias))];
+      dias[schoolIdx] = status;
+      return { ...prev, [alunoId]: dias };
     });
+    setSaved(false);
   };
 
-  const toggleRowSelect = (alunoId: string) => {
+  const pintarLinha = (alunoId: string, status: Status) => {
     const letivoIdxs = calDays.filter(cd => cd.isLetivo).map(cd => cd.schoolIdx);
-    setSelectedCells(prev => {
-      const next = new Set(prev);
-      const allSelected = letivoIdxs.every(idx => next.has(cellKey(alunoId, idx)));
-      letivoIdxs.forEach(idx => {
-        const key = cellKey(alunoId, idx);
-        if (allSelected) next.delete(key); else next.add(key);
-      });
-      return next;
+    setDiasAluno(prev => {
+      const dias = [...(prev[alunoId] ?? initDias(numDias))];
+      letivoIdxs.forEach(idx => { dias[idx] = status; });
+      return { ...prev, [alunoId]: dias };
     });
+    setSaved(false);
   };
 
-  const toggleColumnSelect = (schoolIdx: number) => {
+  const pintarColuna = (schoolIdx: number, status: Status) => {
     const idsElegiveis = alunos.filter(a => !statusTextos[a.id]).map(a => a.id);
-    setSelectedCells(prev => {
-      const next = new Set(prev);
-      const allSelected = idsElegiveis.every(id => next.has(cellKey(id, schoolIdx)));
-      idsElegiveis.forEach(id => {
-        const key = cellKey(id, schoolIdx);
-        if (allSelected) next.delete(key); else next.add(key);
-      });
-      return next;
-    });
-  };
-
-  const aplicarStatusLote = (status: Status) => {
-    if (selectedCells.size === 0) return;
     setDiasAluno(prev => {
       const next = { ...prev };
-      selectedCells.forEach(key => {
-        const [alunoId, idxStr] = key.split(':');
-        const idx = Number(idxStr);
-        const dias = [...(next[alunoId] ?? initDias(numDias))];
-        dias[idx] = status;
-        next[alunoId] = dias;
+      idsElegiveis.forEach(id => {
+        const dias = [...(next[id] ?? initDias(numDias))];
+        dias[schoolIdx] = status;
+        next[id] = dias;
       });
       return next;
     });
-    setSelectedCells(new Set());
     setSaved(false);
   };
 
@@ -390,7 +365,7 @@ export default function Faltas() {
   parseSessionDateRef.current = (text: string) => parseSessionDateVoz(text, calDays);
 
   // Limpa histórico e data ativa ao trocar turma ou mês
-  useEffect(() => { setVoiceHistory([]); setVoiceError(''); setVoiceSessionDia(null); setSelectMode(false); setSelectedCells(new Set()); }, [turmaId, mes]);
+  useEffect(() => { setVoiceHistory([]); setVoiceError(''); setVoiceSessionDia(null); setPaintStatus(null); }, [turmaId, mes]);
 
   // Cleanup ao desmontar
   useEffect(() => () => { voiceActiveRef.current = false; recognitionRef.current?.stop(); }, []);
@@ -1044,15 +1019,6 @@ export default function Faltas() {
                 {voiceActive ? '⏹ Parar Voz' : '🎤 Voz'}
               </button>
             )}
-            {podeEditar && alunos.length > 0 && (
-              <button
-                onClick={toggleSelectMode}
-                style={btn(selectMode ? 'warning' : 'primary', { small: true, outline: !selectMode })}
-                title="Selecionar vários dias (de um ou mais alunos) e aplicar uma situação de uma vez — útil para preencher faltas atrasadas"
-              >
-                {selectMode ? '✕ Sair da Seleção' : '☑️ Seleção em Lote'}
-              </button>
-            )}
             {alunos.length > 0 && (
               <>
                 <button onClick={exportarFolhaOCR} style={btn('primary', { small: true, outline: true })} title="Folha simples (A4 retrato) para professor preencher número de faltas — fácil de fotografar">📋 Folha</button>
@@ -1096,9 +1062,23 @@ export default function Faltas() {
             👩‍🏫 Prof. {turma.professora}
           </div>
         )}
-        {/* Legenda */}
+        {/* Legenda — clique numa situação para "pintar" alunos/dias direto */}
         <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          {(Object.keys(ST_LABEL) as Status[]).map(s => (
+          {podeEditar && alunos.length > 0 ? (Object.keys(ST_LABEL) as Status[]).map(s => {
+            const ativo = paintStatus === s;
+            return (
+              <button key={s} onClick={() => togglePaintStatus(s)}
+                style={{
+                  background: ativo ? ST_COR[s] : ST_BG[s], color: ativo ? '#fff' : ST_COR[s], fontWeight: 700,
+                  padding: '5px 12px', borderRadius: 5, fontSize: 12, cursor: 'pointer',
+                  border: `1.5px solid ${ST_COR[s]}`,
+                  boxShadow: ativo ? `0 0 0 2px ${ST_COR[s]}55` : undefined,
+                }}
+              >
+                {s} = {ST_LABEL[s]}
+              </button>
+            );
+          }) : (Object.keys(ST_LABEL) as Status[]).map(s => (
             <span key={s} style={{
               background: ST_BG[s], color: ST_COR[s], fontWeight: 700,
               padding: '3px 10px', borderRadius: 5, fontSize: 12,
@@ -1107,7 +1087,15 @@ export default function Faltas() {
               {s} = {ST_LABEL[s]}
             </span>
           ))}
-          <span style={{ fontSize: 11, color: theme.textMuted }}>· Clique na célula para alternar</span>
+          {podeEditar && alunos.length > 0 && (
+            paintStatus ? (
+              <span style={{ fontSize: 12, color: ST_COR[paintStatus], fontWeight: 700 }}>
+                🖌️ Marcando "{ST_LABEL[paintStatus]}" — clique nos dias, no nome do aluno (mês todo) ou no número do dia (turma toda). Clique de novo em "{paintStatus}" pra sair.
+              </span>
+            ) : (
+              <span style={{ fontSize: 11, color: theme.textMuted }}>· Clique numa situação acima para marcar em lote, ou clique direto na célula para alternar</span>
+            )
+          )}
         </div>
       </div>
 
@@ -1421,54 +1409,6 @@ export default function Faltas() {
             ⚠️ Alerta: ≥ {limiteAlerta} ausências (&lt;{isInfantil ? 60 : 75}% frequência{isInfantil ? ' — Infantil' : ''})
           </div>
 
-          {/* ── Barra de Seleção em Lote ────────────────────────────────────── */}
-          {selectMode && (
-            <div style={{
-              background: isDark ? 'rgba(30,64,175,0.9)' : '#1e40af',
-              color: '#fff', borderRadius: theme.radiusMd,
-              padding: '10px 14px', marginBottom: 12,
-              display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.25)',
-            }}>
-              <span style={{ fontWeight: 800, fontSize: 13, whiteSpace: 'nowrap' }}>
-                ☑️ {selectedCells.size} dia(s) selecionado(s)
-              </span>
-              {selectedCells.size > 0 ? (
-                <>
-                  <span style={{ fontSize: 12, opacity: 0.85 }}>Aplicar:</span>
-                  {(Object.keys(ST_LABEL) as Status[]).map(s => (
-                    <button
-                      key={s}
-                      onClick={() => aplicarStatusLote(s)}
-                      style={{
-                        background: ST_COR[s], color: '#fff', border: 'none', borderRadius: 6,
-                        padding: '5px 12px', fontWeight: 800, fontSize: 12, cursor: 'pointer',
-                      }}
-                    >
-                      {s} — {ST_LABEL[s]}
-                    </button>
-                  ))}
-                  <button
-                    onClick={() => setSelectedCells(new Set())}
-                    style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.5)', color: '#fff', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer' }}
-                  >
-                    Limpar seleção
-                  </button>
-                </>
-              ) : (
-                <span style={{ fontSize: 12, opacity: 0.85 }}>
-                  Clique nos dias do aluno (nome dele = mês todo · número do dia no topo = a turma toda naquele dia) e depois escolha a situação para aplicar de uma vez.
-                </span>
-              )}
-              <button
-                onClick={toggleSelectMode}
-                style={{ marginLeft: 'auto', background: 'transparent', border: '1px solid rgba(255,255,255,0.5)', color: '#fff', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}
-              >
-                ✕ Sair
-              </button>
-            </div>
-          )}
-
           {/* Grid de frequência */}
           <div style={{
             overflowX: 'auto',
@@ -1496,17 +1436,17 @@ export default function Faltas() {
                              : cd.recesso ? '#1e3a5f'
                              : naoLetivo ? '#4b5563'
                              : undefined;
-                    const podeSelecionarColuna = selectMode && podeEditar && cd.isLetivo;
-                    const tooltip = podeSelecionarColuna
-                      ? `Clique para selecionar/desmarcar o dia ${cd.dia} de todos os alunos`
+                    const podePintarColuna = !!paintStatus && podeEditar && cd.isLetivo;
+                    const tooltip = podePintarColuna
+                      ? `Marcar "${ST_LABEL[paintStatus!]}" para todos os alunos no dia ${cd.dia}`
                       : cd.feriado ?? (cd.isEmenda ? '⛔ Emenda marcada' : null) ??
                         cd.recesso ?? (cd.isSabadoLetivo ? '📚 Sábado Letivo' : null) ??
                         (cd.isWeekend ? 'Final de semana' : `Dia ${cd.dia}`);
                     return (
                       <th key={cd.dia} title={tooltip}
                         onClick={
-                          podeSelecionarColuna
-                            ? () => toggleColumnSelect(cd.schoolIdx)
+                          podePintarColuna
+                            ? () => pintarColuna(cd.schoolIdx, paintStatus!)
                             : role === 'admin' && !cd.isWeekend && !cd.feriado && !cd.recesso
                               ? () => toggleEmenda(dataStr) : undefined
                         }
@@ -1515,7 +1455,7 @@ export default function Faltas() {
                           fontSize: isMobile ? 9 : 10, padding: '6px 1px',
                           fontWeight: 600, background: bg, lineHeight: 1.2,
                           opacity: naoLetivo ? 0.55 : 1,
-                          cursor: podeSelecionarColuna || (role === 'admin' && !cd.isWeekend && !cd.feriado && !cd.recesso)
+                          cursor: podePintarColuna || (role === 'admin' && !cd.isWeekend && !cd.feriado && !cd.recesso)
                             ? 'pointer' : 'default',
                         }}
                       >
@@ -1548,14 +1488,14 @@ export default function Faltas() {
                   return (
                     <tr key={a.id} style={{ background: rowBg }}>
                       <td
-                        onClick={selectMode ? () => toggleRowSelect(a.id) : undefined}
-                        title={selectMode ? 'Clique para selecionar/desmarcar todos os dias deste aluno' : undefined}
+                        onClick={paintStatus && podeEditar && !statusTxt ? () => pintarLinha(a.id, paintStatus) : undefined}
+                        title={paintStatus && podeEditar && !statusTxt ? `Marcar "${ST_LABEL[paintStatus]}" para todos os dias deste aluno` : undefined}
                         style={{
                           position: 'sticky', left: 0, zIndex: 1,
                           background: rowBg,
                           padding: '8px 12px',
                           borderRight: '2px solid var(--border-light)',
-                          cursor: selectMode ? 'pointer' : 'default',
+                          cursor: paintStatus && podeEditar && !statusTxt ? 'pointer' : 'default',
                         }}>
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
                           <span style={{ fontSize: 11, color: theme.textMuted, paddingTop: 2, minWidth: 18 }}>{(a._nrDisplay === 0 ? '—' : a.numero) || '—'}</span>
@@ -1597,12 +1537,11 @@ export default function Faltas() {
                               }} />;
                             }
                             const status = dias[cd.schoolIdx] ?? 'P';
-                            const isSelected = selectMode && selectedCells.has(cellKey(a.id, cd.schoolIdx));
                             return (
                               <td key={cd.dia}
-                                onClick={podeEditar ? () => (selectMode ? toggleCellSelect(a.id, cd.schoolIdx) : toggleDia(a.id, cd.schoolIdx)) : undefined}
-                                title={selectMode
-                                  ? `Dia ${cd.dia}: ${ST_LABEL[status]} — clique para ${isSelected ? 'desmarcar' : 'selecionar'}`
+                                onClick={podeEditar ? () => (paintStatus ? pintarDia(a.id, cd.schoolIdx, paintStatus) : toggleDia(a.id, cd.schoolIdx)) : undefined}
+                                title={paintStatus
+                                  ? `Dia ${cd.dia}: ${ST_LABEL[status]} — clique para marcar "${ST_LABEL[paintStatus]}"`
                                   : `Dia ${cd.dia}: ${ST_LABEL[status]}${cd.isSabadoLetivo ? ' (Sábado Letivo)' : ''}`}
                                 style={{
                                   width: isMobile ? 38 : 24, textAlign: 'center', cursor: podeEditar ? 'pointer' : 'default',
@@ -1612,15 +1551,11 @@ export default function Faltas() {
                                   borderLeft: '1px solid var(--border-light)',
                                   userSelect: 'none', transition: 'opacity 0.1s', touchAction: 'manipulation',
                                   position: 'relative',
-                                  boxShadow: isSelected ? 'inset 0 0 0 2px #3b82f6' : undefined,
                                 }}
                                 onMouseEnter={!isMobile && podeEditar ? (e => (e.currentTarget.style.opacity = '0.75')) : undefined}
                                 onMouseLeave={!isMobile && podeEditar ? (e => (e.currentTarget.style.opacity = '1')) : undefined}
                               >
                                 {status}
-                                {isSelected && (
-                                  <span style={{ position: 'absolute', top: 0, right: 1, fontSize: 8, color: '#3b82f6', lineHeight: 1 }}>●</span>
-                                )}
                               </td>
                             );
                           })}
