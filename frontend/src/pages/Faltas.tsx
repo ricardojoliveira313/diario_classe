@@ -1090,7 +1090,7 @@ export default function Faltas() {
           {podeEditar && alunos.length > 0 && (
             paintStatus ? (
               <span style={{ fontSize: 12, color: ST_COR[paintStatus], fontWeight: 700 }}>
-                🖌️ Marcando "{ST_LABEL[paintStatus]}" — clique nos dias, no nome do aluno (mês todo) ou no número do dia (turma toda). Clique de novo em "{paintStatus}" pra sair.
+                🖌️ Marcando "{ST_LABEL[paintStatus]}" — clique nos dias que quiser marcar (um por um). O nome do aluno ou o número do dia marcam em massa (pedem confirmação). Clique de novo em "{paintStatus}" pra sair.
               </span>
             ) : (
               <span style={{ fontSize: 11, color: theme.textMuted }}>· Clique numa situação acima para marcar em lote, ou clique direto na célula para alternar</span>
@@ -1438,7 +1438,7 @@ export default function Faltas() {
                              : undefined;
                     const podePintarColuna = !!paintStatus && podeEditar && cd.isLetivo;
                     const tooltip = podePintarColuna
-                      ? `Marcar "${ST_LABEL[paintStatus!]}" para todos os alunos no dia ${cd.dia}`
+                      ? `Marcar "${ST_LABEL[paintStatus!]}" para todos os alunos no dia ${cd.dia} (pede confirmação)`
                       : cd.feriado ?? (cd.isEmenda ? '⛔ Emenda marcada' : null) ??
                         cd.recesso ?? (cd.isSabadoLetivo ? '📚 Sábado Letivo' : null) ??
                         (cd.isWeekend ? 'Final de semana' : `Dia ${cd.dia}`);
@@ -1446,7 +1446,11 @@ export default function Faltas() {
                       <th key={cd.dia} title={tooltip}
                         onClick={
                           podePintarColuna
-                            ? () => pintarColuna(cd.schoolIdx, paintStatus!)
+                            ? () => {
+                                if (window.confirm(`Marcar "${ST_LABEL[paintStatus!]}" para TODOS os alunos no dia ${cd.dia}?\n\nPara marcar só alguns alunos, clique direto nas células deles em vez do número do dia.`)) {
+                                  pintarColuna(cd.schoolIdx, paintStatus!);
+                                }
+                              }
                             : role === 'admin' && !cd.isWeekend && !cd.feriado && !cd.recesso
                               ? () => toggleEmenda(dataStr) : undefined
                         }
@@ -1488,8 +1492,12 @@ export default function Faltas() {
                   return (
                     <tr key={a.id} style={{ background: rowBg }}>
                       <td
-                        onClick={paintStatus && podeEditar && !statusTxt ? () => pintarLinha(a.id, paintStatus) : undefined}
-                        title={paintStatus && podeEditar && !statusTxt ? `Marcar "${ST_LABEL[paintStatus]}" para todos os dias deste aluno` : undefined}
+                        onClick={paintStatus && podeEditar && !statusTxt ? () => {
+                          if (window.confirm(`Marcar "${ST_LABEL[paintStatus]}" para TODOS os ${numDias} dias letivos de ${a.nome}?\n\nPara marcar só alguns dias, clique direto nas células dos dias em vez do nome.`)) {
+                            pintarLinha(a.id, paintStatus);
+                          }
+                        } : undefined}
+                        title={paintStatus && podeEditar && !statusTxt ? `Marcar "${ST_LABEL[paintStatus]}" para todos os dias deste aluno (pede confirmação)` : undefined}
                         style={{
                           position: 'sticky', left: 0, zIndex: 1,
                           background: rowBg,
