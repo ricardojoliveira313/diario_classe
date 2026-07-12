@@ -136,7 +136,11 @@ function parseCmdVoz(
     const nomeNorm = normVoz(a.nome);
     const palavras = nomeNorm.split(' ').filter((w: string) => w.length > 2);
     if (!palavras.length) continue;
-    const hits = palavras.filter((w: string) => norm.includes(w)).length;
+    const hits = palavras.filter((w: string) => {
+      if (new RegExp(`\\b${w}\\b`).test(norm)) return true;
+      const wd = w.replace(/(.)\1+/g, '$1');
+      return wd !== w && new RegExp(`\\b${wd}\\b`).test(norm);
+    }).length;
     const score = hits / palavras.length;
     if (score > bestScore && hits >= 1) { bestScore = score; best = a; }
   }
