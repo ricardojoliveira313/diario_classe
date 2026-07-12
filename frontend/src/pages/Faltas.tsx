@@ -113,11 +113,15 @@ function parseCmdVoz(
   // Fallback 1: data ativa da sessão (definida por "dia X" ou "chamada dia X")
   if (!dia && sessionDia) dia = sessionDia;
 
-  // Fallback 2: hoje (quando mês selecionado é o atual)
+  // Fallback 2: último dia letivo até hoje (quando mês atual selecionado)
+  // Se hoje for fim de semana ou feriado, recua até o último dia letivo
   if (!dia && mesAtual && anoAtual) {
     const hoje = new Date();
     if (hoje.getMonth() + 1 === mesAtual && hoje.getFullYear() === anoAtual) {
-      dia = hoje.getDate();
+      for (let d = hoje.getDate(); d >= 1; d--) {
+        const cd = calDays.find(c => c.dia === d);
+        if (cd?.isLetivo) { dia = d; break; }
+      }
     }
   }
 
