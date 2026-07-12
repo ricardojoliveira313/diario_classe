@@ -69,12 +69,28 @@ function normVoz(s: string): string {
     .replace(/\s+/g, ' ').trim();
 }
 
+// Detecta comando de "setar data ativa" — ex: "dia dez", "chamada dia dez do sete"
+function parseSessionDateVoz(text: string, calDays: CalendarDay[]): number | null {
+  const norm = normVoz(text);
+  // Se tem palavra de status, é comando de aluno, não de data
+  if (STATUS_VOZ.some(([kw]) => norm.includes(kw))) return null;
+  let dia: number | null = null;
+  const numMatch = norm.match(/\bdia\s+(\d{1,2})\b/);
+  if (numMatch) dia = parseInt(numMatch[1]);
+  else { for (const [word, n] of NUMEROS_PT) { if (norm.includes('dia ' + word)) { dia = n; break; } } }
+  if (!dia || dia < 1 || dia > 31) return null;
+  const calDay = calDays.find(cd => cd.dia === dia);
+  if (!calDay?.isLetivo) return null;
+  return dia;
+}
+
 function parseCmdVoz(
   text: string,
   alunos: any[],
   calDays: CalendarDay[],
   mesAtual?: number,
   anoAtual?: number,
+  sessionDia?: number | null,
 ): VoiceCmd | null {
   const norm = normVoz(text);
 
@@ -94,7 +110,10 @@ function parseCmdVoz(
     }
   }
 
-  // Se não falou o dia e estamos no mês atual → usa hoje
+  // Fallback 1: data ativa da sessão (definida por "dia X" ou "chamada dia X")
+  if (!dia && sessionDia) dia = sessionDia;
+
+  // Fallback 2: hoje (quando mês selecionado é o atual)
   if (!dia && mesAtual && anoAtual) {
     const hoje = new Date();
     if (hoje.getMonth() + 1 === mesAtual && hoje.getFullYear() === anoAtual) {
@@ -181,11 +200,13 @@ export default function Faltas() {
   const [voiceActive, setVoiceActive] = useState(false);
   const [voiceTranscript, setVoiceTranscript] = useState('');
   const [voiceError, setVoiceError] = useState('');
-  const [voiceHistory, setVoiceHistory] = useState<Array<{ id: number; nome: string; dia: number; status: Status }>>([]);
+  const [voiceSessionDia, setVoiceSessionDia] = useState<number | null>(null);
+  const [voiceHistory, setVoiceHistory] = useState<Array<{ id: number; kind: 'cmd' | 'date'; nome?: string; dia: number; status?: Status }>>([]);
   const recognitionRef = useRef<any>(null);
   const voiceActiveRef = useRef(false);
   const voiceIdRef = useRef(0);
   const parseCmdRef = useRef<(text: string) => VoiceCmd | null>(() => null);
+  const parseSessionDateRef = useRef<(text: string) => number | null>(() => null);
 
   const isMobile = window.innerWidth < 640;
 
@@ -292,10 +313,11 @@ export default function Faltas() {
   };
 
   // Mantém parseCmdRef sempre atualizado com alunos/calDays do render atual
-  parseCmdRef.current = (text: string) => parseCmdVoz(text, alunos, calDays, mes, ano);
+  parseCmdRef.current = (text: string) => parseCmdVoz(text, alunos, calDays, mes, ano, voiceSessionDia);
+  parseSessionDateRef.current = (text: string) => parseSessionDateVoz(text, calDays);
 
-  // Limpa histórico ao trocar turma ou mês
-  useEffect(() => { setVoiceHistory([]); setVoiceError(''); }, [turmaId, mes]);
+  // Limpa histórico e data ativa ao trocar turma ou mês
+  useEffect(() => { setVoiceHistory([]); setVoiceError(''); setVoiceSessionDia(null); }, [turmaId, mes]);
 
   // Cleanup ao desmontar
   useEffect(() => () => { voiceActiveRef.current = false; recognitionRef.current?.stop(); }, []);
@@ -320,6 +342,19 @@ export default function Faltas() {
       }
       setVoiceTranscript(interim || finalText);
       if (finalText.trim()) {
+        // 1º: verifica se é um comando de data ("chamada dia dez", "dia dez do sete")
+        const newSessionDia = parseSessionDateRef.current(finalText);
+        if (newSessionDia !== null) {
+          setVoiceSessionDia(newSessionDia);
+          setVoiceHistory(prev => [
+            { id: voiceIdRef.current++, kind: 'date', dia: newSessionDia },
+            ...prev.slice(0, 9),
+          ]);
+          setVoiceError('');
+          setVoiceTranscript('');
+          return;
+        }
+        // 2º: tenta interpretar como comando de aluno
         const cmd = parseCmdRef.current(finalText);
         if (cmd) {
           setDiasAluno(prev => {
@@ -329,7 +364,7 @@ export default function Faltas() {
           });
           setSaved(false);
           setVoiceHistory(prev => [
-            { id: voiceIdRef.current++, nome: cmd.nome, dia: cmd.dia, status: cmd.status },
+            { id: voiceIdRef.current++, kind: 'cmd', nome: cmd.nome, dia: cmd.dia, status: cmd.status },
             ...prev.slice(0, 9),
           ]);
           setVoiceError('');
@@ -337,12 +372,9 @@ export default function Faltas() {
         } else {
           const n = normVoz(finalText);
           const temStatus = STATUS_VOZ.some(([kw]) => n.includes(kw));
-          const temDia = /\bdia\b/.test(n) || NUMEROS_PT.some(([w]) => n.includes('dia ' + w));
           let err: string;
           if (!temStatus) {
             err = 'Diga a situação: presente, falta, atestado ou justificado';
-          } else if (temStatus && !temDia) {
-            err = 'Não identificou o dia. Se for mês diferente do atual, diga o dia: "Ana Clara, dia dez, faltou"';
           } else {
             err = 'Não reconheci o nome do aluno. Fale mais devagar ou tente o primeiro nome';
           }
@@ -363,6 +395,7 @@ export default function Faltas() {
     setVoiceHistory([]);
     setVoiceError('');
     setVoiceTranscript('');
+    setVoiceSessionDia(null);
   };
 
   const stopVoice = () => {
@@ -1014,15 +1047,20 @@ export default function Faltas() {
                 Modo Voz Ativo — Fale e o sistema atualiza automaticamente
               </div>
               <div style={{ fontSize: 12, color: theme.textMuted, lineHeight: 1.8 }}>
-                <div><strong>Mês atual (sem precisar dizer o dia):</strong>{' '}
-                  <em>"Ana Clara, faltou"</em> ·{' '}
+                <div>
+                  <strong>1. Defina a data:</strong>{' '}
+                  <em>"chamada dia dez"</em> ·{' '}
+                  <em>"dia quinze do sete"</em> ·{' '}
+                  <em>"dia 20"</em>
+                </div>
+                <div>
+                  <strong>2. Depois fale os alunos:</strong>{' '}
+                  <em>"Alana, faltou"</em> ·{' '}
                   <em>"João, presente"</em> ·{' '}
                   <em>"Maria, atestado"</em>
                 </div>
-                <div><strong>Qualquer mês (diga o dia):</strong>{' '}
-                  <em>"Alice, dia dez, presente"</em> ·{' '}
-                  <em>"João, dia 15, falta"</em> ·{' '}
-                  <em>"Maria, dia vinte, atestado médico"</em>
+                <div style={{ color: theme.textMuted, fontSize: 11 }}>
+                  Sem definir data: usa hoje (mês atual) ou diga o dia junto — <em>"Alana, dia dez, faltou"</em>
                 </div>
               </div>
             </div>
@@ -1045,6 +1083,33 @@ export default function Faltas() {
           {voiceError && (
             <div style={{ fontSize: 12, color: '#dc2626', marginBottom: 8, paddingLeft: 4 }}>
               ⚠️ {voiceError}
+            </div>
+          )}
+
+          {/* Badge de data ativa */}
+          {voiceSessionDia ? (
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              background: isDark ? 'rgba(74,222,128,0.12)' : '#f0fdf4',
+              border: '2px solid #16a34a', borderRadius: 8,
+              padding: '7px 14px', marginBottom: 10, fontWeight: 700,
+            }}>
+              <span style={{ fontSize: 18 }}>📅</span>
+              <span style={{ color: '#16a34a', fontSize: 14 }}>
+                Data ativa: <strong>Dia {voiceSessionDia}</strong>
+              </span>
+              <span style={{ fontSize: 12, color: theme.textMuted, fontWeight: 400 }}>
+                — fale o nome e a situação
+              </span>
+            </div>
+          ) : (
+            <div style={{
+              fontSize: 12, color: theme.textMuted,
+              padding: '5px 10px', marginBottom: 10,
+              background: isDark ? 'rgba(255,255,255,0.04)' : '#f8fafc',
+              borderRadius: 6, border: `1px dashed ${theme.borderLight}`,
+            }}>
+              💡 Diga <strong>"chamada dia dez"</strong> para travar a data e depois só falar os nomes
             </div>
           )}
 
@@ -1072,18 +1137,29 @@ export default function Faltas() {
                   <div key={h.id} style={{
                     display: 'flex', alignItems: 'center', gap: 8,
                     padding: '5px 10px', borderRadius: 6, fontSize: 13,
-                    background: isDark ? 'rgba(255,255,255,0.05)' : '#f8fafc',
-                    border: `1px solid ${theme.borderLight}`,
+                    background: h.kind === 'date'
+                      ? (isDark ? 'rgba(74,222,128,0.08)' : '#f0fdf4')
+                      : (isDark ? 'rgba(255,255,255,0.05)' : '#f8fafc'),
+                    border: `1px solid ${h.kind === 'date' ? '#16a34a55' : theme.borderLight}`,
                     opacity: idx === 0 ? 1 : 0.6,
                   }}>
-                    <span style={{
-                      background: ST_BG[h.status], color: ST_COR[h.status],
-                      fontWeight: 800, padding: '2px 8px', borderRadius: 4, fontSize: 12,
-                      border: `1px solid ${ST_COR[h.status]}44`, flexShrink: 0,
-                    }}>{h.status}</span>
-                    <span style={{ fontWeight: 600, color: theme.text, flex: 1 }}>{h.nome}</span>
-                    <span style={{ color: theme.textMuted, fontSize: 12 }}>Dia {h.dia}</span>
-                    <span style={{ fontSize: 11, color: theme.textMuted }}>— {ST_LABEL[h.status]}</span>
+                    {h.kind === 'date' ? (
+                      <>
+                        <span style={{ fontSize: 16 }}>📅</span>
+                        <span style={{ fontWeight: 700, color: '#16a34a' }}>Data definida: Dia {h.dia}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span style={{
+                          background: ST_BG[h.status!], color: ST_COR[h.status!],
+                          fontWeight: 800, padding: '2px 8px', borderRadius: 4, fontSize: 12,
+                          border: `1px solid ${ST_COR[h.status!]}44`, flexShrink: 0,
+                        }}>{h.status}</span>
+                        <span style={{ fontWeight: 600, color: theme.text, flex: 1 }}>{h.nome}</span>
+                        <span style={{ color: theme.textMuted, fontSize: 12 }}>Dia {h.dia}</span>
+                        <span style={{ fontSize: 11, color: theme.textMuted }}>— {ST_LABEL[h.status!]}</span>
+                      </>
+                    )}
                   </div>
                 ))}
               </div>
