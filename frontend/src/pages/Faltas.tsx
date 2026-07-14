@@ -206,6 +206,7 @@ export default function Faltas() {
   const [bfFiltroSit, setBfFiltroSit] = useState('');
 
   const [paintStatus, setPaintStatus] = useState<Status | null>(null);
+  const [modo, setModo] = useState<'grade' | 'rapido'>('rapido');
 
   const [voiceActive, setVoiceActive] = useState(false);
   const [voiceTranscript, setVoiceTranscript] = useState('');
@@ -339,6 +340,36 @@ export default function Faltas() {
       return next;
     });
     setSaved(false);
+  };
+
+  // ── Modo Rápido — digita só os totais (F/J/A) por aluno, sem clicar dia a dia ──
+  const diasFromCounts = (f: number, j: number, a: number, n: number): Status[] => {
+    const arr: Status[] = [];
+    for (let i = 0; i < n; i++) {
+      if (i < f) arr.push('F');
+      else if (i < f + j) arr.push('J');
+      else if (i < f + j + a) arr.push('A');
+      else arr.push('P');
+    }
+    return arr;
+  };
+
+  const setContagem = (alunoId: string, tipo: 'F' | 'J' | 'A', valor: number) => {
+    setDiasAluno(prev => {
+      const dias = prev[alunoId] ?? initDias(numDias);
+      const atual = { F: ct(dias, 'F'), J: ct(dias, 'J'), A: ct(dias, 'A') };
+      const outrosDois = (['F', 'J', 'A'] as const).filter(t => t !== tipo).reduce((s, t) => s + atual[t], 0);
+      atual[tipo] = Math.max(0, Math.min(valor || 0, numDias - outrosDois));
+      return { ...prev, [alunoId]: diasFromCounts(atual.F, atual.J, atual.A, numDias) };
+    });
+    setSaved(false);
+  };
+
+  const focusProximoCampo = (el: HTMLInputElement) => {
+    const campos = Array.from(document.querySelectorAll<HTMLInputElement>('.quick-input'));
+    const idx = campos.indexOf(el);
+    const proximo = campos[idx + 1];
+    if (proximo) { proximo.focus(); proximo.select(); }
   };
 
   const salvar = async () => {
@@ -1062,9 +1093,42 @@ export default function Faltas() {
             👩‍🏫 Prof. {turma.professora}
           </div>
         )}
+
+        {/* Alternador de modo de lançamento */}
+        {podeEditar && alunos.length > 0 && (
+          <div style={{ marginTop: 12, display: 'flex', gap: 4, background: 'var(--ghost-bg)', borderRadius: 8, padding: 4, maxWidth: 420 }}>
+            <button
+              onClick={() => setModo('rapido')}
+              style={{
+                flex: 1, padding: '9px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                fontWeight: 700, fontSize: 13,
+                background: modo === 'rapido' ? theme.card : 'transparent',
+                color: modo === 'rapido' ? theme.primary : theme.textSecondary,
+                boxShadow: modo === 'rapido' ? theme.shadow : 'none',
+                transition: 'all 0.15s',
+              }}
+              title="Digite só os totais de faltas/justificadas/atestados de cada aluno — sem clicar dia a dia. Ideal para lançar meses atrasados rapidamente.">
+              ⚡ Lançamento Rápido (totais)
+            </button>
+            <button
+              onClick={() => setModo('grade')}
+              style={{
+                flex: 1, padding: '9px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                fontWeight: 700, fontSize: 13,
+                background: modo === 'grade' ? theme.card : 'transparent',
+                color: modo === 'grade' ? theme.primary : theme.textSecondary,
+                boxShadow: modo === 'grade' ? theme.shadow : 'none',
+                transition: 'all 0.15s',
+              }}
+              title="Grade dia a dia — marque a situação exata de cada dia do mês.">
+              📅 Grade Dia a Dia
+            </button>
+          </div>
+        )}
+
         {/* Legenda — clique numa situação para "pintar" alunos/dias direto */}
         <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          {podeEditar && alunos.length > 0 ? (Object.keys(ST_LABEL) as Status[]).map(s => {
+          {podeEditar && alunos.length > 0 && modo === 'grade' ? (Object.keys(ST_LABEL) as Status[]).map(s => {
             const ativo = paintStatus === s;
             return (
               <button key={s} onClick={() => togglePaintStatus(s)}
@@ -1087,7 +1151,7 @@ export default function Faltas() {
               {s} = {ST_LABEL[s]}
             </span>
           ))}
-          {podeEditar && alunos.length > 0 && (
+          {podeEditar && alunos.length > 0 && modo === 'grade' && (
             paintStatus ? (
               <span style={{ fontSize: 12, color: ST_COR[paintStatus], fontWeight: 700 }}>
                 🖌️ Marcando "{ST_LABEL[paintStatus]}" — clique nos dias que quiser marcar (um por um). O nome do aluno ou o número do dia marcam em massa (pedem confirmação). Clique de novo em "{paintStatus}" pra sair.
@@ -1095,6 +1159,9 @@ export default function Faltas() {
             ) : (
               <span style={{ fontSize: 11, color: theme.textMuted }}>· Clique numa situação acima para marcar em lote, ou clique direto na célula para alternar</span>
             )
+          )}
+          {podeEditar && alunos.length > 0 && modo === 'rapido' && (
+            <span style={{ fontSize: 11, color: theme.textMuted }}>· Digite o total de F/J/A de cada aluno no mês — a Presença é calculada automaticamente. Use Tab ou Enter para pular de campo em campo.</span>
           )}
         </div>
       </div>
@@ -1410,6 +1477,7 @@ export default function Faltas() {
           </div>
 
           {/* Grid de frequência */}
+          {modo === 'grade' && (
           <div style={{
             overflowX: 'auto',
             borderRadius: theme.radiusMd,
@@ -1604,7 +1672,9 @@ export default function Faltas() {
               </tbody>
             </table>
           </div>
+          )}
 
+          {modo === 'grade' && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 12, marginTop: 10, marginBottom: 12, alignItems: 'center' }}>
             <span style={{ color: ST_COR.P, fontWeight: 700 }}>🟢 P=Presença</span>
             <span style={{ color: ST_COR.F, fontWeight: 700 }}>🔴 F=Falta</span>
@@ -1619,6 +1689,96 @@ export default function Faltas() {
               </span>
             )}
           </div>
+          )}
+
+          {/* Modo Rápido — só totais, sem grade dia a dia */}
+          {modo === 'rapido' && (
+          <div style={{
+            overflowX: 'auto',
+            borderRadius: theme.radiusMd,
+            boxShadow: theme.shadow,
+            marginBottom: 14,
+            border: `1px solid ${theme.borderLight}`,
+          }}>
+            <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+              <thead>
+                <tr style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.primaryHover})`, color: 'white' }}>
+                  <th style={{ padding: '10px 12px', textAlign: 'left', fontSize: 12, fontWeight: 600, minWidth: 210 }}># Aluno</th>
+                  <th style={{ width: 70, textAlign: 'center', fontSize: 12, padding: '8px 4px', color: '#fca5a5' }}>F<br /><span style={{ fontSize: 9, fontWeight: 400 }}>Faltas</span></th>
+                  <th style={{ width: 70, textAlign: 'center', fontSize: 12, padding: '8px 4px', color: '#fdba74' }}>J<br /><span style={{ fontSize: 9, fontWeight: 400 }}>Justif.</span></th>
+                  <th style={{ width: 70, textAlign: 'center', fontSize: 12, padding: '8px 4px', color: '#c4b5fd' }}>A<br /><span style={{ fontSize: 9, fontWeight: 400 }}>Atestado</span></th>
+                  <th style={{ width: 60, textAlign: 'center', fontSize: 11, padding: '8px 4px', color: '#bbf7d0' }}>P<br /><span style={{ fontSize: 9, fontWeight: 400 }}>calc.</span></th>
+                  <th style={{ width: 60, textAlign: 'center', fontSize: 11, padding: '8px 4px' }}>Freq.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {alunos.map((a, i) => {
+                  const statusTxt = statusTextos[a.id];
+                  const dias = diasAluno[a.id] ?? initDias(numDias);
+                  const nF = ct(dias, 'F'), nJ = ct(dias, 'J'), nA = ct(dias, 'A'), nP = ct(dias, 'P');
+                  const ausencias = nF + nJ + nA;
+                  const emAlerta = !statusTxt && ausencias >= limiteAlerta;
+                  const freq = numDias > 0 ? ((numDias - ausencias) / numDias * 100).toFixed(0) : '100';
+                  const rowBg = emAlerta ? 'var(--row-alerta)' : i % 2 === 0 ? 'var(--row-even)' : 'var(--row-odd)';
+                  const campoNum = (tipo: 'F' | 'J' | 'A', valor: number, cor: string) => (
+                    <td style={{ textAlign: 'center', padding: '4px 6px' }}>
+                      <input
+                        className="quick-input"
+                        type="number" min={0} max={numDias}
+                        value={valor}
+                        disabled={!podeEditar}
+                        onFocus={e => e.target.select()}
+                        onChange={e => setContagem(a.id, tipo, parseInt(e.target.value) || 0)}
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); focusProximoCampo(e.currentTarget); } }}
+                        style={{
+                          width: 52, padding: '6px 4px', textAlign: 'center', borderRadius: 6,
+                          border: `1.5px solid ${valor > 0 ? cor : theme.border}`,
+                          fontWeight: 700, fontSize: 14, color: valor > 0 ? cor : theme.text,
+                          background: valor > 0 ? `${cor}18` : theme.card,
+                        }}
+                      />
+                    </td>
+                  );
+                  return (
+                    <tr key={a.id} style={{ background: rowBg }}>
+                      <td style={{ padding: '8px 12px', borderRight: `2px solid ${theme.borderLight}` }}>
+                        <span style={{ fontSize: 11, color: theme.textMuted, marginRight: 6 }}>{(a._nrDisplay === 0 ? '—' : a.numero) || '—'}</span>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: theme.text }}>
+                          {emAlerta && <span title="Frequência abaixo do limite">⚠️ </span>}
+                          {a.nome}
+                        </span>
+                        {a.situacao && a.situacao !== 'ATIVO' && (
+                          <span style={{ marginLeft: 6, fontSize: 10, color: SITUACAO_COR[a.situacao] ?? theme.textSecondary, fontWeight: 700 }}>
+                            {SITUACAO_LABEL[a.situacao] ?? a.situacao}
+                          </span>
+                        )}
+                      </td>
+                      {statusTxt ? (
+                        <td colSpan={5} style={{ textAlign: 'center', color: '#7c3aed', fontStyle: 'italic', fontSize: 12, padding: 8 }}>{statusTxt}</td>
+                      ) : (
+                        <>
+                          {campoNum('F', nF, ST_COR.F)}
+                          {campoNum('J', nJ, ST_COR.J)}
+                          {campoNum('A', nA, ST_COR.A)}
+                          <td style={{ textAlign: 'center', fontWeight: 700, fontSize: 13, color: ST_COR.P }}>{nP}</td>
+                          <td style={{ textAlign: 'center', fontWeight: 700, fontSize: 13, color: Number(freq) >= 85 ? ST_COR.P : Number(freq) >= 75 ? '#ea580c' : ST_COR.F }}>{freq}%</td>
+                        </>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          )}
+
+          {modo === 'rapido' && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 12, marginTop: 10, marginBottom: 12, alignItems: 'center' }}>
+            <span style={{ fontSize: 11, color: theme.textMuted }}>
+              ⌨️ Dica: clique no campo F do primeiro aluno e use <strong>Tab</strong> ou <strong>Enter</strong> para pular F → J → A → próximo aluno, sem tirar a mão do teclado.
+            </span>
+          </div>
+          )}
 
           {podeEditar ? (
             <button
