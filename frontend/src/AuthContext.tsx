@@ -63,7 +63,7 @@ interface AuthCtx {
   podeEditarCpf: boolean;
   podeEditarCorRaca: boolean;
   podeEditarTodasFaltas: boolean;
-  login: (usuario: string, senha: string) => Promise<'admin' | 'viewer' | 'errado'>;
+  login: (usuario: string, senha: string) => Promise<'admin' | 'viewer' | 'errado' | 'erro_conexao'>;
   logout: () => void;
 }
 
@@ -121,7 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return null;
   });
 
-  const login = async (usuario: string, senha: string): Promise<'admin' | 'viewer' | 'errado'> => {
+  const login = async (usuario: string, senha: string): Promise<'admin' | 'viewer' | 'errado' | 'erro_conexao'> => {
     // 1º: VITE_USERS (rápido, sem DB) — usuários de env não têm permissões customizadas
     const envUser = USERS.find(
       u => u.usuario === usuario.trim().toLowerCase() && u.senha === senha
@@ -135,10 +135,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // 2º: tabela Usuario no Supabase — senha nunca trafega em claro pela API;
     // a comparação acontece dentro do banco via função verificar_login (RPC)
     try {
-      const { data } = await supabase.rpc('verificar_login', {
+      const { data, error } = await supabase.rpc('verificar_login', {
         p_nome: usuario.trim(),
         p_senha: senha,
       });
+      // Falha de conexão/indisponibilidade do Supabase — não é "senha errada",
+      // é o servidor não ter respondido. Diferencia pra não confundir o usuário.
+      if (error) return 'erro_conexao';
       const row = Array.isArray(data) ? data[0] : null;
       if (row) {
         const role: Role = row.perfil === 'viewer' ? 'viewer' : 'admin';
@@ -151,7 +154,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         sessionStorage.setItem(SESSION_KEY, JSON.stringify(s));
         return role;
       }
-    } catch {}
+    } catch {
+      return 'erro_conexao';
+    }
     return 'errado';
   };
 

@@ -16,7 +16,9 @@ export default function Login() {
     setLoading(true);
     const resultado = await login(usuario, senha);
     setLoading(false);
-    if (resultado === 'errado') {
+    if (resultado === 'erro_conexao') {
+      setErro('Não foi possível conectar ao servidor. Verifique sua internet e tente novamente.');
+    } else if (resultado === 'errado') {
       setErro('Usuário ou senha incorretos. Tente novamente.');
       setSenha('');
     }

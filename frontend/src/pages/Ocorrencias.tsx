@@ -6,7 +6,7 @@ import { useAuth } from '../AuthContext';
 const selectStyle = { ...input, cursor: 'pointer' as const, appearance: 'menulist' as const, WebkitAppearance: 'menulist' as const };
 
 const TIPOS = [
-  { value: 'falta_abonada',       label: 'Falta Abonada',                        color: '#ef4444' },
+  { value: 'falta_abonada',       label: 'Falta Abonada',                        color: '#0d9488' },
   { value: 'atestado_medico',     label: 'Atestado Médico (até 14 dias)',        color: '#f59e0b' },
   { value: 'licenca_medica',      label: 'Licença Médica (15 dias ou mais)',     color: '#8b5cf6' },
   { value: 'ltpf',                label: 'LTPF',                                 color: '#a855f7' },
