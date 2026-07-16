@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
-import { theme, MESES_ABR, MESES, getDiasLetivos, input, row, sortTurmasPedagogico, isInfantilTurma } from '../styles';
+import { theme, MESES_ABR, MESES, getDiasLetivos, input, row, sortTurmasPedagogico, isInfantilTurma, dedupeAlunosPorRA } from '../styles';
 import { Loading, EmptyState, StatCard } from '../components';
 import { useAno } from '../AnoContext';
 
@@ -169,8 +169,10 @@ export default function Dashboard() {
   // Detecta turma AEE pelo nome (robusto) — não depende do campo tipo estar preenchido
   const isAEETurma = (t: any) => t?.tipo === 'AEE' || /^AEE\b/i.test(t?.nome ?? '');
 
-  const total  = alunos.length;
-  const ativos = alunos.filter(isAtivo).length;
+  // Alunos de AEE têm 2 registros (turma regular + sala de recursos) — deduplica
+  // por RA para "Total"/"Ativos" representarem crianças distintas, não matrículas.
+  const total  = dedupeAlunosPorRA(alunos).length;
+  const ativos = dedupeAlunosPorRA(alunos.filter(isAtivo)).length;
   const baixas = alunos.filter(a => ['BXTR', 'TRAN', 'N COM'].includes(a.situacao)).length;
   const rema   = alunos.filter(a => a.situacao === 'REMA').length;
   const bolsa  = alunos.filter(a => a.bolsa_familia && isAtivo(a)).length;
@@ -212,9 +214,13 @@ export default function Dashboard() {
 
   const statsPorTurma = turmas.map(t => {
     const alunosTurma = alunos.filter(a => a.turmaId === t.id);
-    const faltasTurma = faltas.filter(f => f.turmaId === t.id);
+    const alunosAtivosTurma = alunosTurma.filter(isAtivo);
+    const idsAtivosTurma = new Set(alunosAtivosTurma.map(a => a.id));
+    // Só conta faltas de alunos ativos — REMA/TRAN/BXTR ficam fora do numerador,
+    // igual já ficam fora do denominador (dlTotal usa ativosTurma).
+    const faltasTurma = faltas.filter(f => f.turmaId === t.id && idsAtivosTurma.has(f.alunoId));
     const totalF = faltasTurma.reduce((s, f) => s + (f.faltas ?? 0), 0);
-    const ativosTurma = alunosTurma.filter(a => a.situacao === 'ATIVO').length;
+    const ativosTurma = alunosAtivosTurma.length;
     const dlTotal = dl * ativosTurma;
     const freq = dlTotal > 0 ? (dlTotal - totalF) / dlTotal * 100 : 100;
     return { id: t.id, nome: t.nome, professora: t.professora, total: alunosTurma.length, ativos: ativosTurma, faltas: totalF, freq };

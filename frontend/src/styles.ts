@@ -116,6 +116,30 @@ export const SITUACAO_LABEL: Record<string, string> = {
 
 export const SITUACOES = ['ATIVO', 'REMA', 'BXTR', 'TRAN', 'N COM', 'ABAN'];
 
+// Regra de negócio: ATIVO = situacao vazia/nula OU 'ATIVO'.
+export function isAtivo(a: { situacao?: string | null }): boolean {
+  return !a.situacao || a.situacao === 'ATIVO';
+}
+
+// Alunos de AEE têm 2 registros no banco (turma regular + sala de recursos) e um
+// remanejamento tem REMA na origem + ATIVO no destino — ambos representam a MESMA
+// criança. Deduplica por RA para contagens que devem representar alunos distintos
+// (ex: "Total de Alunos", percentuais oficiais). Alunos sem RA ficam individuais,
+// por não haver chave confiável para agrupar.
+export function dedupeAlunosPorRA<T extends { ra?: string | number | null }>(alunos: T[]): T[] {
+  const vistos = new Set<string>();
+  const resultado: T[] = [];
+  for (const a of alunos) {
+    if (a.ra) {
+      const chave = String(a.ra);
+      if (vistos.has(chave)) continue;
+      vistos.add(chave);
+    }
+    resultado.push(a);
+  }
+  return resultado;
+}
+
 export const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 export const MESES_ABR = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 
