@@ -225,6 +225,7 @@ export default function Importar() {
   const [erro, setErro] = useState('');
   const [sucesso, setSucesso] = useState(false);
   const [fixing, setFixing] = useState(false);
+  const [importando, setImportando] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const dadosRef = useRef<{ turmas: any[]; alunos: AlunoUnificado[]; faltasArr: any[]; educacenso?: any[]; bfNaoEncontrados?: { nome: string; nasc: string; nis: string }[] } | null>(null);
   // Snapshot para rollback em caso de falha na importação
@@ -516,7 +517,7 @@ export default function Importar() {
   // datesOnly: mapa externo onde são guardadas datas de séries numéricas não-AEE
   // (FUNDAMENTAL, INFANTIL) — esses alunos não entram no alunosMap, PDF é a base
   function parseExcels(files: File[], datesOnly?: Map<string, { inicio: string; fim: string }>): Promise<AlunoUnificado[]> {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const alunosMap = new Map<string, AlunoUnificado>();
       let pendentes = 0;
 
@@ -526,6 +527,7 @@ export default function Importar() {
         if (normalizeFileName(name).includes('EDUCACENSO')) continue; // parser específico
         pendentes++;
         const reader = new FileReader();
+        reader.onerror = () => reject(new Error(`Não foi possível ler o arquivo "${file.name}" — verifique se não está corrompido ou aberto em outro programa.`));
         reader.onload = (e) => {
           const wb = XLSX.read(e.target!.result, { type: 'array', cellDates: true });
           for (const sheetName of wb.SheetNames) {
@@ -731,7 +733,7 @@ export default function Importar() {
 
   // ─── PARSE: Excel Turmas-Professores ───
   function parseTurmasProfessores(files: File[]): Promise<Map<string, { professor: string; periodo: string }>> {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const mapa = new Map<string, { professor: string; periodo: string }>();
       let pendentes = 0;
       for (const file of files) {
@@ -740,6 +742,7 @@ export default function Importar() {
         if (!file.name.toLowerCase().endsWith('.xlsx') && !file.name.toLowerCase().endsWith('.xls')) continue;
         pendentes++;
         const reader = new FileReader();
+        reader.onerror = () => reject(new Error(`Não foi possível ler o arquivo "${file.name}" — verifique se não está corrompido ou aberto em outro programa.`));
         reader.onload = (e) => {
           const wb = XLSX.read(e.target!.result, { type: 'array' });
           const ws = wb.Sheets[wb.SheetNames[0]];
@@ -790,7 +793,7 @@ export default function Importar() {
 
   // ─── PARSE: HTML SED (arquivos .xls com tabela HTML) ───
   function parseHTMLSED(files: File[]): Promise<AlunoUnificado[]> {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const alunos: AlunoUnificado[] = [];
       const processados = new Set<string>();
       let pendentes = 0;
@@ -798,6 +801,7 @@ export default function Importar() {
         if (!file.name.toLowerCase().endsWith('.xls')) continue;
         pendentes++;
         const reader = new FileReader();
+        reader.onerror = () => reject(new Error(`Não foi possível ler o arquivo "${file.name}" — verifique se não está corrompido ou aberto em outro programa.`));
         reader.onload = (e) => {
           const html = e.target?.result as string;
           const parser = new DOMParser();
@@ -1589,7 +1593,8 @@ export default function Importar() {
 
   // ─── IMPORTAR (UPSERT — preserva histórico de faltas) ───
   const importar = async () => {
-    if (!dadosRef.current) return;
+    if (!dadosRef.current || importando) return;
+    setImportando(true);
     const { alunos, turmas } = dadosRef.current;
     setErro('');
     setSucesso(false);
@@ -1816,17 +1821,20 @@ export default function Importar() {
 
       const { data: existentes } = await supabase
         .from('Aluno').select('id, ra, nome, situacao, cpf, nis, responsavel, bolsa_familia, turmaId, data_nascimento, cor_raca, deficiencia, aee, data_inicio_matricula, data_fim_matricula').range(0, 99999);
+      // Lookup rápido por id — usado para snapshotar o registo completo antes de apagar
+      const existentesPorId = new Map((existentes ?? []).map((e: any) => [e.id, e]));
 
       // ─── PRÉ-LIMPEZA: remove duplicatas de RA em TODO o banco antes de importar ──
       // Roda em toda importação, independente do arquivo — garante banco sempre limpo
       // idsRemovidosPreLimpeza: declarado FORA do bloco para que o loop de mapas abaixo
       // pule esses IDs — evita que o upsert recrie registros que acabaram de ser apagados
       const idsRemovidosPreLimpeza = new Set<string>();
-      let snapFantasmas: any[] = [];
       {
         const raGrupos = new Map<string, Array<{ id: string; cpf?: string; nis?: string; responsavel?: string; bolsa_familia?: boolean }>>();
         for (const e of (existentes ?? [])) {
-          if (!e.ra || e.situacao === 'REMA') continue;
+          // REMA/TRAN/BXTR nunca são "duplicata de RA" — são o mesmo aluno em situações
+          // distintas (remanejamento, retorno após transferência) e precisam coexistir.
+          if (!e.ra || e.situacao === 'REMA' || e.situacao === 'TRAN' || e.situacao === 'BXTR') continue;
           // Alinha com aluno_ra_uniq: só exclui registos com aee=TRUE (coluna, não turmaId)
           if (e.aee === true) continue;
           const k = String(e.ra);
@@ -1881,7 +1889,7 @@ export default function Importar() {
         const grpNomePre = new Map<string, any[]>();
         for (const e of (existentes ?? [])) {
           if (idsRemovidosPreLimpeza.has(e.id)) continue;
-          if (e.situacao === 'REMA') continue;
+          if (e.situacao === 'REMA' || e.situacao === 'TRAN' || e.situacao === 'BXTR') continue;
           if (e.aee === true) continue;
           if (e.turmaId && aeeturmaIds.has(e.turmaId)) continue;
           const nn = normalizeNome(e.nome);
@@ -1942,6 +1950,7 @@ export default function Importar() {
         for (const e of (existentes ?? [])) {
           if (e.situacao !== 'REMA' || !e.ra || e.turmaId) continue; // só null turmaId
           if (raComRemaReal.has(String(e.ra))) {
+            snapAlunosDeletados.push(e); // snapshot para rollback
             await supabase.from('Aluno').delete().eq('id', e.id);
             idsRemovidosPreLimpeza.add(e.id);
           }
@@ -1963,6 +1972,8 @@ export default function Importar() {
           const manter = comTurmaAtual ?? entries[0];
           for (const e of entries) {
             if (e.id === manter.id) continue;
+            const registro = existentesPorId.get(e.id);
+            if (registro) snapAlunosDeletados.push(registro); // snapshot para rollback
             await supabase.from('Aluno').delete().eq('id', e.id);
             idsRemovidosPreLimpeza.add(e.id);
           }
@@ -2223,25 +2234,29 @@ export default function Importar() {
         }
         for (const [turmaId, idsValidos] of idsPorTurma) {
           const { data: existentesDB } = await supabase.from('Aluno')
-            .select('id').eq('turmaId', turmaId);
+            .select('id, ra, nome, situacao, cpf, nis, responsavel, bolsa_familia, turmaId, data_nascimento, cor_raca, deficiencia, aee')
+            .eq('turmaId', turmaId);
           const candidatosApagar = (existentesDB ?? [])
             .map(r => r.id)
             .filter(id => !idsValidos.has(id));
           if (candidatosApagar.length === 0) continue;
+          const candidatosPorId = new Map((existentesDB ?? []).map((r: any) => [r.id, r]));
           // Protege registos com faltas lançadas — nunca apagar histórico real
           const { data: comFaltas } = await supabase.from('Falta')
             .select('alunoId').in('alunoId', candidatosApagar);
           const protegidos = new Set((comFaltas ?? []).map(f => f.alunoId));
           const parasApagar = candidatosApagar.filter(id => !protegidos.has(id));
           if (parasApagar.length > 0) {
+            for (const id of parasApagar) {
+              const registro = candidatosPorId.get(id);
+              if (registro) snapAlunosDeletados.push(registro); // snapshot para rollback
+            }
             for (let i = 0; i < parasApagar.length; i += 50) {
               await supabase.from('Aluno').delete().in('id', parasApagar.slice(i, i + 50));
             }
           }
         }
       }
-
-      snapAlunosDeletados.push(...snapFantasmas);
 
       // ─── BF extra: marca bolsa_família em alunos que estão no banco mas não vieram nos arquivos ───
       // Caso típico: alunos atípicos (AEE) ou turmas não enviadas nesta importação
@@ -2390,6 +2405,8 @@ export default function Importar() {
       } else {
         setStatus('');
       }
+    } finally {
+      setImportando(false);
     }
   };
 
@@ -2481,10 +2498,14 @@ export default function Importar() {
 
           <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
             <button onClick={() => { setPreview(null); dadosRef.current = null; }}
+              disabled={importando}
               style={btn('ghost', { full: true })}>Reanalisar</button>
-            <button onClick={importar}
-              style={{ ...btn('primary', { full: true }), fontWeight: 700, fontSize: 15 }}>
-              ✅ Atualizar Cadastro (histórico preservado)
+            <button onClick={importar} disabled={importando}
+              style={{
+                ...btn('primary', { full: true }), fontWeight: 700, fontSize: 15,
+                opacity: importando ? 0.7 : 1, cursor: importando ? 'not-allowed' : 'pointer',
+              }}>
+              {importando ? '⏳ Atualizando...' : '✅ Atualizar Cadastro (histórico preservado)'}
             </button>
           </div>
         </div>

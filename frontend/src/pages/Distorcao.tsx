@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { api } from '../api';
 import { useAno } from '../AnoContext';
-import { theme, btn, input, label, card as cardStyle, row, SITUACAO_COR, SITUACAO_LABEL, sortTurmasPedagogico } from '../styles';
+import { theme, btn, input, label, card as cardStyle, row, SITUACAO_COR, SITUACAO_LABEL, sortTurmasPedagogico, dedupeAlunosPorRA } from '../styles';
 import { Loading, EmptyState, StatCard } from '../components';
 
 function calcIdade(dataNasc: string, refDate: Date): number {
@@ -75,7 +75,10 @@ export default function Distorcao() {
       return t !== 0 ? t : a.nome.localeCompare(b.nome);
     });
 
-  const totalAtivos = alunos.filter(isAtivo).length;
+  // Alunos de AEE têm 2 registros (turma regular + sala de recursos) — deduplica
+  // por RA para o denominador representar crianças distintas, já que o percentual
+  // é exportado como indicador oficial (Secretaria/INEP).
+  const totalAtivos = dedupeAlunosPorRA(alunos.filter(isAtivo)).length;
   const pct = totalAtivos > 0 ? ((comDistorcao.length / totalAtivos) * 100).toFixed(1) : '0.0';
 
   // Agrupamento por turma para stats
