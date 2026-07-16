@@ -81,11 +81,22 @@ export default function Alunos() {
   const [deletandoId, setDeletandoId] = useState<string | null>(null);
   const { role, podeEditarCpf, podeEditarCorRaca } = useAuth();
 
-  const excluirAluno = async (id: string) => {
-    await supabase.from('Falta').delete().eq('alunoId', id);
-    await supabase.from('Aluno').delete().eq('id', id);
-    setAlunos(prev => prev.filter(a => a.id !== id));
-    setDeletandoId(null);
+  const excluirAluno = async (id: string, nome: string) => {
+    if (!window.confirm(`Excluir "${nome}" definitivamente?\n\nIsso também apaga o histórico de faltas dele. Essa ação não pode ser desfeita.`)) {
+      setDeletandoId(null);
+      return;
+    }
+    try {
+      const { error: errFaltas } = await supabase.from('Falta').delete().eq('alunoId', id);
+      if (errFaltas) throw errFaltas;
+      const { error: errAluno } = await supabase.from('Aluno').delete().eq('id', id);
+      if (errAluno) throw errAluno;
+      setAlunos(prev => prev.filter(a => a.id !== id));
+    } catch (err: any) {
+      alert(`Não foi possível excluir o aluno: ${err?.message ?? err}`);
+    } finally {
+      setDeletandoId(null);
+    }
   };
 
   const enriquecerEducacenso = async () => {
@@ -737,7 +748,7 @@ export default function Alunos() {
                     {role === 'admin' && (
                       deletandoId === a.id ? (
                         <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                          <button onClick={e => { e.stopPropagation(); excluirAluno(a.id); }}
+                          <button onClick={e => { e.stopPropagation(); excluirAluno(a.id, a.nome); }}
                             style={{ fontSize: 10, fontWeight: 700, background: '#ef4444', color: 'white', border: 'none', borderRadius: 3, padding: '2px 5px', cursor: 'pointer' }}>
                             ✓
                           </button>

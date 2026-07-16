@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { api } from '../api';
-import { theme, btn, input, label, MESES, SITUACAO_COR, SITUACAO_LABEL, getFeriado, isRecesso, isSabadoLetivo, sortTurmasPedagogico, isInfantilTurma } from '../styles';
+import { theme, btn, input, label, MESES, SITUACAO_COR, SITUACAO_LABEL, getFeriado, isRecesso, isSabadoLetivo, sortTurmasPedagogico, isInfantilTurma, calendarioDetalhadoDisponivel } from '../styles';
 import { Loading, EmptyState, StatCard, Spinner } from '../components';
 import { useTheme } from '../ThemeContext';
 import { useAno } from '../AnoContext';
@@ -972,6 +972,18 @@ export default function Faltas() {
         {turma?.professora && (
           <div style={{ marginTop: 10, fontSize: 14, color: theme.textSecondary }}>
             👩‍🏫 Prof. {turma.professora}
+          </div>
+        )}
+
+        {!calendarioDetalhadoDisponivel(ano) && (
+          <div style={{
+            marginTop: 10, padding: '8px 12px', borderRadius: theme.radius,
+            background: isDark ? 'rgba(217,119,6,0.12)' : '#fffbeb',
+            border: '1px solid #f59e0b', fontSize: 12, color: isDark ? '#fbbf24' : '#92400e',
+          }}>
+            ⚠️ O calendário de feriados móveis, sábados letivos e recesso de {ano} ainda não foi cadastrado no sistema —
+            só feriados fixos (Ano Novo, Tiradentes etc.) são marcados automaticamente na grade. Confira manualmente os
+            demais dias não letivos deste ano antes de lançar as faltas.
           </div>
         )}
 

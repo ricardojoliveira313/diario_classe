@@ -34,7 +34,7 @@ export default function Turmas() {
   const [editando, setEditando] = useState<{ id: string; professora: string } | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
   const [restaurando, setRestaurando] = useState(false);
-  const [resultRestaura, setResultRestaura] = useState<{ criadas: number; atualizadas: number; erros: number } | null>(null);
+  const [resultRestaura, setResultRestaura] = useState<{ criadas: number; atualizadas: number; mantidas: number; erros: number } | null>(null);
   const [reconectando, setReconectando] = useState(false);
   const [resultReconecta, setResultReconecta] = useState<{ atualizados: number; semMatch: number } | null>(null);
   const [fazendoBackup, setFazendoBackup] = useState(false);
@@ -116,18 +116,27 @@ export default function Turmas() {
 
   const restaurarTurmasPadrao = async () => {
     if (role !== 'admin') return;
-    if (!confirm(`Restaurar as ${TURMAS_PADRAO.length} turmas padrão?\n\nCria turmas inexistentes e atualiza nome/professora/período das existentes.`)) return;
+    if (!confirm(`Restaurar as ${TURMAS_PADRAO.length} turmas padrão?\n\nCria as que estiverem faltando e preenche professora/período SÓ das existentes que estiverem vazios — não sobrescreve valores já preenchidos.`)) return;
     setRestaurando(true);
     setResultRestaura(null);
-    let criadas = 0, atualizadas = 0, erros = 0;
+    let criadas = 0, atualizadas = 0, mantidas = 0, erros = 0;
     const atuais = await api.getTurmas();
     for (const tp of TURMAS_PADRAO) {
       const match = atuais.find((t: any) => norm(t.nome) === norm(tp.nome))
         ?? atuais.find((t: any) => normSimp(t.nome) === normSimp(tp.nome));
       try {
         if (match) {
-          await api.updateTurma(match.id, { nome: tp.nome, professora: tp.professora, periodo: tp.periodo });
-          atualizadas++;
+          // Nunca sobrescreve professora/período já preenchidos — só completa o que falta,
+          // pra não reverter uma correção feita depois via "✏️ Professora" ou importação.
+          const updates: Record<string, string> = {};
+          if (!match.professora?.trim() && tp.professora) updates.professora = tp.professora;
+          if (!match.periodo?.trim() && tp.periodo) updates.periodo = tp.periodo;
+          if (Object.keys(updates).length > 0) {
+            await api.updateTurma(match.id, updates);
+            atualizadas++;
+          } else {
+            mantidas++;
+          }
         } else {
           await api.createTurma({ nome: tp.nome, professora: tp.professora, periodo: tp.periodo });
           criadas++;
@@ -135,7 +144,7 @@ export default function Turmas() {
       } catch { erros++; }
     }
     setRestaurando(false);
-    setResultRestaura({ criadas, atualizadas, erros });
+    setResultRestaura({ criadas, atualizadas, mantidas, erros });
     load();
   };
 
@@ -647,7 +656,9 @@ export default function Turmas() {
           <span>
             ✅ {resultRestaura.criadas} turma{resultRestaura.criadas !== 1 ? 's' : ''} criada{resultRestaura.criadas !== 1 ? 's' : ''}
             {' · '}
-            🔄 {resultRestaura.atualizadas} atualizada{resultRestaura.atualizadas !== 1 ? 's' : ''}
+            🔄 {resultRestaura.atualizadas} completada{resultRestaura.atualizadas !== 1 ? 's' : ''} (só campos vazios)
+            {' · '}
+            ⏭️ {resultRestaura.mantidas} já estava{resultRestaura.mantidas !== 1 ? 'm' : ''} preenchida{resultRestaura.mantidas !== 1 ? 's' : ''}
             {resultRestaura.erros > 0 && <span style={{ color: '#dc2626' }}> · ❌ {resultRestaura.erros} com erro</span>}
           </span>
           <button onClick={() => setResultRestaura(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: 'inherit' }}>✕</button>

@@ -207,6 +207,13 @@ export function isSabadoLetivo(ano: number, mes: number, dia: number): boolean {
   return (SABADOS_LETIVOS[ano] ?? []).includes(s);
 }
 
+// O calendário detalhado (feriados móveis, sábados letivos, recesso) só está
+// cadastrado ano a ano — sem isso, a marcação automática desses dias na grade
+// de faltas fica incompleta (só feriados fixos continuam funcionando).
+export function calendarioDetalhadoDisponivel(ano: number): boolean {
+  return ano in FERIADOS_MOVEIS || ano in SABADOS_LETIVOS || ano in RECESSO_ESCOLAR;
+}
+
 // Calendário letivo por ano e mês — atualize anualmente
 export const DIAS_LETIVOS_ANO: Record<number, Record<number, number>> = {
   2025: { 1: 0, 2: 19, 3: 21, 4: 19, 5: 21, 6: 20, 7: 10, 8: 21, 9: 22, 10: 19, 11: 20, 12: 15 },
