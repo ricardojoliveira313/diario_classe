@@ -6,8 +6,6 @@ import Faltas from './pages/Faltas';
 import Importar from './pages/Importar';
 import Turmas from './pages/Turmas';
 import Dashboard from './pages/Dashboard';
-import OCR from './pages/OCR';
-import Professor from './pages/Professor';
 import Pendentes from './pages/Pendentes';
 import Distorcao from './pages/Distorcao';
 import Ocorrencias from './pages/Ocorrencias';
@@ -33,7 +31,6 @@ const NAV_ITEMS: { to: string; label: string; end?: boolean; badge?: boolean; ad
   { to: '/faltas',    label: '📋 Faltas',                             pageKey: 'faltas' },
   { to: '/ocorrencias', label: '📋 Ocorrências',                      pageKey: 'ocorrencias' },
   { to: '/distorcao', label: '📐 Distorção',                          pageKey: 'distorcao' },
-  { to: '/ocr',       label: '📷 OCR',       adminOnly: true },
   { to: '/pendentes', label: '📋 Ata',                badge: true,    pageKey: 'pendentes' },
   { to: '/usuarios',  label: '👥 Usuários',  adminOnly: true },
 ];
@@ -251,8 +248,6 @@ function AppShell() {
             <Route path="/faltas" element={<ViewerRoute pageKey="faltas"><Faltas /></ViewerRoute>} />
             <Route path="/distorcao" element={<ViewerRoute pageKey="distorcao"><Distorcao /></ViewerRoute>} />
             <Route path="/ocorrencias" element={<ViewerRoute pageKey="ocorrencias"><Ocorrencias /></ViewerRoute>} />
-            <Route path="/ocr" element={<AdminRoute><OCR /></AdminRoute>} />
-            <Route path="/professor" element={<Professor />} />
             <Route path="/pendentes" element={<ViewerRoute pageKey="pendentes"><Pendentes /></ViewerRoute>} />
             <Route path="/usuarios" element={<AdminRoute><Usuarios /></AdminRoute>} />
           </Routes>
