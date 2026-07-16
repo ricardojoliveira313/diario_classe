@@ -22,6 +22,14 @@ export default function Usuarios() {
   const [turmaTemp, setTurmaTemp] = useState<string | null>(null);
   const [salvandoPerm, setSalvandoPerm] = useState(false);
   const [turmas, setTurmas] = useState<any[]>([]);
+  // Edição de nome/senha/perfil de usuário existente
+  const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [editNome, setEditNome] = useState('');
+  const [editSenha, setEditSenha] = useState('');
+  const [editPerfil, setEditPerfil] = useState<'admin' | 'viewer'>('viewer');
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false);
+  const [erroEdicao, setErroEdicao] = useState('');
+  const [erroAcao, setErroAcao] = useState('');
 
   const carregar = async () => {
     setLoading(true);
@@ -65,13 +73,43 @@ export default function Usuarios() {
 
   const remover = async (id: string, nome: string) => {
     if (!confirm(`Remover usuário "${nome}"?`)) return;
-    await supabase.from('Usuario').delete().eq('id', id);
+    setErroAcao('');
+    const { error } = await supabase.from('Usuario').delete().eq('id', id);
+    if (error) { setErroAcao(`Não foi possível remover "${nome}": ${error.message}`); return; }
+    carregar();
+  };
+
+  // ── Edição de nome/senha/perfil ──────────────────────────────────────────
+  const abrirEdicao = (u: any) => {
+    if (editandoId === u.id) { setEditandoId(null); return; }
+    setEditandoPermId(null);
+    setEditandoId(u.id);
+    setEditNome(u.nome);
+    setEditSenha('');
+    setEditPerfil(u.perfil);
+    setErroEdicao('');
+  };
+
+  const salvarEdicao = async (id: string) => {
+    setErroEdicao('');
+    if (!editNome.trim()) { setErroEdicao('Digite o nome do usuário.'); return; }
+    setSalvandoEdicao(true);
+    const updates: any = { nome: editNome.trim(), perfil: editPerfil };
+    if (editSenha.trim()) updates.senha = editSenha;
+    const { error } = await supabase.from('Usuario').update(updates).eq('id', id);
+    setSalvandoEdicao(false);
+    if (error) {
+      setErroEdicao(error.message?.includes('duplicate') ? 'Já existe um usuário com esse nome.' : error.message);
+      return;
+    }
+    setEditandoId(null);
     carregar();
   };
 
   // ── Painel de permissões ─────────────────────────────────────────────────
   const abrirPermissoes = (u: any) => {
     if (editandoPermId === u.id) { setEditandoPermId(null); return; }
+    setEditandoId(null);
     setEditandoPermId(u.id);
     const allPerm: string[] | null = Array.isArray(u.permissoes) ? [...u.permissoes] : null;
     // Separa páginas de capacidades
@@ -180,6 +218,11 @@ export default function Usuarios() {
       {/* Lista de usuários */}
       {loading ? <Loading text="Carregando usuários..." /> : (
         <div style={{ ...cardStyle(), overflow: 'hidden' }}>
+          {erroAcao && (
+            <p style={{ color: theme.danger, fontSize: 13, padding: '10px 16px', margin: 0, borderBottom: `1px solid ${theme.borderLight}` }}>
+              ⚠️ {erroAcao}
+            </p>
+          )}
           {usuarios.length === 0 ? (
             <p style={{ padding: 20, textAlign: 'center', color: theme.textMuted }}>Nenhum usuário cadastrado.</p>
           ) : usuarios.map((u, i) => {
@@ -191,6 +234,7 @@ export default function Usuarios() {
             const caps = allPerm?.filter(k => CAPABILITIES.some(c => c.key === k)) ?? [];
             const hasTodas = caps.includes('faltas_todas');
             const editandoPerm = editandoPermId === u.id;
+            const editando = editandoId === u.id;
 
             return (
               <div key={u.id} style={{ borderTop: i > 0 ? `1px solid ${theme.borderLight}` : undefined }}>
@@ -228,6 +272,10 @@ export default function Usuarios() {
 
                   {/* Botões */}
                   <div style={{ display: 'flex', gap: 6 }}>
+                    <button onClick={() => abrirEdicao(u)}
+                      style={btn(editando ? 'primary' : 'ghost', { small: true })}>
+                      {editando ? '✕ Fechar' : '✏️ Editar'}
+                    </button>
                     {isViewer && (
                       <button onClick={() => abrirPermissoes(u)}
                         style={btn(editandoPerm ? 'primary' : 'ghost', { small: true })}>
@@ -237,6 +285,44 @@ export default function Usuarios() {
                     <button onClick={() => remover(u.id, u.nome)} style={btn('danger', { small: true })}>🗑️</button>
                   </div>
                 </div>
+
+                {/* Painel de edição de nome/senha/perfil */}
+                {editando && (
+                  <div className="slide-down" style={{
+                    margin: '0 16px 16px',
+                    background: 'var(--ghost-bg)',
+                    border: `1.5px solid ${theme.primary}`,
+                    borderRadius: theme.radiusMd,
+                    padding: 16,
+                  }}>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: theme.primary, marginBottom: 12 }}>
+                      ✏️ Editar <strong>{u.nome}</strong>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 10, alignItems: 'end' }}>
+                      <div>
+                        <label style={label}>Usuário / Email</label>
+                        <input style={input} value={editNome} onChange={e => setEditNome(e.target.value)} />
+                      </div>
+                      <div>
+                        <label style={label}>Nova senha</label>
+                        <input style={input} type="password" value={editSenha} onChange={e => setEditSenha(e.target.value)}
+                          placeholder="deixe em branco para manter a atual" />
+                      </div>
+                      <div>
+                        <label style={label}>Perfil</label>
+                        <select style={input} value={editPerfil} onChange={e => setEditPerfil(e.target.value as any)}>
+                          <option value="admin">🔑 Admin</option>
+                          <option value="viewer">👁️ Viewer</option>
+                        </select>
+                      </div>
+                    </div>
+                    {erroEdicao && <p style={{ color: theme.danger, fontSize: 13, marginTop: 8 }}>⚠️ {erroEdicao}</p>}
+                    <button onClick={() => salvarEdicao(u.id)} disabled={salvandoEdicao}
+                      style={{ ...btn('primary'), marginTop: 12, fontSize: 13 }}>
+                      {salvandoEdicao ? <Spinner size={14} /> : '💾 Salvar alterações'}
+                    </button>
+                  </div>
+                )}
 
                 {/* Painel de permissões (só viewers) */}
                 {editandoPerm && isViewer && (
