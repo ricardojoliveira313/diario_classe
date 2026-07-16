@@ -31,124 +31,6 @@ const decodeDias = (freq: string, n: number): Status[] => {
 };
 const ct = (dias: Status[], tipo: Status) => dias.filter(d => d === tipo).length;
 
-// ── Reconhecimento de voz ────────────────────────────────────────────────────
-type VoiceCmd = { alunoId: string; nome: string; dia: number; schoolIdx: number; status: Status };
-
-// Entradas mais longas primeiro para evitar match parcial (ex: "vinte e um" antes de "vinte")
-const NUMEROS_PT: [string, number][] = [
-  ['trinta e uma', 31], ['trinta e um', 31], ['trinta', 30],
-  ['vinte e nove', 29], ['vinte e oito', 28], ['vinte e sete', 27], ['vinte e seis', 26],
-  ['vinte e cinco', 25], ['vinte e quatro', 24], ['vinte e tres', 23],
-  ['vinte e duas', 22], ['vinte e dois', 22], ['vinte e uma', 21], ['vinte e um', 21],
-  ['vinte', 20], ['dezanove', 19], ['dezenove', 19], ['dezoito', 18],
-  ['dezassete', 17], ['dezessete', 17], ['dezasseis', 16], ['dezesseis', 16],
-  ['quinze', 15], ['catorze', 14], ['quatorze', 14], ['treze', 13], ['doze', 12], ['onze', 11],
-  ['decima', 10], ['decimo', 10], ['dez', 10],
-  ['nona', 9], ['nono', 9], ['nove', 9],
-  ['oitava', 8], ['oitavo', 8], ['oito', 8],
-  ['setima', 7], ['setimo', 7], ['sete', 7],
-  ['sexta', 6], ['sexto', 6], ['seis', 6],
-  ['quinta', 5], ['quinto', 5], ['cinco', 5],
-  ['quarta', 4], ['quarto', 4], ['quatro', 4],
-  ['terceira', 3], ['terceiro', 3], ['tres', 3],
-  ['segunda', 2], ['segundo', 2], ['duas', 2], ['dois', 2],
-  ['primeira', 1], ['primeiro', 1], ['uma', 1], ['um', 1],
-];
-
-const STATUS_VOZ: [string, Status][] = [
-  ['atestado medico', 'A'], ['atestado', 'A'], ['medico', 'A'],
-  ['justificada', 'J'], ['justificado', 'J'], ['justificou', 'J'],
-  ['ausente', 'F'], ['faltou', 'F'], ['falta', 'F'],
-  ['presenca', 'P'], ['presente', 'P'], ['compareceu', 'P'], ['veio', 'P'],
-];
-
-function normVoz(s: string): string {
-  return s.toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9 ]/g, '')
-    .replace(/\s+/g, ' ').trim();
-}
-
-// Detecta comando de "setar data ativa" — ex: "dia dez", "chamada dia dez do sete"
-function parseSessionDateVoz(text: string, calDays: CalendarDay[]): number | null {
-  const norm = normVoz(text);
-  // Se tem palavra de status, é comando de aluno, não de data
-  if (STATUS_VOZ.some(([kw]) => norm.includes(kw))) return null;
-  let dia: number | null = null;
-  const numMatch = norm.match(/\bdia\s+(\d{1,2})\b/);
-  if (numMatch) dia = parseInt(numMatch[1]);
-  else { for (const [word, n] of NUMEROS_PT) { if (norm.includes('dia ' + word)) { dia = n; break; } } }
-  if (!dia || dia < 1 || dia > 31) return null;
-  const calDay = calDays.find(cd => cd.dia === dia);
-  if (!calDay?.isLetivo) return null;
-  return dia;
-}
-
-function parseCmdVoz(
-  text: string,
-  alunos: any[],
-  calDays: CalendarDay[],
-  mesAtual?: number,
-  anoAtual?: number,
-  sessionDia?: number | null,
-): VoiceCmd | null {
-  const norm = normVoz(text);
-
-  let status: Status | null = null;
-  for (const [kw, s] of STATUS_VOZ) {
-    if (norm.includes(kw)) { status = s; break; }
-  }
-  if (!status) return null;
-
-  let dia: number | null = null;
-  const numMatch = norm.match(/\bdia\s+(\d{1,2})\b/);
-  if (numMatch) {
-    dia = parseInt(numMatch[1]);
-  } else {
-    for (const [word, n] of NUMEROS_PT) {
-      if (norm.includes('dia ' + word)) { dia = n; break; }
-    }
-  }
-
-  // Fallback 1: data ativa da sessão (definida por "dia X" ou "chamada dia X")
-  if (!dia && sessionDia) dia = sessionDia;
-
-  // Fallback 2: último dia letivo até hoje (quando mês atual selecionado)
-  // Se hoje for fim de semana ou feriado, recua até o último dia letivo
-  if (!dia && mesAtual && anoAtual) {
-    const hoje = new Date();
-    if (hoje.getMonth() + 1 === mesAtual && hoje.getFullYear() === anoAtual) {
-      for (let d = hoje.getDate(); d >= 1; d--) {
-        const cd = calDays.find(c => c.dia === d);
-        if (cd?.isLetivo) { dia = d; break; }
-      }
-    }
-  }
-
-  if (!dia || dia < 1 || dia > 31) return null;
-
-  const calDay = calDays.find(cd => cd.dia === dia);
-  if (!calDay?.isLetivo) return null;
-
-  let best: any = null;
-  let bestScore = 0;
-  for (const a of alunos) {
-    const nomeNorm = normVoz(a.nome);
-    const palavras = nomeNorm.split(' ').filter((w: string) => w.length > 2);
-    if (!palavras.length) continue;
-    const hits = palavras.filter((w: string) => {
-      if (new RegExp(`\\b${w}\\b`).test(norm)) return true;
-      const wd = w.replace(/(.)\1+/g, '$1');
-      return wd !== w && new RegExp(`\\b${wd}\\b`).test(norm);
-    }).length;
-    const score = hits / palavras.length;
-    if (score > bestScore && hits >= 1) { bestScore = score; best = a; }
-  }
-  if (!best) return null;
-
-  return { alunoId: best.id, nome: best.nome, dia, schoolIdx: calDay.schoolIdx, status };
-}
-
 interface CalendarDay {
   dia: number;
   isWeekend: boolean;
@@ -220,17 +102,6 @@ export default function Faltas() {
   const statusTextosRef = useRef<Record<string, string>>({});
   const calDaysRef = useRef<CalendarDay[]>([]);
   const showBFRef = useRef(false);
-
-  const [voiceActive, setVoiceActive] = useState(false);
-  const [voiceTranscript, setVoiceTranscript] = useState('');
-  const [voiceError, setVoiceError] = useState('');
-  const [voiceSessionDia, setVoiceSessionDia] = useState<number | null>(null);
-  const [voiceHistory, setVoiceHistory] = useState<Array<{ id: number; kind: 'cmd' | 'date'; nome?: string; dia: number; status?: Status }>>([]);
-  const recognitionRef = useRef<any>(null);
-  const voiceActiveRef = useRef(false);
-  const voiceIdRef = useRef(0);
-  const parseCmdRef = useRef<(text: string) => VoiceCmd | null>(() => null);
-  const parseSessionDateRef = useRef<(text: string) => number | null>(() => null);
 
   const isMobile = window.innerWidth < 640;
 
@@ -434,10 +305,6 @@ export default function Faltas() {
     setSaved(true);
   };
 
-  // Mantém parseCmdRef sempre atualizado com alunos/calDays do render atual
-  parseCmdRef.current = (text: string) => parseCmdVoz(text, alunos, calDays, mes, ano, voiceSessionDia);
-  parseSessionDateRef.current = (text: string) => parseSessionDateVoz(text, calDays);
-
   // Mantém os refs do Modo Digitação Sequencial atualizados com o render atual
   cursorRef.current = cursor;
   numBufferRef.current = numBuffer;
@@ -449,13 +316,10 @@ export default function Faltas() {
   calDaysRef.current = calDays;
   showBFRef.current = showBF;
 
-  // Limpa histórico e data ativa ao trocar turma ou mês
-  useEffect(() => { setVoiceHistory([]); setVoiceError(''); setVoiceSessionDia(null); setPaintStatus(null); setCursor(null); setNumBuffer(''); }, [turmaId, mes]);
+  // Limpa seleção ao trocar turma ou mês
+  useEffect(() => { setPaintStatus(null); setCursor(null); setNumBuffer(''); }, [turmaId, mes]);
   // Sai do Modo Digitação Sequencial se trocar para o Modo Rápido
   useEffect(() => { if (modo !== 'grade') { setCursor(null); setNumBuffer(''); } }, [modo]);
-
-  // Cleanup ao desmontar
-  useEffect(() => () => { voiceActiveRef.current = false; recognitionRef.current?.stop(); }, []);
 
   // Listener global de teclado do Modo Digitação Sequencial (ativo só quando há um cursor)
   useEffect(() => {
@@ -513,90 +377,6 @@ export default function Faltas() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
-
-  const startVoice = () => {
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) {
-      alert('Reconhecimento de voz não é suportado neste navegador.\nUse Google Chrome ou Microsoft Edge.');
-      return;
-    }
-    const rec = new SR();
-    rec.lang = 'pt-BR';
-    rec.continuous = true;
-    rec.interimResults = true;
-    rec.onresult = (e: any) => {
-      let interim = '';
-      let finalText = '';
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const t = e.results[i][0].transcript;
-        if (e.results[i].isFinal) finalText += t;
-        else interim += t;
-      }
-      setVoiceTranscript(interim || finalText);
-      if (finalText.trim()) {
-        // 1º: verifica se é um comando de data ("chamada dia dez", "dia dez do sete")
-        const newSessionDia = parseSessionDateRef.current(finalText);
-        if (newSessionDia !== null) {
-          setVoiceSessionDia(newSessionDia);
-          setVoiceHistory(prev => [
-            { id: voiceIdRef.current++, kind: 'date', dia: newSessionDia },
-            ...prev.slice(0, 9),
-          ]);
-          setVoiceError('');
-          setVoiceTranscript('');
-          return;
-        }
-        // 2º: tenta interpretar como comando de aluno
-        const cmd = parseCmdRef.current(finalText);
-        if (cmd) {
-          setDiasAluno(prev => {
-            const dias = [...(prev[cmd.alunoId] ?? initDias(numDias))];
-            dias[cmd.schoolIdx] = cmd.status;
-            return { ...prev, [cmd.alunoId]: dias };
-          });
-          setSaved(false);
-          setVoiceHistory(prev => [
-            { id: voiceIdRef.current++, kind: 'cmd', nome: cmd.nome, dia: cmd.dia, status: cmd.status },
-            ...prev.slice(0, 9),
-          ]);
-          setVoiceError('');
-          setVoiceTranscript('');
-        } else {
-          const n = normVoz(finalText);
-          const temStatus = STATUS_VOZ.some(([kw]) => n.includes(kw));
-          let err: string;
-          if (!temStatus) {
-            err = 'Diga a situação: presente, falta, atestado ou justificado';
-          } else {
-            err = 'Não reconheci o nome do aluno. Fale mais devagar ou tente o primeiro nome';
-          }
-          setVoiceError(`${err} — Ouvi: "${finalText.trim()}"`);
-        }
-      }
-    };
-    rec.onerror = (e: any) => {
-      if (e.error !== 'aborted' && e.error !== 'no-speech') console.warn('Voz:', e.error);
-    };
-    rec.onend = () => {
-      if (voiceActiveRef.current) { try { rec.start(); } catch {} }
-    };
-    rec.start();
-    recognitionRef.current = rec;
-    voiceActiveRef.current = true;
-    setVoiceActive(true);
-    setVoiceHistory([]);
-    setVoiceError('');
-    setVoiceTranscript('');
-    setVoiceSessionDia(null);
-  };
-
-  const stopVoice = () => {
-    voiceActiveRef.current = false;
-    recognitionRef.current?.stop();
-    recognitionRef.current = null;
-    setVoiceActive(false);
-    setVoiceTranscript('');
-  };
 
   const totalF = alunos.reduce((s, a) => s + ct(diasAluno[a.id] ?? [], 'F'), 0);
   const totalJ = alunos.reduce((s, a) => s + ct(diasAluno[a.id] ?? [], 'J'), 0);
@@ -824,7 +604,7 @@ export default function Faltas() {
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8"/>
-<title>Folha OCR — ${turmaObj?.nome ?? ''} — ${nomeMes} ${ano}</title>
+<title>Grade de Dias — ${turmaObj?.nome ?? ''} — ${nomeMes} ${ano}</title>
 <style>
   * { box-sizing: border-box; }
   body { font-family: Arial, Helvetica, sans-serif; margin: 6mm; color: #000; background: #fff; }
@@ -1151,22 +931,10 @@ export default function Faltas() {
           <h1 style={{ fontSize: 26, fontWeight: 800, color: theme.text }}>📋 Lançamento de Faltas</h1>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
             <button onClick={abrirBolsaFamilia} style={btn('success', { small: true })} title="Ver todos os alunos com Bolsa Família de todas as turmas (qualquer situação)">💚 Bolsa Família</button>
-            {podeEditar && alunos.length > 0 && (
-              <button
-                onClick={voiceActive ? stopVoice : startVoice}
-                style={{
-                  ...btn(voiceActive ? 'danger' : 'primary', { small: true }),
-                  position: 'relative',
-                }}
-                title={voiceActive ? 'Parar reconhecimento de voz' : 'Lançar faltas por voz — fale o nome do aluno, o dia e a situação'}
-              >
-                {voiceActive ? '⏹ Parar Voz' : '🎤 Voz'}
-              </button>
-            )}
             {alunos.length > 0 && (
               <>
                 <button onClick={exportarFolhaOCR} style={btn('primary', { small: true, outline: true })} title="Folha simples (A4 retrato) para professor preencher número de faltas — fácil de fotografar">📋 Folha</button>
-                <button onClick={exportarGradeDias} style={btn('primary', { small: true, outline: true })} title="Grade com X por dia (A4 paisagem) para fotografar e ler com OCR">📅 Grade OCR</button>
+                <button onClick={exportarGradeDias} style={btn('primary', { small: true, outline: true })} title="Grade com X por dia (A4 paisagem) para preencher à mão e depois digitar no Modo Teclado">📅 Grade de Dias</button>
                 <button onClick={exportarDiario} style={btn('warning', { small: true, outline: true })} title="Diário tradicional com todos os dias do mês">🖨️ Diário</button>
                 <button onClick={exportarExcel} style={btn('success', { small: true, outline: true })}>📊 Excel</button>
                 <button onClick={exportarPDF} style={btn('danger', { small: true, outline: true })}>📄 PDF</button>
@@ -1278,148 +1046,6 @@ export default function Faltas() {
           )}
         </div>
       </div>
-
-      {/* ── Painel de Lançamento por Voz ──────────────────────────────────── */}
-      {voiceActive && (
-        <div style={{
-          background: isDark ? 'rgba(59,130,246,0.08)' : '#eff6ff',
-          border: `2px solid #3b82f6`,
-          borderRadius: theme.radiusMd,
-          padding: 16,
-          marginBottom: 16,
-          boxShadow: '0 4px 24px rgba(59,130,246,0.15)',
-        }}>
-          <style>{`@keyframes voicePulse{0%,100%{transform:scale(1);opacity:1;}50%{transform:scale(1.25);opacity:0.6;}}`}</style>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
-            <span style={{ fontSize: 30, display: 'inline-block', animation: 'voicePulse 1.4s ease-in-out infinite', flexShrink: 0 }}>🎤</span>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 15, color: '#3b82f6', marginBottom: 3 }}>
-                Modo Voz Ativo — Fale e o sistema atualiza automaticamente
-              </div>
-              <div style={{ fontSize: 12, color: theme.textMuted, lineHeight: 1.8 }}>
-                <div>
-                  <strong>1. Defina a data:</strong>{' '}
-                  <em>"chamada dia dez"</em> ·{' '}
-                  <em>"dia quinze do sete"</em> ·{' '}
-                  <em>"dia 20"</em>
-                </div>
-                <div>
-                  <strong>2. Depois fale os alunos:</strong>{' '}
-                  <em>"Alana, faltou"</em> ·{' '}
-                  <em>"João, presente"</em> ·{' '}
-                  <em>"Maria, atestado"</em>
-                </div>
-                <div style={{ color: theme.textMuted, fontSize: 11 }}>
-                  Sem definir data: usa hoje (mês atual) ou diga o dia junto — <em>"Alana, dia dez, faltou"</em>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Transcrição ao vivo */}
-          <div style={{
-            background: isDark ? 'rgba(0,0,0,0.3)' : '#fff',
-            border: `1px solid ${voiceError ? '#dc2626' : '#3b82f6'}`,
-            borderRadius: 8, padding: '10px 14px',
-            minHeight: 44, fontSize: 14,
-            color: voiceTranscript ? theme.text : theme.textMuted,
-            fontStyle: voiceTranscript ? 'normal' : 'italic',
-            marginBottom: 6,
-          }}>
-            {voiceTranscript || 'Aguardando fala…'}
-          </div>
-
-          {/* Erro de parsing */}
-          {voiceError && (
-            <div style={{ fontSize: 12, color: '#dc2626', marginBottom: 8, paddingLeft: 4 }}>
-              ⚠️ {voiceError}
-            </div>
-          )}
-
-          {/* Badge de data ativa */}
-          {voiceSessionDia ? (
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: 8,
-              background: isDark ? 'rgba(74,222,128,0.12)' : '#f0fdf4',
-              border: '2px solid #16a34a', borderRadius: 8,
-              padding: '7px 14px', marginBottom: 10, fontWeight: 700,
-            }}>
-              <span style={{ fontSize: 18 }}>📅</span>
-              <span style={{ color: '#16a34a', fontSize: 14 }}>
-                Data ativa: <strong>Dia {voiceSessionDia}</strong>
-              </span>
-              <span style={{ fontSize: 12, color: theme.textMuted, fontWeight: 400 }}>
-                — fale o nome e a situação
-              </span>
-            </div>
-          ) : (
-            <div style={{
-              fontSize: 12, color: theme.textMuted,
-              padding: '5px 10px', marginBottom: 10,
-              background: isDark ? 'rgba(255,255,255,0.04)' : '#f8fafc',
-              borderRadius: 6, border: `1px dashed ${theme.borderLight}`,
-            }}>
-              💡 Diga <strong>"chamada dia dez"</strong> para travar a data e depois só falar os nomes
-            </div>
-          )}
-
-          {/* Legenda de status aceitos */}
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10, fontSize: 11 }}>
-            {(Object.keys(ST_LABEL) as Status[]).map(s => (
-              <span key={s} style={{
-                background: ST_BG[s], color: ST_COR[s],
-                padding: '2px 8px', borderRadius: 4, fontWeight: 700,
-                border: `1px solid ${ST_COR[s]}44`,
-              }}>
-                {s} = {ST_LABEL[s]}
-              </span>
-            ))}
-          </div>
-
-          {/* Histórico de comandos */}
-          {voiceHistory.length > 0 && (
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: theme.textMuted, marginBottom: 5, letterSpacing: 0.5 }}>
-                ÚLTIMOS LANÇAMENTOS:
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 200, overflowY: 'auto' }}>
-                {voiceHistory.map((h, idx) => (
-                  <div key={h.id} style={{
-                    display: 'flex', alignItems: 'center', gap: 8,
-                    padding: '5px 10px', borderRadius: 6, fontSize: 13,
-                    background: h.kind === 'date'
-                      ? (isDark ? 'rgba(74,222,128,0.08)' : '#f0fdf4')
-                      : (isDark ? 'rgba(255,255,255,0.05)' : '#f8fafc'),
-                    border: `1px solid ${h.kind === 'date' ? '#16a34a55' : theme.borderLight}`,
-                    opacity: idx === 0 ? 1 : 0.6,
-                  }}>
-                    {h.kind === 'date' ? (
-                      <>
-                        <span style={{ fontSize: 16 }}>📅</span>
-                        <span style={{ fontWeight: 700, color: '#16a34a' }}>Data definida: Dia {h.dia}</span>
-                      </>
-                    ) : (
-                      <>
-                        <span style={{
-                          background: ST_BG[h.status!], color: ST_COR[h.status!],
-                          fontWeight: 800, padding: '2px 8px', borderRadius: 4, fontSize: 12,
-                          border: `1px solid ${ST_COR[h.status!]}44`, flexShrink: 0,
-                        }}>{h.status}</span>
-                        <span style={{ fontWeight: 600, color: theme.text, flex: 1 }}>{h.nome}</span>
-                        <span style={{ color: theme.textMuted, fontSize: 12 }}>Dia {h.dia}</span>
-                        <span style={{ fontSize: 11, color: theme.textMuted }}>— {ST_LABEL[h.status!]}</span>
-                      </>
-                    )}
-                  </div>
-                ))}
-              </div>
-              <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 6 }}>
-                ℹ️ Lembre-se de clicar em <strong>Salvar Faltas</strong> ao terminar.
-              </div>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* ── Modal Bolsa Família ─────────────────────────────────────────── */}
       {showBF && (
