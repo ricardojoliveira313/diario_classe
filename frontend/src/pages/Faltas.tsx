@@ -208,6 +208,19 @@ export default function Faltas() {
   const [paintStatus, setPaintStatus] = useState<Status | null>(null);
   const [modo, setModo] = useState<'grade' | 'rapido'>('rapido');
 
+  // ── Modo Digitação Sequencial — teclado assume a grade, sem clicar em cada dia ──
+  const [cursor, setCursor] = useState<{ alunoId: string; day: number } | null>(null);
+  const [numBuffer, setNumBuffer] = useState('');
+  const cursorRef = useRef<{ alunoId: string; day: number } | null>(null);
+  const numBufferRef = useRef('');
+  const modoRef = useRef(modo);
+  const podeEditarRef = useRef(podeEditar);
+  const numDiasRef = useRef(0);
+  const alunosRef = useRef<any[]>([]);
+  const statusTextosRef = useRef<Record<string, string>>({});
+  const calDaysRef = useRef<CalendarDay[]>([]);
+  const showBFRef = useRef(false);
+
   const [voiceActive, setVoiceActive] = useState(false);
   const [voiceTranscript, setVoiceTranscript] = useState('');
   const [voiceError, setVoiceError] = useState('');
@@ -342,6 +355,36 @@ export default function Faltas() {
     setSaved(false);
   };
 
+  // ── Modo Digitação Sequencial — clique 1x no aluno/dia pra "entrar" na linha,
+  // depois cada tecla é um dia (P/F/J/A) e o cursor avança sozinho.
+  // Um número antes da letra preenche em lote (ex: "3" + "F" = 3 faltas seguidas).
+  const alunosEditaveis = () => alunosRef.current.filter(a => !statusTextosRef.current[a.id]);
+
+  const avancarCursor = (alunoId: string, day: number, passo: number): { alunoId: string; day: number } | null => {
+    const lista = alunosEditaveis();
+    const idx = lista.findIndex(a => a.id === alunoId);
+    if (idx === -1) return null;
+    const novoDay = day + passo;
+    if (novoDay < numDiasRef.current) return { alunoId, day: novoDay };
+    const proximo = lista[idx + 1];
+    return proximo ? { alunoId: proximo.id, day: 0 } : null;
+  };
+
+  const aplicarSequencial = (status: Status) => {
+    const cur = cursorRef.current;
+    if (!cur) return;
+    const qtd = Math.max(1, Math.min(parseInt(numBufferRef.current || '1', 10) || 1, numDiasRef.current));
+    const fim = Math.min(cur.day + qtd, numDiasRef.current);
+    setDiasAluno(prev => {
+      const dias = [...(prev[cur.alunoId] ?? initDias(numDiasRef.current))];
+      for (let d = cur.day; d < fim; d++) dias[d] = status;
+      return { ...prev, [cur.alunoId]: dias };
+    });
+    setSaved(false);
+    setNumBuffer('');
+    setCursor(avancarCursor(cur.alunoId, cur.day, fim - cur.day));
+  };
+
   // ── Modo Rápido — digita só os totais (F/J/A) por aluno, sem clicar dia a dia ──
   const diasFromCounts = (f: number, j: number, a: number, n: number): Status[] => {
     const arr: Status[] = [];
@@ -395,11 +438,81 @@ export default function Faltas() {
   parseCmdRef.current = (text: string) => parseCmdVoz(text, alunos, calDays, mes, ano, voiceSessionDia);
   parseSessionDateRef.current = (text: string) => parseSessionDateVoz(text, calDays);
 
+  // Mantém os refs do Modo Digitação Sequencial atualizados com o render atual
+  cursorRef.current = cursor;
+  numBufferRef.current = numBuffer;
+  modoRef.current = modo;
+  podeEditarRef.current = podeEditar;
+  numDiasRef.current = numDias;
+  alunosRef.current = alunos;
+  statusTextosRef.current = statusTextos;
+  calDaysRef.current = calDays;
+  showBFRef.current = showBF;
+
   // Limpa histórico e data ativa ao trocar turma ou mês
-  useEffect(() => { setVoiceHistory([]); setVoiceError(''); setVoiceSessionDia(null); setPaintStatus(null); }, [turmaId, mes]);
+  useEffect(() => { setVoiceHistory([]); setVoiceError(''); setVoiceSessionDia(null); setPaintStatus(null); setCursor(null); setNumBuffer(''); }, [turmaId, mes]);
+  // Sai do Modo Digitação Sequencial se trocar para o Modo Rápido
+  useEffect(() => { if (modo !== 'grade') { setCursor(null); setNumBuffer(''); } }, [modo]);
 
   // Cleanup ao desmontar
   useEffect(() => () => { voiceActiveRef.current = false; recognitionRef.current?.stop(); }, []);
+
+  // Listener global de teclado do Modo Digitação Sequencial (ativo só quando há um cursor)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (modoRef.current !== 'grade' || !podeEditarRef.current || showBFRef.current || !cursorRef.current) return;
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+
+      const key = e.key;
+      if (/^[0-9]$/.test(key)) {
+        e.preventDefault();
+        setNumBuffer(prev => (prev + key).slice(-2));
+        return;
+      }
+      if (key === 'Backspace') {
+        e.preventDefault();
+        if (numBufferRef.current) { setNumBuffer(prev => prev.slice(0, -1)); return; }
+        const cur = cursorRef.current;
+        if (cur && cur.day > 0) setCursor({ ...cur, day: cur.day - 1 });
+        return;
+      }
+      if (key === ' ' || key === 'Enter') { e.preventDefault(); aplicarSequencial('P'); return; }
+
+      const upper = key.toUpperCase();
+      if (upper === 'P' || upper === 'F' || upper === 'J' || upper === 'A') {
+        e.preventDefault();
+        aplicarSequencial(upper as Status);
+        return;
+      }
+      if (key === 'ArrowRight') {
+        e.preventDefault(); setNumBuffer('');
+        const cur = cursorRef.current;
+        if (cur && cur.day < numDiasRef.current - 1) setCursor({ ...cur, day: cur.day + 1 });
+        return;
+      }
+      if (key === 'ArrowLeft') {
+        e.preventDefault(); setNumBuffer('');
+        const cur = cursorRef.current;
+        if (cur && cur.day > 0) setCursor({ ...cur, day: cur.day - 1 });
+        return;
+      }
+      if (key === 'ArrowDown' || key === 'ArrowUp') {
+        e.preventDefault(); setNumBuffer('');
+        const cur = cursorRef.current;
+        if (!cur) return;
+        const lista = alunosEditaveis();
+        const idx = lista.findIndex(a => a.id === cur.alunoId);
+        const alvo = lista[idx + (key === 'ArrowDown' ? 1 : -1)];
+        if (alvo) setCursor({ alunoId: alvo.id, day: cur.day });
+        return;
+      }
+      if (key === 'Escape') { e.preventDefault(); setCursor(null); setNumBuffer(''); return; }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   const startVoice = () => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -1157,7 +1270,7 @@ export default function Faltas() {
                 🖌️ Marcando "{ST_LABEL[paintStatus]}" — clique nos dias que quiser marcar (um por um). O nome do aluno ou o número do dia marcam em massa (pedem confirmação). Clique de novo em "{paintStatus}" pra sair.
               </span>
             ) : (
-              <span style={{ fontSize: 11, color: theme.textMuted }}>· Clique numa situação acima para marcar em lote, ou clique direto na célula para alternar</span>
+              <span style={{ fontSize: 11, color: theme.textMuted }}>· Clique numa situação acima para marcar em lote, clique direto na célula para alternar, ou clique no nome do aluno para ativar o ⌨️ Modo Teclado (digite P/F/J/A dia a dia sem tirar a mão do teclado)</span>
             )
           )}
           {podeEditar && alunos.length > 0 && modo === 'rapido' && (
@@ -1476,6 +1589,40 @@ export default function Faltas() {
             ⚠️ Alerta: ≥ {limiteAlerta} ausências (&lt;{isInfantil ? 60 : 75}% frequência{isInfantil ? ' — Infantil' : ''})
           </div>
 
+          {/* ── Painel do Modo Digitação Sequencial ─────────────────────────── */}
+          {modo === 'grade' && cursor && (() => {
+            const alunoCursor = alunos.find(a => a.id === cursor.alunoId);
+            const diaCal = calDays.find(cd => cd.schoolIdx === cursor.day)?.dia;
+            return (
+              <div style={{
+                background: isDark ? 'rgba(37,99,235,0.1)' : '#eff6ff',
+                border: '2px solid #2563eb', borderRadius: theme.radiusMd,
+                padding: '10px 16px', marginBottom: 14,
+                display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+              }}>
+                <span style={{ fontSize: 22 }}>⌨️</span>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 14, color: '#2563eb' }}>
+                    {alunoCursor?.nome ?? '—'} — Dia {diaCal ?? '?'} ({cursor.day + 1}/{numDias})
+                  </div>
+                  <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 2 }}>
+                    Digite <strong>P/F/J/A</strong> pra marcar e avançar · <strong>Espaço/Enter</strong> = Presença ·
+                    número antes da letra marca em lote (ex.: <strong>3</strong> depois <strong>F</strong> = 3 faltas seguidas) ·
+                    ← → navega sem alterar · Esc sai
+                  </div>
+                </div>
+                {numBuffer && (
+                  <span style={{ background: '#2563eb', color: '#fff', fontWeight: 800, fontSize: 16, padding: '4px 12px', borderRadius: 6 }}>
+                    {numBuffer}
+                  </span>
+                )}
+                <button onClick={() => { setCursor(null); setNumBuffer(''); }} style={{ ...btn('ghost', { small: true }), marginLeft: 'auto' }}>
+                  ✕ Sair (Esc)
+                </button>
+              </div>
+            );
+          })()}
+
           {/* Grid de frequência */}
           {modo === 'grade' && (
           <div style={{
@@ -1560,18 +1707,30 @@ export default function Faltas() {
                   return (
                     <tr key={a.id} style={{ background: rowBg }}>
                       <td
-                        onClick={paintStatus && podeEditar && !statusTxt ? () => {
-                          if (window.confirm(`Marcar "${ST_LABEL[paintStatus]}" para TODOS os ${numDias} dias letivos de ${a.nome}?\n\nPara marcar só alguns dias, clique direto nas células dos dias em vez do nome.`)) {
-                            pintarLinha(a.id, paintStatus);
-                          }
-                        } : undefined}
-                        title={paintStatus && podeEditar && !statusTxt ? `Marcar "${ST_LABEL[paintStatus]}" para todos os dias deste aluno (pede confirmação)` : undefined}
+                        onClick={
+                          paintStatus && podeEditar && !statusTxt
+                            ? () => {
+                                if (window.confirm(`Marcar "${ST_LABEL[paintStatus]}" para TODOS os ${numDias} dias letivos de ${a.nome}?\n\nPara marcar só alguns dias, clique direto nas células dos dias em vez do nome.`)) {
+                                  pintarLinha(a.id, paintStatus);
+                                }
+                              }
+                            : podeEditar && !statusTxt
+                              ? () => { setCursor({ alunoId: a.id, day: 0 }); setNumBuffer(''); }
+                              : undefined
+                        }
+                        title={
+                          paintStatus && podeEditar && !statusTxt
+                            ? `Marcar "${ST_LABEL[paintStatus]}" para todos os dias deste aluno (pede confirmação)`
+                            : podeEditar && !statusTxt
+                              ? 'Clique para começar o Modo Teclado no dia 1 deste aluno'
+                              : undefined
+                        }
                         style={{
                           position: 'sticky', left: 0, zIndex: 1,
-                          background: rowBg,
+                          background: cursor?.alunoId === a.id ? (isDark ? 'rgba(37,99,235,0.18)' : '#dbeafe') : rowBg,
                           padding: '8px 12px',
                           borderRight: '2px solid var(--border-light)',
-                          cursor: paintStatus && podeEditar && !statusTxt ? 'pointer' : 'default',
+                          cursor: podeEditar && !statusTxt ? 'pointer' : 'default',
                         }}>
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
                           <span style={{ fontSize: 11, color: theme.textMuted, paddingTop: 2, minWidth: 18 }}>{(a._nrDisplay === 0 ? '—' : a.numero) || '—'}</span>
@@ -1613,12 +1772,16 @@ export default function Faltas() {
                               }} />;
                             }
                             const status = dias[cd.schoolIdx] ?? 'P';
+                            const isCursor = cursor?.alunoId === a.id && cursor?.day === cd.schoolIdx;
                             return (
                               <td key={cd.dia}
-                                onClick={podeEditar ? () => (paintStatus ? pintarDia(a.id, cd.schoolIdx, paintStatus) : toggleDia(a.id, cd.schoolIdx)) : undefined}
+                                onClick={podeEditar ? () => {
+                                  if (paintStatus) { pintarDia(a.id, cd.schoolIdx, paintStatus); }
+                                  else { toggleDia(a.id, cd.schoolIdx); setCursor({ alunoId: a.id, day: cd.schoolIdx }); setNumBuffer(''); }
+                                } : undefined}
                                 title={paintStatus
                                   ? `Dia ${cd.dia}: ${ST_LABEL[status]} — clique para marcar "${ST_LABEL[paintStatus]}"`
-                                  : `Dia ${cd.dia}: ${ST_LABEL[status]}${cd.isSabadoLetivo ? ' (Sábado Letivo)' : ''}`}
+                                  : `Dia ${cd.dia}: ${ST_LABEL[status]}${cd.isSabadoLetivo ? ' (Sábado Letivo)' : ''} — clique pra começar o Modo Teclado aqui`}
                                 style={{
                                   width: isMobile ? 38 : 24, textAlign: 'center', cursor: podeEditar ? 'pointer' : 'default',
                                   background: ST_BG[status], color: ST_COR[status],
@@ -1627,6 +1790,7 @@ export default function Faltas() {
                                   borderLeft: '1px solid var(--border-light)',
                                   userSelect: 'none', transition: 'opacity 0.1s', touchAction: 'manipulation',
                                   position: 'relative',
+                                  boxShadow: isCursor ? 'inset 0 0 0 2px #2563eb' : undefined,
                                 }}
                                 onMouseEnter={!isMobile && podeEditar ? (e => (e.currentTarget.style.opacity = '0.75')) : undefined}
                                 onMouseLeave={!isMobile && podeEditar ? (e => (e.currentTarget.style.opacity = '1')) : undefined}
