@@ -16,7 +16,8 @@ import { theme } from './styles';
 import { ThemeProvider, useTheme } from './ThemeContext';
 import { AnoProvider, useAno } from './AnoContext';
 import { AuthProvider, useAuth } from './AuthContext';
-import type { Role, PageKey } from './AuthContext';
+import type { Role, PageKey, PermKey } from './AuthContext';
+import { ErrorBoundary } from './components';
 
 // ─── Itens de navegação ────────────────────────────────────────────────────
 // adminOnly: true  → visível apenas para admin
@@ -37,20 +38,42 @@ const NAV_ITEMS: { to: string; label: string; end?: boolean; badge?: boolean; ad
 
 const ANOS_DISPONIVEIS = [2025, 2026, 2027];
 
-// ─── Guarda de rota: redireciona viewers para / se tentarem acessar rota admin ─
-function AdminRoute({ children }: { children: React.ReactNode }) {
-  const { role } = useAuth();
-  if (role !== 'admin') return <Navigate to="/" replace />;
-  return <>{children}</>;
+// Primeira aba que o viewer realmente tem acesso, na ordem do menu — usado
+// como destino de redirecionamento em vez de sempre mandar pra "/", que
+// trava numa tela em branco se "Dashboard" não estiver entre as liberadas.
+function primeiraPaginaPermitida(permissoes: PermKey[] | null): string | null {
+  for (const item of NAV_ITEMS) {
+    if (!item.pageKey) continue;
+    if (permissoes === null || permissoes.includes(item.pageKey)) return item.to;
+  }
+  return null;
 }
 
-// ─── Guarda de rota: redireciona viewers sem permissão para / ─────────────────
+function SemAcesso() {
+  return (
+    <div style={{ textAlign: 'center', marginTop: 80, padding: '0 20px' }}>
+      <div style={{ fontSize: 48, marginBottom: 12 }}>🔒</div>
+      <p style={{ fontSize: 17 }}>Você ainda não tem acesso a nenhuma aba. Fale com a administração.</p>
+    </div>
+  );
+}
+
+// ─── Guarda de rota: redireciona viewers para a primeira aba liberada ─────────
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { role, permissoes } = useAuth();
+  if (role === 'admin') return <>{children}</>;
+  const destino = primeiraPaginaPermitida(permissoes);
+  return destino ? <Navigate to={destino} replace /> : <SemAcesso />;
+}
+
+// ─── Guarda de rota: redireciona viewers sem permissão pra primeira aba liberada ─
 function ViewerRoute({ children, pageKey }: { children: React.ReactNode; pageKey: PageKey }) {
   const { role, permissoes } = useAuth();
   if (role === 'admin') return <>{children}</>;          // admin: acesso total
   if (permissoes === null) return <>{children}</>;       // null = todas liberadas
-  if (!permissoes.includes(pageKey)) return <Navigate to="/" replace />;
-  return <>{children}</>;
+  if (permissoes.includes(pageKey)) return <>{children}</>;
+  const destino = primeiraPaginaPermitida(permissoes);
+  return destino ? <Navigate to={destino} replace /> : <SemAcesso />;
 }
 
 function AppShell() {
@@ -269,7 +292,9 @@ function App() {
     <ThemeProvider>
       <AnoProvider>
         <AuthProvider>
-          <AppContent />
+          <ErrorBoundary>
+            <AppContent />
+          </ErrorBoundary>
         </AuthProvider>
       </AnoProvider>
     </ThemeProvider>

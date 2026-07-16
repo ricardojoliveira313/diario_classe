@@ -1,4 +1,51 @@
+import { Component } from 'react';
+import type { ErrorInfo, ReactNode } from 'react';
 import { theme, SITUACAO_COR, SITUACAO_LABEL } from './styles';
+
+// Evita tela branca sem explicação: captura exceções de render em qualquer
+// tela e mostra uma mensagem amigável com opção de recarregar, em vez de
+// derrubar o app inteiro em silêncio.
+interface ErrorBoundaryState { erro: Error | null }
+
+export class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryState> {
+  state: ErrorBoundaryState = { erro: null };
+
+  static getDerivedStateFromError(erro: Error): ErrorBoundaryState {
+    return { erro };
+  }
+
+  componentDidCatch(erro: Error, info: ErrorInfo) {
+    console.error('Erro não tratado:', erro, info.componentStack);
+  }
+
+  render() {
+    if (this.state.erro) {
+      return (
+        <div style={{ textAlign: 'center', marginTop: 80, padding: '0 20px' }}>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>⚠️</div>
+          <p style={{ fontSize: 18, fontWeight: 700, color: theme.text, marginBottom: 6 }}>
+            Algo deu errado nesta tela.
+          </p>
+          <p style={{ fontSize: 14, color: theme.textSecondary, marginBottom: 20 }}>
+            Seus dados não foram perdidos — nada foi salvo até você confirmar.
+            Tente recarregar a página.
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            style={{
+              padding: '10px 20px', borderRadius: theme.radius, border: 'none',
+              background: theme.primary, color: '#fff', fontWeight: 700,
+              fontSize: 14, cursor: 'pointer',
+            }}
+          >
+            🔄 Recarregar página
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 export function Spinner({ size = 20 }: { size?: number }) {
   return (
