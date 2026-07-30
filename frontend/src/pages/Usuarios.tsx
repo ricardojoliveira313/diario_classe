@@ -37,7 +37,7 @@ export default function Usuarios() {
       // Nunca seleciona a coluna "senha" — bloqueada no banco por segurança (ver CORRIGIR_SEGURANCA_SENHAS.sql)
       const { data, error } = await supabase
         .from('Usuario')
-        .select('id, nome, perfil, ativo, turma_id, turmas_ids, permissoes')
+        .select('id, nome, perfil, ativo, turma_id, permissoes')
         .order('id', { ascending: true });
       if (error) {
         console.error('Erro ao carregar usuários:', error);
@@ -243,8 +243,10 @@ export default function Usuarios() {
               : allPerm.filter(k => PAGINAS_VIEWER.some(p => p.key === k)).length;
             const caps = allPerm?.filter(k => CAPABILITIES.some(c => c.key === k)) ?? [];
             const hasTodas = caps.includes('faltas_todas');
-            const turmasDoUsuario: string[] = Array.isArray(u.turmas_ids) && u.turmas_ids.length > 0
-              ? u.turmas_ids
+            const turmasDoUsuario: string[] = Array.isArray(u.permissoes)
+              ? u.permissoes
+                  .filter((p: unknown): p is string => typeof p === 'string' && p.startsWith('turma:'))
+                  .map((p: string) => p.slice('turma:'.length))
               : (u.turma_id ? [u.turma_id] : []);
             const nomesDasTurmas = turmasDoUsuario
               .map(id => turmas.find(t => t.id === id)?.nome)
