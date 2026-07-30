@@ -10,6 +10,7 @@ import Pendentes from './pages/Pendentes';
 import Distorcao from './pages/Distorcao';
 import Ocorrencias from './pages/Ocorrencias';
 import Usuarios from './pages/Usuarios';
+import Protocolo from './pages/Protocolo';
 import Login from './pages/Login';
 import { api, supabase } from './api';
 import { theme } from './styles';
@@ -34,6 +35,7 @@ const NAV_ITEMS: { to: string; label: string; end?: boolean; badge?: boolean; ad
   { to: '/distorcao', label: '📐 Distorção',                          pageKey: 'distorcao' },
   { to: '/pendentes', label: '📋 Ata',                badge: true,    pageKey: 'pendentes' },
   { to: '/usuarios',  label: '👥 Usuários',  adminOnly: true },
+  { to: '/protocolo', label: '📄 Protocolo',  adminOnly: true },
 ];
 
 const ANOS_DISPONIVEIS = [2025, 2026, 2027];
@@ -273,6 +275,7 @@ function AppShell() {
             <Route path="/ocorrencias" element={<ViewerRoute pageKey="ocorrencias"><Ocorrencias /></ViewerRoute>} />
             <Route path="/pendentes" element={<ViewerRoute pageKey="pendentes"><Pendentes /></ViewerRoute>} />
             <Route path="/usuarios" element={<AdminRoute><Usuarios /></AdminRoute>} />
+            <Route path="/protocolo" element={<AdminRoute><Protocolo /></AdminRoute>} />
           </Routes>
         </div>
       </div>
