@@ -79,7 +79,7 @@ REVOKE ALL ON FUNCTION verificar_login(TEXT, TEXT) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION verificar_login(TEXT, TEXT) TO anon, authenticated;
 
 -- 5. Garante os privilégios de tabela que o painel "Gerenciar Usuários" precisa
-GRANT SELECT (id, nome, perfil, permissoes, turma_id, created_at) ON "Usuario" TO anon, authenticated;
+GRANT SELECT (id, nome, perfil, permissoes, turma_id, ativo) ON "Usuario" TO anon, authenticated;
 GRANT INSERT (nome, senha, perfil, permissoes, turma_id) ON "Usuario" TO anon, authenticated;
 GRANT UPDATE (nome, senha, perfil, permissoes, turma_id) ON "Usuario" TO anon, authenticated;
 GRANT DELETE ON "Usuario" TO anon, authenticated;
