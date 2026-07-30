@@ -70,8 +70,8 @@ export default function Faltas() {
   const ST_BG = isDark ? ST_BG_DARK : ST_BG_LIGHT;
   const ST_COR = isDark ? ST_COR_DARK : ST_COR_LIGHT;
   const { ano } = useAno();
-  const { role, turmaId: minhaTurmaId, podeEditarTodasFaltas } = useAuth();
-  const podeEditar = role === 'admin' || !!minhaTurmaId || podeEditarTodasFaltas;
+  const { role, turmaIds: minhasTurmasIds, podeEditarTodasFaltas } = useAuth();
+  const podeEditar = role === 'admin' || minhasTurmasIds.length > 0 || podeEditarTodasFaltas;
 
   const [turmas, setTurmas] = useState<any[]>([]);
   const [turmaId, setTurmaId] = useState('');
@@ -127,16 +127,16 @@ export default function Faltas() {
   useEffect(() => {
     api.getTurmas().then(t => {
       const s = sortTurmasPedagogico(t || []);
-      if (minhaTurmaId && !podeEditarTodasFaltas) {
-        const minhas = s.filter(x => x.id === minhaTurmaId);
+      if (minhasTurmasIds.length > 0 && !podeEditarTodasFaltas) {
+        const minhas = s.filter(x => minhasTurmasIds.includes(x.id));
         setTurmas(minhas);
-        setTurmaId(minhaTurmaId);
+        setTurmaId(minhas[0]?.id ?? '');
       } else {
         setTurmas(s);
         if (s.length) setTurmaId(s[0].id);
       }
     });
-  }, []);
+  }, [minhasTurmasIds, podeEditarTodasFaltas]);
 
   useEffect(() => {
     if (!turmaId) { setLoading(false); return; }
@@ -945,7 +945,7 @@ export default function Faltas() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
           <div>
             <label style={label}>Turma</label>
-            <select style={input} value={turmaId} onChange={e => setTurmaId(e.target.value)} disabled={!!minhaTurmaId && !podeEditarTodasFaltas}>
+            <select style={input} value={turmaId} onChange={e => setTurmaId(e.target.value)} disabled={minhasTurmasIds.length <= 1 && !podeEditarTodasFaltas}>
               {turmas.map(t => {
                 // Se existem duas turmas com o mesmo nome (ex: duas "EJA I"), mostra a professora
                 const duplicado = turmas.filter(x => x.nome === t.nome).length > 1;
@@ -956,9 +956,9 @@ export default function Faltas() {
                 );
               })}
             </select>
-            {minhaTurmaId && (
+            {minhasTurmasIds.length > 0 && !podeEditarTodasFaltas && (
               <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 4 }}>
-                🔒 Acesso restrito à sua turma
+                🔒 Acesso restrito {minhasTurmasIds.length === 1 ? 'à sua turma' : 'às suas turmas'}
               </div>
             )}
           </div>
