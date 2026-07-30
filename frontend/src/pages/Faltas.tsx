@@ -70,7 +70,17 @@ export default function Faltas() {
   const ST_BG = isDark ? ST_BG_DARK : ST_BG_LIGHT;
   const ST_COR = isDark ? ST_COR_DARK : ST_COR_LIGHT;
   const { ano } = useAno();
-  const { role, turmaIds: minhasTurmasIds, podeEditarTodasFaltas } = useAuth();
+  const { role, turmaId: minhaTurmaId, permissoes, podeEditarTodasFaltas } = useAuth();
+  // Turmas adicionais ficam registradas como "turma:<uuid>" nas permissões.
+  // O fallback mantém compatibilidade com os usuários antigos de uma turma só.
+  const turmasMarcadas = Array.isArray(permissoes)
+    ? permissoes
+        .filter((p: string) => p.startsWith('turma:'))
+        .map(p => p.slice('turma:'.length))
+    : [];
+  const minhasTurmasIds = turmasMarcadas.length > 0
+    ? turmasMarcadas
+    : (minhaTurmaId ? [minhaTurmaId] : []);
   const podeEditar = role === 'admin' || minhasTurmasIds.length > 0 || podeEditarTodasFaltas;
 
   const [turmas, setTurmas] = useState<any[]>([]);
