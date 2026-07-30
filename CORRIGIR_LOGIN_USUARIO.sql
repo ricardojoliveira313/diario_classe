@@ -32,6 +32,13 @@
 -- 1. Extensão de criptografia
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
+-- 1b. Garante as colunas do esquema original (a tabela "Usuario" parece
+--     ter sido recriada sem elas — foi o que causou o erro
+--     "column created_at does not exist" ao tentar rodar este script)
+ALTER TABLE "Usuario" ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE "Usuario" ADD COLUMN IF NOT EXISTS permissoes JSONB DEFAULT NULL;
+ALTER TABLE "Usuario" ADD COLUMN IF NOT EXISTS turma_id UUID REFERENCES "Turma"(id) ON DELETE SET NULL;
+
 -- 2. Migra qualquer senha em texto puro (ex: usuários criados enquanto
 --    o gatilho estava faltando) para hash bcrypt
 UPDATE "Usuario"

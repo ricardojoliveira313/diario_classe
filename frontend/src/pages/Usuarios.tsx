@@ -33,10 +33,20 @@ export default function Usuarios() {
 
   const carregar = async () => {
     setLoading(true);
-    // Nunca seleciona a coluna "senha" — bloqueada no banco por segurança (ver CORRIGIR_SEGURANCA_SENHAS.sql)
-    const { data } = await supabase.from('Usuario').select('id, nome, perfil, permissoes, turma_id, created_at').order('nome');
-    setUsuarios(data ?? []);
-    setLoading(false);
+    try {
+      // Nunca seleciona a coluna "senha" — bloqueada no banco por segurança (ver CORRIGIR_SEGURANCA_SENHAS.sql)
+      const { data, error } = await supabase
+        .from('Usuario')
+        .select('id, nome, perfil, ativo, turma_id, permissoes')
+        .order('id', { ascending: true });
+      if (error) {
+        console.error('Erro ao carregar usuários:', error);
+        throw error;
+      }
+      setUsuarios(data ?? []);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { carregar(); api.getTurmas().then(setTurmas); }, []);
