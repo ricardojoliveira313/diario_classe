@@ -72,15 +72,22 @@ export default function Faltas() {
   const { ano } = useAno();
   const { role, turmaId: minhaTurmaId, permissoes, podeEditarTodasFaltas } = useAuth();
   // Turmas adicionais ficam registradas como "turma:<uuid>" nas permissões.
-  // O fallback mantém compatibilidade com os usuários antigos de uma turma só.
-  const turmasMarcadas = Array.isArray(permissoes)
-    ? permissoes
-        .filter((p: string) => p.startsWith('turma:'))
-        .map(p => p.slice('turma:'.length))
-    : [];
-  const minhasTurmasIds = turmasMarcadas.length > 0
-    ? turmasMarcadas
-    : (minhaTurmaId ? [minhaTurmaId] : []);
+  // A memoização evita que a lista seja recriada em cada renderização e
+  // que a turma escolhida manualmente seja trocada de volta para a primeira.
+  const turmasMarcadas = useMemo(
+    () => Array.isArray(permissoes)
+      ? permissoes
+          .filter((p: string) => p.startsWith('turma:'))
+          .map(p => p.slice('turma:'.length))
+      : [],
+    [permissoes],
+  );
+  const minhasTurmasIds = useMemo(
+    () => turmasMarcadas.length > 0
+      ? turmasMarcadas
+      : (minhaTurmaId ? [minhaTurmaId] : []),
+    [turmasMarcadas, minhaTurmaId],
+  );
   const podeEditar = role === 'admin' || minhasTurmasIds.length > 0 || podeEditarTodasFaltas;
 
   const [turmas, setTurmas] = useState<any[]>([]);
