@@ -40,6 +40,8 @@ function toInputDate(d: string) {
 
 export default function Ocorrencias() {
   const { role, username } = useAuth();
+  // Estes logins possuem acesso global às ocorrências da escola.
+  const acessoGlobalOcorrencias = username === 'ricojoliveira' || username === 'danielle@lg.com.br';
   const [ocorrencias, setOcorrencias] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -60,7 +62,7 @@ export default function Ocorrencias() {
         tipo: filtroTipo || undefined,
         dataInicio: filtroDataInicio || undefined,
         dataFim: filtroDataFim || undefined,
-        registrado_por: username || undefined,
+        registrado_por: acessoGlobalOcorrencias ? undefined : (username || undefined),
       });
       setOcorrencias(data);
     } catch (e) {
