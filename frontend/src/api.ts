@@ -123,8 +123,10 @@ export const api = {
   },
 
   // --- OCORRENCIAS (faltas de servidores) ---
-  getOcorrencias: async (filtros?: { servidor?: string; tipo?: string; dataInicio?: string; dataFim?: string }) => {
+  getOcorrencias: async (filtros?: { servidor?: string; tipo?: string; dataInicio?: string; dataFim?: string; registrado_por?: string }) => {
     let q = supabase.from('Ocorrencia').select('*').order('data', { ascending: false }).order('created_at', { ascending: false });
+    // Cada usuário visualiza somente as ocorrências registradas no próprio login.
+    if (filtros?.registrado_por) q = q.eq('registrado_por', filtros.registrado_por);
     if (filtros?.servidor) q = q.ilike('servidor', `%${filtros.servidor}%`);
     if (filtros?.tipo) q = q.eq('tipo', filtros.tipo);
     if (filtros?.dataInicio) q = q.gte('data', filtros.dataInicio);
