@@ -243,6 +243,15 @@ export default function Usuarios() {
               : allPerm.filter(k => PAGINAS_VIEWER.some(p => p.key === k)).length;
             const caps = allPerm?.filter(k => CAPABILITIES.some(c => c.key === k)) ?? [];
             const hasTodas = caps.includes('faltas_todas');
+            const turmasDoUsuario: string[] = Array.isArray(u.permissoes)
+              ? u.permissoes
+                  .filter((p: unknown): p is string => typeof p === 'string' && p.startsWith('turma:'))
+                  .map((p: string) => p.slice('turma:'.length))
+              : (u.turma_id ? [u.turma_id] : []);
+            const nomesDasTurmas = turmasDoUsuario
+              .map(id => turmas.find(t => t.id === id)?.nome)
+              .filter(Boolean)
+              .join(', ');
             const editandoPerm = editandoPermId === u.id;
             const editando = editandoId === u.id;
 
@@ -260,8 +269,8 @@ export default function Usuarios() {
                           : `🔒 ${pageCount}/${PAGINAS_VIEWER.length} abas`}
                         {hasTodas
                           ? <span style={{ marginLeft: 8, color: theme.success, fontWeight: 600 }}>· 📋 Lança faltas (todas as turmas)</span>
-                          : u.turma_id
-                            ? <span style={{ marginLeft: 8, color: theme.success, fontWeight: 600 }}>· 🖊️ Lança faltas: {turmas.find(t => t.id === u.turma_id)?.nome ?? '—'}</span>
+                          : turmasDoUsuario.length > 0
+                            ? <span style={{ marginLeft: 8, color: theme.success, fontWeight: 600 }}>· 🖊️ Lança faltas: {nomesDasTurmas || '—'}</span>
                             : <span style={{ marginLeft: 8 }}>· 👁️ Somente consulta</span>}
                         {caps.filter(c => c !== 'faltas_todas').length > 0 &&
                           <span style={{ marginLeft: 8, color: theme.purple, fontWeight: 600 }}>
