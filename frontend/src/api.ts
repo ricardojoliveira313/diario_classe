@@ -149,6 +149,29 @@ export const api = {
     if (error) throw error;
   },
 
+  // --- CONTROLE DE LANÇAMENTOS ---
+  upsertLancamento: async (turmaId: string, mes: number, ano: number, lancadoPor: string, totalFaltas: number, alunosComFalta: number) => {
+    const { error } = await supabase.from('LancamentoFaltas').upsert({
+      turma_id: turmaId,
+      mes,
+      ano,
+      lancado_por: lancadoPor,
+      lancado_em: new Date().toISOString(),
+      total_faltas: totalFaltas,
+      alunos_com_falta: alunosComFalta,
+    }, { onConflict: 'turma_id,mes,ano' });
+    if (error) throw error;
+  },
+  getLancamentos: async (mes: number, ano: number) => {
+    const { data, error } = await supabase
+      .from('LancamentoFaltas')
+      .select('*')
+      .eq('mes', mes)
+      .eq('ano', ano);
+    if (error) throw error;
+    return data ?? [];
+  },
+
   reloadSchema: async () => {
     const { error } = await supabase.rpc('pgrst_reload_schema' as any);
     if (error) {

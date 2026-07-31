@@ -70,7 +70,7 @@ export default function Faltas() {
   const ST_BG = isDark ? ST_BG_DARK : ST_BG_LIGHT;
   const ST_COR = isDark ? ST_COR_DARK : ST_COR_LIGHT;
   const { ano } = useAno();
-  const { role, turmaId: minhaTurmaId, permissoes, podeEditarTodasFaltas } = useAuth();
+  const { role, turmaId: minhaTurmaId, permissoes, podeEditarTodasFaltas, username } = useAuth();
   // Turmas adicionais ficam registradas como "turma:<uuid>" nas permissões.
   // A memoização evita que a lista seja recriada em cada renderização e
   // que a turma escolhida manualmente seja trocada de volta para a primeira.
@@ -318,6 +318,12 @@ export default function Faltas() {
       };
     });
     await api.upsertFaltasBatch(registros);
+    // Registra no controle de lançamentos (não bloqueia mesmo se a tabela ainda não existir)
+    try {
+      const totalFaltas = registros.reduce((s, r) => s + (r.faltas ?? 0), 0);
+      const alunosComFalta = registros.filter(r => (r.faltas ?? 0) > 0).length;
+      await api.upsertLancamento(turmaId, mes, ano, username ?? 'desconhecido', totalFaltas, alunosComFalta);
+    } catch { /* tabela ainda não criada — ignorar silenciosamente */ }
     setSaving(false);
     setSaved(true);
   };
