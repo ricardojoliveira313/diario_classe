@@ -60,6 +60,7 @@ export default function Ocorrencias() {
         tipo: filtroTipo || undefined,
         dataInicio: filtroDataInicio || undefined,
         dataFim: filtroDataFim || undefined,
+        registrado_por: username || undefined,
       });
       setOcorrencias(data);
     } catch (e) {
