@@ -2088,6 +2088,9 @@ export default function Importar() {
               const legado = freshRegular.get(raKey);
               if (legado && targetTurmaId && legado.turmaId === targetTurmaId) existente = legado;
               else if (legado && !targetTurmaId) existente = legado;
+              // Fallback final: mesmo que targetTurmaId difira, reutiliza o registro existente
+              // para evitar duplicata — o upsert atualiza o turmaId para o valor resolvido
+              else if (legado) existente = legado;
             }
             if (!existente && malClassificado) existente = aeeRecord;
           }
@@ -2111,7 +2114,7 @@ export default function Importar() {
         return {
           id: alunoId,
           nome: a.nome,
-          turmaId: targetTurmaId,
+          turmaId: targetTurmaId ?? existente?.turmaId ?? null,
           ra: a.ra,
           // Nr da SED (PDF) sempre ganha; fallback DB aplicado após dedup sem conflito
           numero: a.numero > 0 ? a.numero : 0,
