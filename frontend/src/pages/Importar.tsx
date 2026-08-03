@@ -1172,10 +1172,13 @@ export default function Importar() {
       const mkKey = (a: AlunoUnificado) => {
         if (!a.ra) return `${a.nomeNorm}|${normalizarData(a.nascimento)}`;
         const turmaNorm = normSerieKey(a.serie ?? '');
-        const sit = a.situacao ?? 'ATIVO';
-        // Chave: RA+turma+situação — permite Excel e PDF mesclarem para o mesmo aluno
-        // (não inclui número: PDF e Excel podem ter numerações diferentes, mas são o mesmo aluno)
-        if (turmaNorm) return `RA:${a.ra}|${turmaNorm}|${sit}`;
+        // REMA mantém turma+situação na chave — um registro por turma de origem
+        // Para todas as outras situações (ATIVO, TRAN, BXTR, N COM…): chave por RA+turma
+        // sem situação, garantindo que o mesmo aluno nunca apareça duas vezes na mesma turma
+        if (a.situacao === 'REMA') {
+          return turmaNorm ? `RA:${a.ra}|${turmaNorm}|REMA` : `RA:${a.ra}|REMA`;
+        }
+        if (turmaNorm) return `RA:${a.ra}|${turmaNorm}`;
         return `RA:${a.ra}`;
       };
       // Prioridade: Excel primeiro (dados mais completos), depois PDF
@@ -1323,35 +1326,30 @@ export default function Importar() {
             return;
           }
 
-          // ─── Retorno após transferência: mesmo RA, mesma turma, TRAN + ATIVO ──
-          // O SED registra dois lançamentos quando um aluno é transferido e volta:
-          //   • TRAN  (nº antigo — quando foi embora)
-          //   • ATIVO (nº novo  — quando voltou, mesma turma)
-          // Ambas as linhas devem existir — espelho fiel do relatório SED.
-          const ehTransfRetornoMesmaTurma = !seriesDiferentes && (
-            (existente.situacao === 'TRAN' && a.situacao === 'ATIVO') ||
-            (existente.situacao === 'ATIVO' && a.situacao === 'TRAN')
-          );
-          if (ehTransfRetornoMesmaTurma) {
-            const tranEntry = existente.situacao === 'TRAN' ? existente : a;
-            const ativoEntry = existente.situacao === 'TRAN' ? a : existente;
-            const tranKey = `${key}|TRAN|${tranEntry.numero || tranEntry.dataMovimentacao || 'X'}`;
-            todosAlunos.set(key, ativoEntry);
-            todosAlunos.set(tranKey, tranEntry);
-            return;
-          }
-
-          // ─── Outras situações diferentes na mesma turma ──────────────────────
-          // Ex: TRAN + N COM na mesma turma → preservar ambas as entradas.
-          // ehRemaRetornoMesmaTurma e ehTransfRetornoMesmaTurma já trataram REMA/TRAN+ATIVO.
+          // ─── Situações diferentes na mesma turma → merge em um único registro ──
+          // Regra: situação não-ATIVO prevalece sobre ATIVO (TRAN, BXTR, N COM são definitivos).
+          // Preserva número de chamada, datas e dados do registro existente.
           if (!seriesDiferentes && existente.situacao !== a.situacao) {
-            const isAtivoA  = a.situacao === 'ATIVO' || !a.situacao;
-            const isAtivoEx = existente.situacao === 'ATIVO' || !existente.situacao;
-            const main       = isAtivoA ? a : (isAtivoEx ? existente : existente);
-            const outroEntry = main === a ? existente : a;
-            const outroKey   = `${key}|${outroEntry.situacao || 'X'}|${outroEntry.numero || outroEntry.dataMovimentacao || 'X'}`;
-            todosAlunos.set(key, main);
-            if (!todosAlunos.has(outroKey)) todosAlunos.set(outroKey, outroEntry);
+            const isAtivoExistente = !existente.situacao || existente.situacao === 'ATIVO';
+            const isAtivoNovo = !a.situacao || a.situacao === 'ATIVO';
+            // Não-ATIVO vence: atualiza situação e mescla dados
+            if (!isAtivoNovo && isAtivoExistente) {
+              existente.situacao = a.situacao;
+              if (!existente.dataMovimentacao && a.dataMovimentacao)
+                existente.dataMovimentacao = a.dataMovimentacao;
+              if (!existente.dataFimMatricula && a.dataFimMatricula)
+                existente.dataFimMatricula = a.dataFimMatricula;
+            } else if (isAtivoNovo && !isAtivoExistente) {
+              // Existente já tem situação definitiva — herda apenas dados extras do ATIVO
+              if (!existente.numero && a.numero) existente.numero = a.numero;
+              if (!existente.dataInicioMatricula && a.dataInicioMatricula)
+                existente.dataInicioMatricula = a.dataInicioMatricula;
+            }
+            existente.bolsaFamilia = existente.bolsaFamilia || a.bolsaFamilia;
+            existente.nis = existente.nis || a.nis;
+            existente.cpf = existente.cpf || a.cpf;
+            existente.deficiencia = existente.deficiencia || a.deficiencia;
+            Object.assign(existente.faltas, a.faltas);
             return;
           }
 
@@ -1832,9 +1830,9 @@ export default function Importar() {
       {
         const raGrupos = new Map<string, Array<{ id: string; cpf?: string; nis?: string; responsavel?: string; bolsa_familia?: boolean }>>();
         for (const e of (existentes ?? [])) {
-          // REMA/TRAN/BXTR nunca são "duplicata de RA" — são o mesmo aluno em situações
-          // distintas (remanejamento, retorno após transferência) e precisam coexistir.
-          if (!e.ra || e.situacao === 'REMA' || e.situacao === 'TRAN' || e.situacao === 'BXTR') continue;
+          // REMA tem registros legítimos separados por turma — não entra no dedup por RA
+          // TRAN/BXTR/N COM/ATIVO são todos o mesmo aluno → unificar em um único registro
+          if (!e.ra || e.situacao === 'REMA') continue;
           // Alinha com aluno_ra_uniq: só exclui registos com aee=TRUE (coluna, não turmaId)
           if (e.aee === true) continue;
           const k = String(e.ra);
@@ -1853,10 +1851,16 @@ export default function Importar() {
             faltasPorAluno.get(f.alunoId)!.push(f);
           }
           for (const grupo of grupos) {
-            // Canônico = o que tem mais faltas; empate → primeiro da lista
-            const canonico = grupo.reduce((best, cur) =>
-              (faltasPorAluno.get(cur.id)?.length ?? 0) > (faltasPorAluno.get(best.id)?.length ?? 0) ? cur : best
-            );
+            // Canônico: preferência para situação não-ATIVO (TRAN/BXTR/N COM são definitivos)
+            // Empate na prioridade: mais faltas ganha; empate total → primeiro da lista
+            const isAtivoSit = (sit: string) => !sit || sit === 'ATIVO';
+            const canonico = grupo.reduce((best, cur) => {
+              const bestAtivo = isAtivoSit(best.situacao);
+              const curAtivo = isAtivoSit(cur.situacao);
+              if (!curAtivo && bestAtivo) return cur;
+              if (curAtivo && !bestAtivo) return best;
+              return (faltasPorAluno.get(cur.id)?.length ?? 0) > (faltasPorAluno.get(best.id)?.length ?? 0) ? cur : best;
+            });
             const extras = grupo.filter(e => e.id !== canonico.id);
             const mesesCanon = new Set(
               (faltasPorAluno.get(canonico.id) ?? []).map(f => `${f.mes}-${f.ano}`)
@@ -1875,6 +1879,9 @@ export default function Importar() {
               if (extra.cpf && !canonico.cpf) up.cpf = extra.cpf;
               if (extra.nis && !canonico.nis) up.nis = extra.nis;
               if (extra.responsavel && !canonico.responsavel) up.responsavel = extra.responsavel;
+              if (extra.numero && !canonico.numero) up.numero = extra.numero;
+              if (extra.data_inicio_matricula && !canonico.data_inicio_matricula)
+                up.data_inicio_matricula = extra.data_inicio_matricula;
               if (Object.keys(up).length > 0)
                 await supabase.from('Aluno').update(up).eq('id', canonico.id);
               snapAlunosDeletados.push(extra); // snapshot para rollback
@@ -1889,7 +1896,7 @@ export default function Importar() {
         const grpNomePre = new Map<string, any[]>();
         for (const e of (existentes ?? [])) {
           if (idsRemovidosPreLimpeza.has(e.id)) continue;
-          if (e.situacao === 'REMA' || e.situacao === 'TRAN' || e.situacao === 'BXTR') continue;
+          if (e.situacao === 'REMA') continue;
           if (e.aee === true) continue;
           if (e.turmaId && aeeturmaIds.has(e.turmaId)) continue;
           const nn = normalizeNome(e.nome);
