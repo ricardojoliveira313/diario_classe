@@ -2081,6 +2081,9 @@ export default function Importar() {
           } else if (a.situacao === 'TRAN') {
             existente = (targetTurmaId ? freshTran.get(`${raKey}|TID:${targetTurmaId}`) : null)
               ?? freshTran.get(raKey)
+              // Aluno transita de ATIVO→TRAN: encontra registro ATIVO existente no DB
+              ?? (targetTurmaId ? freshRegular.get(`${raKey}|TID:${targetTurmaId}`) : null)
+              ?? freshRegular.get(raKey)
               ?? null;
           } else {
             // Só usa fallback freshAEE para registos mal classificados (turmaId=null).
