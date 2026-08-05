@@ -206,9 +206,26 @@ function isTurmaAEE(turma: TurmaHistorico | null): boolean {
 
 function formatarData(data: string | null): string {
   if (!data) return '';
+  const brasileira = data.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (brasileira) return data;
   const iso = data.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
   return data;
+}
+
+function normalizarDataParaBanco(data: string | null): string | null {
+  const valor = data?.trim();
+  if (!valor) return null;
+  const iso = valor.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const brasileira = valor.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (brasileira) return `${brasileira[3]}-${brasileira[2]}-${brasileira[1]}`;
+  return null;
+}
+
+function extrairAno(data: string | null): string {
+  const valorBanco = normalizarDataParaBanco(data);
+  return valorBanco?.slice(0, 4) ?? '';
 }
 
 function TabelaNotas({ grupo, anexo = false }: { grupo: GrupoNotas; anexo?: boolean }) {
@@ -404,7 +421,7 @@ export default function Historico() {
       }
 
       const cicloAtual = detectarCiclo(selecionado.Turma?.nome ?? '');
-      const anoMatricula = selecionado.data_inicio_matricula?.slice(0, 4) ?? '';
+      const anoMatricula = extrairAno(selecionado.data_inicio_matricula);
       const novasLinhas = CICLOS_LABELS.map((labelCiclo, index): LinhaCiclo => {
         const ciclo = index + 1;
         const salva = historico.find(item => item.ciclo === ciclo);
@@ -535,11 +552,11 @@ export default function Historico() {
       estado_nasc: estadoNasc || null,
       nome_aluno: aluno.nome.trim() || null,
       ra_exibicao: raExibicao.trim() || String(aluno.ra),
-      data_nascimento: aluno.data_nascimento || null,
+      data_nascimento: normalizarDataParaBanco(aluno.data_nascimento),
       cpf: aluno.cpf?.trim() || null,
       situacao: aluno.situacao?.trim().toUpperCase() || null,
-      data_inicio_matricula: aluno.data_inicio_matricula || null,
-      data_fim_matricula: aluno.data_fim_matricula || null,
+      data_inicio_matricula: normalizarDataParaBanco(aluno.data_inicio_matricula),
+      data_fim_matricula: normalizarDataParaBanco(aluno.data_fim_matricula),
       turma_nome: aluno.Turma?.nome.trim() || null,
       total_faltas: totalFaltas,
       transferencia_ano_ciclo: transferenciaAnoCiclo || null,
@@ -724,8 +741,8 @@ export default function Historico() {
               <label style={label}>CPF<input style={input} value={aluno.cpf ?? ''} onChange={event => atualizarAluno('cpf', event.target.value || null)} /></label>
               <label style={label}>Situação<input list="historico-situacoes" style={input} value={aluno.situacao ?? ''} onChange={event => atualizarAluno('situacao', event.target.value.toUpperCase() || null)} /></label>
               <datalist id="historico-situacoes"><option value="ATIVO" /><option value="TRAN" /><option value="BXTR" /><option value="CONCLUÍDO" /></datalist>
-              <label style={label}>Início da matrícula<input type="date" style={input} value={aluno.data_inicio_matricula?.slice(0, 10) ?? ''} onChange={event => atualizarAluno('data_inicio_matricula', event.target.value || null)} /></label>
-              <label style={label}>Data de saída<input type="date" style={input} value={aluno.data_fim_matricula?.slice(0, 10) ?? ''} onChange={event => atualizarAluno('data_fim_matricula', event.target.value || null)} /></label>
+              <label style={label}>Início da matrícula<input type="date" style={input} value={normalizarDataParaBanco(aluno.data_inicio_matricula) ?? ''} onChange={event => atualizarAluno('data_inicio_matricula', event.target.value || null)} /></label>
+              <label style={label}>Data de saída<input type="date" style={input} value={normalizarDataParaBanco(aluno.data_fim_matricula) ?? ''} onChange={event => atualizarAluno('data_fim_matricula', event.target.value || null)} /></label>
               <label style={label}>Última turma<input style={input} value={aluno.Turma?.nome ?? ''} onChange={event => atualizarTurma(event.target.value)} /></label>
               <label style={label}>Total de faltas<input type="number" min={0} style={input} value={totalFaltas} onChange={event => setTotalFaltas(Math.max(0, Number(event.target.value) || 0))} /></label>
             </div>
