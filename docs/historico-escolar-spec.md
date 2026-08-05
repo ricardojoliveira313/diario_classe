@@ -196,38 +196,56 @@ const buscarPorRA = async () => {
 
   setCarregando(true); setErro(null); setAluno(null);
 
-  // 1. Busca o aluno com join na Turma
-  const { data: rows } = await supabase
+  // 1. Buscar aluno e histórico sem join embutido
+  const [alunoResult, historicoResult] = await Promise.all([
+    supabase
     .from('Aluno')
-    .select(`ra, nome, data_nascimento, cpf, situacao,
-             turmaId, data_inicio_matricula, data_fim_matricula, id,
-             Turma:turmaId ( nome, professora, periodo )`)
-    .eq('ra', ra);
+      .select('ra, nome, data_nascimento, cpf, situacao, turmaId, data_inicio_matricula, data_fim_matricula, id')
+      .eq('ra', ra),
+    supabase.from('HistoricoAluno').select('*').eq('ra', ra).order('ciclo'),
+  ]);
 
-  if (!rows || rows.length === 0) {
-    setErro(`Aluno com RA ${ra} não encontrado.`);
-    setCarregando(false); return;
-  }
+  const rows = alunoResult.data ?? [];
+  const hist = historicoResult.data ?? [];
+
+  // 2. Buscar as turmas separadamente. O banco atual não possui FK
+  // Aluno.turmaId -> Turma.id registrada no schema cache do PostgREST.
+  const turmaIds = [...new Set(rows.map(row => row.turmaId).filter(Boolean))];
+  const { data: turmas } = turmaIds.length
+    ? await supabase.from('Turma').select('id, nome, professora, periodo').in('id', turmaIds)
+    : { data: [] };
+  const turmasPorId = new Map((turmas ?? []).map(turma => [turma.id, turma]));
+  const alunosComTurma = rows.map(row => ({
+    ...row,
+    Turma: row.turmaId ? (turmasPorId.get(row.turmaId) ?? null) : null,
+  }));
 
   // Preferir o registro ATIVO; ignorar REMA (origem)
   const isAtivo = (s: string | null) => !s || s === 'ATIVO';
-  const ativo = rows.find(r => isAtivo(r.situacao) && r.situacao !== 'REMA');
-  const selecionado = ativo ?? rows.find(r => r.situacao !== 'REMA') ?? rows[0];
+  const ativo = alunosComTurma.find(r => isAtivo(r.situacao) && r.situacao !== 'REMA');
+  const encontrado = ativo ?? alunosComTurma.find(r => r.situacao !== 'REMA') ?? alunosComTurma[0];
 
-  // 2. Total de faltas do aluno
-  const { data: faltas } = await supabase
+  // Se não houver cadastro atual, criar o aluno de tela com os dados já
+  // salvos no histórico ou com campos vazios para digitação manual.
+  const primeira = hist[0];
+  const selecionado = encontrado ?? {
+    id: '', ra, nome: primeira?.nome_aluno ?? '',
+    data_nascimento: primeira?.data_nascimento ?? null,
+    cpf: primeira?.cpf ?? null, situacao: primeira?.situacao ?? 'TRAN',
+    turmaId: null,
+    data_inicio_matricula: primeira?.data_inicio_matricula ?? null,
+    data_fim_matricula: primeira?.data_fim_matricula ?? null,
+    Turma: primeira?.turma_nome ? { nome: primeira.turma_nome } : null,
+  };
+
+  // 3. Total de faltas do aluno atual; no modo manual, usar o valor salvo
+  const { data: faltas } = selecionado.id ? await supabase
     .from('Falta')
     .select('faltas')
-    .eq('alunoId', selecionado.id);
-  const total = (faltas ?? []).reduce((s, f) => s + (f.faltas ?? 0), 0);
+    .eq('alunoId', selecionado.id) : { data: [] };
+  const total = primeira?.total_faltas
+    ?? (faltas ?? []).reduce((s, f) => s + (f.faltas ?? 0), 0);
   setTotalFaltas(total);
-
-  // 3. Carregar linhas salvas do histórico (se existirem)
-  const { data: hist } = await supabase
-    .from('HistoricoAluno')
-    .select('*')
-    .eq('ra', ra)
-    .order('ciclo');
 
   const cicloAtual = detectarCiclo(selecionado.Turma?.nome ?? '');
 
@@ -410,6 +428,17 @@ CREATE TABLE IF NOT EXISTS "HistoricoAluno" (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   ra            bigint       NOT NULL,
 
+  -- Dados do aluno usados no documento. Também permitem emitir o histórico
+  -- quando o aluno já não está mais no cadastro atual da tabela Aluno.
+  nome_aluno            text,
+  data_nascimento       date,
+  cpf                   text,
+  situacao              text,
+  data_inicio_matricula date,
+  data_fim_matricula    date,
+  turma_nome            text,
+  total_faltas          integer CHECK (total_faltas IS NULL OR total_faltas >= 0),
+
   -- Campos de certidão de nascimento (não vêm da importação SED)
   cert_num      varchar(60),
   cert_folha    varchar(20),
@@ -449,15 +478,17 @@ NOTIFY pgrst, 'reload schema';
 ## 9. Regras de Negócio
 
 - **RA inválido:** `parseInt()` retorna `NaN` → exibir mensagem "Digite um RA válido." Nunca fazer query com NaN.
-- **RA não encontrado:** `rows.length === 0` → exibir "Aluno com RA [X] não encontrado no sistema."
+- **RA não encontrado:** abrir automaticamente o formulário com o RA digitado e todos os dados do aluno editáveis. Exibir aviso de que o aluno não está no cadastro atual. Se já houver registros em `HistoricoAluno`, restaurar os dados salvos; caso contrário, iniciar os campos em branco.
+- **Busca de turma:** consultar `Aluno` e `Turma` separadamente usando `Aluno.turmaId` e `Turma.id`. Não usar relacionamento embutido do PostgREST, pois o banco atual não possui uma foreign key entre essas colunas e o schema cache rejeita o join automático.
+- **Modo manual:** nome, RA, nascimento, CPF, cidade/UF de nascimento, situação, início da matrícula, data de saída, última turma e faltas devem ser editáveis. Salvar esses valores apenas em `HistoricoAluno`; nunca alterar `Aluno`, `Turma` ou `Falta`.
 - **Múltiplos registros para o mesmo RA:** preferir o que tem `situacao = 'ATIVO'` ou nulo. Ignorar registros com `situacao = 'REMA'` (são a turma de origem do remanejamento).
 - **Aluno AEE:** se o único registro encontrado for de uma turma AEE (verificar pelo nome da turma contendo "AEE" ou "ATENDIMENTO"), exibir aviso ao usuário e permitir continuar.
 - **isAtivo:** `const isAtivo = (s) => !s || s === 'ATIVO'`
 - **Carga horária 2020:** se o usuário preencher `anoLetivo = '2020'` em qualquer linha, sugerir automaticamente carga horária `'800'` (pode ser sobrescrito).
 - **Linhas vazias na impressão:** linhas onde `anoLetivo`, `escola` e `municipio` estão todos em branco devem ter classe CSS `linha-vazia`. No `@media print`, ocultar essas linhas.
 - **Campo Resultado:** exibir coluna "Resultado" na tabela de ciclos somente se ao menos uma linha tiver o campo `resultado` preenchido.
-- **Certificado de conclusão:** exibir somente se `isAtivo(aluno.situacao)` **E** a linha do ciclo 5 tiver `anoLetivo` preenchido (`linhas[4].anoLetivo !== ''`). O aluno precisa estar ativo E ter o 5º ano registrado no histórico para que o certificado faça sentido. Texto: "O diretor da EMEIEF LUIZ GONZAGA, de acordo com o inciso VII do artigo 24 da lei 9394/96, certifica que [NOME], concluiu o 5º Ano do Ensino Fundamental, no ano letivo de [linhas[4].anoLetivo]."
-- **Transferência (Campo 05):** exibir somente se `aluno.situacao === 'TRAN'`. Período letivo: usar `aluno.data_fim_matricula` se disponível.
+- **Certificado de conclusão:** exibir se a situação for `ATIVO` ou começar com `CONCLUÍDO` **E** a linha do ciclo 5 tiver `anoLetivo` preenchido (`linhas[4].anoLetivo !== ''`). Isso permite reemitir o certificado de um ex-aluno concluinte. Texto: "O diretor da EMEIEF LUIZ GONZAGA, de acordo com o inciso VII do artigo 24 da lei 9394/96, certifica que [NOME], concluiu o 5º Ano do Ensino Fundamental, no ano letivo de [linhas[4].anoLetivo]."
+- **Transferência (Campo 05):** exibir se a situação for `TRAN` ou `BXTR`. Período letivo: usar `aluno.data_fim_matricula` se disponível. No modo manual, faltas e data de saída são editáveis.
 - **TRAN de outra escola PARA Luiz Gonzaga:** quando o aluno ingressou vindo de outra escola no mesmo ano, o sistema importa-o como ATIVO. O autopreenchimento preenche a linha do ciclo com Luiz Gonzaga. O secretário deve preencher manualmente a escola anterior se houver parte do ano lá. **O sistema não tem dados de outras escolas — só de Luiz Gonzaga.**
 - **Série → Ciclo (regra crítica):** a coluna "Série" do arquivo SED (valores 1, 2, 3, 4, 5) corresponde diretamente ao número do ciclo no histórico. O nome da turma (ex: "4° ANO C TARDE") codifica o mesmo número. A função `detectarCiclo(nomeTurma)` extrai esse número com regex. **Ciclo = Série = Número do Ano no ensino fundamental.**
 - **Campos nunca undefined/null na tela:** usar `valor ?? ''` ou `valor || '—'` em todo lugar. Nunca exibir "null", "undefined" ou "NaN".
@@ -527,13 +558,15 @@ Incluir no componente (via tag `<style>` dentro do JSX ou arquivo CSS importado)
 
 - [ ] Aba "📜 Histórico" aparece no menu de navegação para todos os usuários autenticados
 - [ ] Busca por RA retorna o aluno correto ou mensagem de erro clara
+- [ ] Se o RA não existir mais em `Aluno`, o formulário abre para preenchimento manual e impressão
+- [ ] Dados pessoais digitados manualmente persistem em `HistoricoAluno` e reaparecem em uma nova busca pelo RA
 - [ ] Linhas dos 5 ciclos aparecem pré-preenchidas com escola/ano do ciclo atual e vazias para os demais
 - [ ] Todos os campos das linhas de ciclo são editáveis (ano, carga horária, escola, município, UF, resultado)
 - [ ] Campo "Resultado" aparece na tabela somente se ao menos uma linha o tiver preenchido
 - [ ] Dados editados são salvos na tabela `HistoricoAluno` ao imprimir (persistem para próxima vez)
 - [ ] Linhas completamente em branco não aparecem na impressão
-- [ ] Seção de Transferência (Campo 05) aparece somente para alunos com situação TRAN
-- [ ] Certificado de conclusão aparece somente para alunos ATIVO
+- [ ] Seção de Transferência (Campo 05) aparece para alunos com situação TRAN ou BXTR
+- [ ] Certificado de conclusão aparece para alunos ATIVO ou CONCLUÍDO com o 5º ano preenchido
 - [ ] Impressão via `window.print()` gera documento em A4 sem elementos de interface (menu, botões, etc.)
 - [ ] Nenhuma página existente do sistema é afetada (zero regressões)
 - [ ] Campos sem dados aparecem em branco — nunca "null", "undefined" ou "NaN"
