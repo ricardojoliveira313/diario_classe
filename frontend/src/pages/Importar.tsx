@@ -2135,7 +2135,7 @@ export default function Importar() {
           deficiencia: a.deficiencia || '',
           situacao: a.situacao,
           bolsa_familia: a.bolsaFamilia || existente?.bolsa_familia || false,
-          professora: a.professora,
+          professora: a.professora || existente?.professora || '',
           nis: a.nis || existente?.nis || null,
           responsavel: a.responsavel || existente?.responsavel || null,
           cpf: a.cpf || existente?.cpf || null,
