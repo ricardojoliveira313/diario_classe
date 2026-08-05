@@ -103,9 +103,7 @@ export default function Alunos() {
     setEnriquecendo(true);
     setMsgEnriquecimento('');
     try {
-      const { data: educ } = await supabase
-        .from('Educacenso')
-        .select('nome, data_nascimento, cpf, deficiencia, cor_raca');
+      const educ = await api.getAllEducacenso('nome, data_nascimento, cpf, deficiencia, cor_raca');
       if (!educ || educ.length === 0) {
         setMsgEnriquecimento('Tabela Educacenso vazia — importe o arquivo primeiro.');
         setEnriquecendo(false);

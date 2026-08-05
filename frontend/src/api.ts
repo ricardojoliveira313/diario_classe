@@ -10,12 +10,24 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const CHUNK = 80;
+const PAGE = 1000;
+
+// O PostgREST limita respostas a 1.000 linhas. Centralizar a paginação evita
+// que telas, conferências e backups pareçam completos quando há mais registros.
+async function todasAsPaginas(carregar: (inicio: number, fim: number) => any): Promise<any[]> {
+  const todos: any[] = [];
+  for (let inicio = 0; ; inicio += PAGE) {
+    const { data, error } = await carregar(inicio, inicio + PAGE - 1);
+    if (error) throw error;
+    todos.push(...(data ?? []));
+    if (!data || data.length < PAGE) return todos;
+  }
+}
 
 export const api = {
   getTurmas: async () => {
-    const { data, error } = await supabase.from('Turma').select('*').order('nome');
-    if (error) throw error;
-    return data ?? [];
+    return todasAsPaginas((inicio, fim) => supabase
+      .from('Turma').select('*').order('nome').order('id').range(inicio, fim));
   },
   createTurma: async (data: any) => {
     const { data: result, error } = await supabase.from('Turma').insert(data).select().single();
@@ -32,27 +44,15 @@ export const api = {
   },
 
   getAlunos: async (turmaId?: string) => {
-    let query = supabase.from('Aluno').select('*').order('numero').order('nome').limit(5000);
-    if (turmaId) query = query.eq('turmaId', turmaId);
-    const { data, error } = await query;
-    if (error) throw error;
-    return data ?? [];
+    return todasAsPaginas((inicio, fim) => {
+      let query = supabase.from('Aluno').select('*').order('numero').order('nome').order('id');
+      if (turmaId) query = query.eq('turmaId', turmaId);
+      return query.range(inicio, fim);
+    });
   },
   getAllAlunos: async () => {
-    // Busca em lotes para suportar mais de 1000 alunos (limite padrão do Supabase)
-    const PAGE = 1000;
-    let todos: any[] = [];
-    let from = 0;
-    while (true) {
-      const { data, error } = await supabase
-        .from('Aluno').select('*').order('numero').order('nome')
-        .range(from, from + PAGE - 1);
-      if (error) throw error;
-      todos = todos.concat(data ?? []);
-      if (!data || data.length < PAGE) break;
-      from += PAGE;
-    }
-    return todos;
+    return todasAsPaginas((inicio, fim) => supabase
+      .from('Aluno').select('*').order('numero').order('nome').order('id').range(inicio, fim));
   },
   updateAluno: async (id: string, updates: any) => {
     const { error } = await supabase.from('Aluno').update(updates).eq('id', id);
@@ -69,23 +69,25 @@ export const api = {
   },
 
   getFaltas: async (turmaId: string, mes: number, ano: number) => {
-    const { data, error } = await supabase
-      .from('Falta').select('*').eq('turmaId', turmaId).eq('mes', mes).eq('ano', ano);
-    if (error) throw error;
-    return data ?? [];
+    return todasAsPaginas((inicio, fim) => supabase
+      .from('Falta').select('*').eq('turmaId', turmaId).eq('mes', mes).eq('ano', ano)
+      .order('id').range(inicio, fim));
   },
   getFaltasMes: async (mes: number, ano: number) => {
-    const { data, error } = await supabase
-      .from('Falta').select('*').eq('mes', mes).eq('ano', ano);
-    if (error) throw error;
-    return data ?? [];
+    return todasAsPaginas((inicio, fim) => supabase
+      .from('Falta').select('*').eq('mes', mes).eq('ano', ano)
+      .order('id').range(inicio, fim));
   },
   getFaltasAluno: async (alunoId: string, ano: number) => {
-    const { data, error } = await supabase
-      .from('Falta').select('*').eq('alunoId', alunoId).eq('ano', ano).order('mes');
-    if (error) throw error;
-    return data ?? [];
+    return todasAsPaginas((inicio, fim) => supabase
+      .from('Falta').select('*').eq('alunoId', alunoId).eq('ano', ano)
+      .order('mes').order('id').range(inicio, fim));
   },
+  getAllFaltas: async () => todasAsPaginas((inicio, fim) => supabase
+    .from('Falta').select('*').order('id').range(inicio, fim)),
+
+  getAllEducacenso: async (colunas = '*') => todasAsPaginas((inicio, fim) => supabase
+    .from('Educacenso').select(colunas).order('id').range(inicio, fim)),
 
   upsertFaltasBatch: async (registros: any[]) => {
     for (let i = 0; i < registros.length; i += CHUNK) {
@@ -98,11 +100,11 @@ export const api = {
 
   // --- PENDENTES ---
   getPendentes: async (status?: string) => {
-    let q = supabase.from('Pendente').select('*, Turma(nome, professora)').order('created_at', { ascending: false });
-    if (status) q = q.eq('status', status);
-    const { data, error } = await q;
-    if (error) throw error;
-    return data ?? [];
+    return todasAsPaginas((inicio, fim) => {
+      let q = supabase.from('Pendente').select('*, Turma(nome, professora)').order('created_at', { ascending: false }).order('id');
+      if (status) q = q.eq('status', status);
+      return q.range(inicio, fim);
+    });
   },
   criarPendente: async (p: { turmaId: string; mes: number; ano: number; dados: any[]; total_entradas: number; total_problemas: number }) => {
     const { data, error } = await supabase.from('Pendente').insert(p).select().single();
@@ -124,16 +126,16 @@ export const api = {
 
   // --- OCORRENCIAS (faltas de servidores) ---
   getOcorrencias: async (filtros?: { servidor?: string; tipo?: string; dataInicio?: string; dataFim?: string; registrado_por?: string }) => {
-    let q = supabase.from('Ocorrencia').select('*').order('data', { ascending: false }).order('created_at', { ascending: false });
-    // Cada usuário visualiza somente as ocorrências registradas no próprio login.
-    if (filtros?.registrado_por) q = q.eq('registrado_por', filtros.registrado_por);
-    if (filtros?.servidor) q = q.ilike('servidor', `%${filtros.servidor}%`);
-    if (filtros?.tipo) q = q.eq('tipo', filtros.tipo);
-    if (filtros?.dataInicio) q = q.gte('data', filtros.dataInicio);
-    if (filtros?.dataFim) q = q.lte('data', filtros.dataFim);
-    const { data, error } = await q;
-    if (error) throw error;
-    return data ?? [];
+    return todasAsPaginas((inicio, fim) => {
+      let q = supabase.from('Ocorrencia').select('*').order('data', { ascending: false }).order('created_at', { ascending: false }).order('id');
+      // Cada usuário visualiza somente as ocorrências registradas no próprio login.
+      if (filtros?.registrado_por) q = q.eq('registrado_por', filtros.registrado_por);
+      if (filtros?.servidor) q = q.ilike('servidor', `%${filtros.servidor}%`);
+      if (filtros?.tipo) q = q.eq('tipo', filtros.tipo);
+      if (filtros?.dataInicio) q = q.gte('data', filtros.dataInicio);
+      if (filtros?.dataFim) q = q.lte('data', filtros.dataFim);
+      return q.range(inicio, fim);
+    });
   },
   createOcorrencia: async (o: { servidor: string; tipo: string; data: string; dias?: number; descricao?: string; registrado_por: string }) => {
     const { data, error } = await supabase.from('Ocorrencia').insert(o).select().single();
@@ -163,14 +165,23 @@ export const api = {
     if (error) throw error;
   },
   getLancamentos: async (mes: number, ano: number) => {
-    const { data, error } = await supabase
-      .from('LancamentoFaltas')
-      .select('*')
-      .eq('mes', mes)
-      .eq('ano', ano);
-    if (error) throw error;
-    return data ?? [];
+    return todasAsPaginas((inicio, fim) => supabase
+      .from('LancamentoFaltas').select('*').eq('mes', mes).eq('ano', ano)
+      .order('id').range(inicio, fim));
   },
+
+  getUsuarios: async () => todasAsPaginas((inicio, fim) => supabase
+    .from('Usuario')
+    .select('id, nome, perfil, ativo, turma_id, permissoes')
+    .order('id', { ascending: true })
+    .range(inicio, fim)),
+
+  getBackups: async () => todasAsPaginas((inicio, fim) => supabase
+    .from('Backup')
+    .select('id, created_at, descricao')
+    .order('created_at', { ascending: false })
+    .order('id')
+    .range(inicio, fim)),
 
   reloadSchema: async () => {
     const { error } = await supabase.rpc('pgrst_reload_schema' as any);

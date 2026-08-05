@@ -1817,8 +1817,7 @@ export default function Importar() {
         }
       }
 
-      const { data: existentes } = await supabase
-        .from('Aluno').select('id, ra, nome, situacao, cpf, nis, responsavel, bolsa_familia, turmaId, data_nascimento, cor_raca, deficiencia, aee, data_inicio_matricula, data_fim_matricula').range(0, 99999);
+      const existentes = await api.getAllAlunos();
       // Lookup rápido por id — usado para snapshotar o registo completo antes de apagar
       const existentesPorId = new Map((existentes ?? []).map((e: any) => [e.id, e]));
 
@@ -1828,7 +1827,16 @@ export default function Importar() {
       // pule esses IDs — evita que o upsert recrie registros que acabaram de ser apagados
       const idsRemovidosPreLimpeza = new Set<string>();
       {
-        const raGrupos = new Map<string, Array<{ id: string; cpf?: string; nis?: string; responsavel?: string; bolsa_familia?: boolean }>>();
+        const raGrupos = new Map<string, Array<{
+          id: string;
+          situacao?: string;
+          cpf?: string;
+          nis?: string;
+          responsavel?: string;
+          bolsa_familia?: boolean;
+          numero?: number;
+          data_inicio_matricula?: string;
+        }>>();
         for (const e of (existentes ?? [])) {
           // REMA tem registros legítimos separados por turma — não entra no dedup por RA
           // TRAN/BXTR/N COM/ATIVO são todos o mesmo aluno → unificar em um único registro
@@ -1989,8 +1997,7 @@ export default function Importar() {
       // ─── LOOKUP FRESCO: lê o banco DEPOIS da pré-limpeza ──────────────────
       // Mapas directos RA→registo: REMA, AEE e Regular em mapas separados
       // Sem idTo* indirectos — preservamos dados do registo existente na hora do upsert
-      const { data: existentesAtualizados } = await supabase
-        .from('Aluno').select('id, ra, nome, situacao, cpf, nis, responsavel, bolsa_familia, turmaId, data_nascimento, cor_raca, deficiencia, aee, data_inicio_matricula, data_fim_matricula, data_movimentacao').range(0, 99999);
+      const existentesAtualizados = await api.getAllAlunos();
       const existentesFrescos = existentesAtualizados ?? existentes ?? [];
       const freshRegular = new Map<string, any>();  // RA → registo ATIVO (não-REMA, não-TRAN, não-AEE)
       const freshTran = new Map<string, any>();     // RA → registo TRAN (separado para não colidir com ATIVO)
@@ -2021,9 +2028,7 @@ export default function Importar() {
       }
 
       // ─── Carrega EDUCACENSO do banco (tabela fixa) e enriquece alunos ───
-      const { data: dbEducData } = await supabase
-        .from('Educacenso')
-        .select('nome, data_nascimento, cpf, deficiencia, cor_raca');
+      const dbEducData = await api.getAllEducacenso('nome, data_nascimento, cpf, deficiencia, cor_raca');
       if (dbEducData) {
         const dbEduc = new Map<string, { cpf: string; deficiencia: string; corRaca: string }>();
         for (const rec of dbEducData) {
@@ -2332,7 +2337,7 @@ export default function Importar() {
       }
 
       // ─── PASSO 3: Re-ler IDs dos alunos ───
-      const { data: alunosDb } = await supabase.from('Aluno').select('id, ra, nome');
+      const alunosDb = await api.getAllAlunos();
       const raToId = new Map<string, string>();
       const nomeToId = new Map<string, string>();
       for (const a of (alunosDb ?? [])) {
