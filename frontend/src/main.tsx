@@ -11,6 +11,7 @@ import Distorcao from './pages/Distorcao';
 import Ocorrencias from './pages/Ocorrencias';
 import Usuarios from './pages/Usuarios';
 import Controle from './pages/Controle';
+import Historico from './pages/Historico';
 import Login from './pages/Login';
 import { api, supabase } from './api';
 import { theme } from './styles';
@@ -34,6 +35,7 @@ const NAV_ITEMS: { to: string; label: string; end?: boolean; badge?: boolean; ad
   { to: '/ocorrencias', label: '📋 Ocorrências',                      pageKey: 'ocorrencias' },
   { to: '/distorcao', label: '📐 Distorção',                          pageKey: 'distorcao' },
   { to: '/pendentes', label: '📋 Ata',                badge: true,    pageKey: 'pendentes' },
+  { to: '/historico', label: '📜 Histórico',                          pageKey: 'historico' },
   { to: '/controle',  label: '📊 Controle',  adminOnly: true },
   { to: '/usuarios',  label: '👥 Usuários',  adminOnly: true },
 ];
@@ -274,6 +276,7 @@ function AppShell() {
             <Route path="/distorcao" element={<ViewerRoute pageKey="distorcao"><Distorcao /></ViewerRoute>} />
             <Route path="/ocorrencias" element={<ViewerRoute pageKey="ocorrencias"><Ocorrencias /></ViewerRoute>} />
             <Route path="/pendentes" element={<ViewerRoute pageKey="pendentes"><Pendentes /></ViewerRoute>} />
+            <Route path="/historico" element={<ViewerRoute pageKey="historico"><Historico /></ViewerRoute>} />
             <Route path="/controle" element={<AdminRoute><Controle /></AdminRoute>} />
             <Route path="/usuarios" element={<AdminRoute><Usuarios /></AdminRoute>} />
           </Routes>
