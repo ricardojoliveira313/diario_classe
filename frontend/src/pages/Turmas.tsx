@@ -151,12 +151,12 @@ export default function Turmas() {
   const salvarBackupNuvem = async () => {
     setBackupNuvemStatus('Salvando...');
     try {
-      const [{ data: turmData }, { data: alunoData }, { data: faltaData }] = await Promise.all([
-        supabase.from('Turma').select('*'),
-        supabase.from('Aluno').select('*'),
-        supabase.from('Falta').select('*'),
+      const [turmData, alunoData, faltaData] = await Promise.all([
+        api.getTurmas(),
+        api.getAllAlunos(),
+        api.getAllFaltas(),
       ]);
-      const descricao = `${new Date().toLocaleString('pt-BR')} — ${alunoData?.length ?? 0} alunos, ${turmData?.length ?? 0} turmas`;
+      const descricao = `${new Date().toLocaleString('pt-BR')} — ${alunoData.length} alunos, ${turmData.length} turmas, ${faltaData.length} faltas`;
       const { error } = await supabase.from('Backup').insert({
         descricao,
         turmas: turmData ?? [],
@@ -164,7 +164,7 @@ export default function Turmas() {
         faltas: faltaData ?? [],
       });
       if (error) throw error;
-      setBackupNuvemStatus('✅ Backup salvo na nuvem!');
+      setBackupNuvemStatus(`✅ Backup completo: ${alunoData.length} alunos e ${faltaData.length} faltas.`);
     } catch (e: any) {
       setBackupNuvemStatus('❌ Erro: ' + (e.message ?? e));
     }
@@ -172,12 +172,8 @@ export default function Turmas() {
   };
 
   const carregarBackupsNuvem = async () => {
-    const { data } = await supabase
-      .from('Backup')
-      .select('id, created_at, descricao')
-      .order('created_at', { ascending: false })
-      .limit(20);
-    setBackupsNuvem(data ?? []);
+    const data = await api.getBackups();
+    setBackupsNuvem(data);
     setShowBackups(true);
   };
 
@@ -213,10 +209,10 @@ export default function Turmas() {
   const fazerBackup = async () => {
     setFazendoBackup(true);
     try {
-      const [{ data: turmData }, { data: alunoData }, { data: faltaData }] = await Promise.all([
-        supabase.from('Turma').select('*').order('nome'),
-        supabase.from('Aluno').select('*').order('nome'),
-        supabase.from('Falta').select('*'),
+      const [turmData, alunoData, faltaData] = await Promise.all([
+        api.getTurmas(),
+        api.getAllAlunos(),
+        api.getAllFaltas(),
       ]);
 
       const wb = XLSX.utils.book_new();
@@ -342,7 +338,7 @@ export default function Turmas() {
         return d.slice(0, 10);
       };
 
-      const { data: educ } = await supabase.from('Educacenso').select('cpf, nome, data_nascimento, cor_raca, deficiencia');
+      const educ = await api.getAllEducacenso('cpf, nome, data_nascimento, cor_raca, deficiencia');
       if (!educ?.length) { alert('Tabela Educacenso vazia — importe o Educacenso primeiro.'); setRecuperando(false); return; }
 
       const educMap = new Map<string, { cor_raca: string; cpf: string }>();
@@ -358,7 +354,7 @@ export default function Turmas() {
         }
       }
 
-      const { data: alunos } = await supabase.from('Aluno').select('id, ra, nome, cpf, cor_raca, data_nascimento');
+      const alunos = await api.getAllAlunos();
       if (!alunos?.length) { setRecuperando(false); return; }
 
       const paraAtualizar: { id: string; cor_raca?: string; cpf?: string }[] = [];
