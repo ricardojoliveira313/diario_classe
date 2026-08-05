@@ -47,6 +47,14 @@ interface HistoricoSalvo {
   cert_distrito: string | null;
   cidade_nasc: string | null;
   estado_nasc: string | null;
+  nome_aluno: string | null;
+  data_nascimento: string | null;
+  cpf: string | null;
+  situacao: string | null;
+  data_inicio_matricula: string | null;
+  data_fim_matricula: string | null;
+  turma_nome: string | null;
+  total_faltas: number | null;
 }
 
 const CICLOS_LABELS = [
@@ -95,6 +103,13 @@ function detectarCiclo(nomeTurma: string): number | null {
 
 function isAtivo(situacao: string | null): boolean {
   return !situacao || situacao === 'ATIVO';
+}
+
+function normalizarSituacao(situacao: string | null): string {
+  return (situacao ?? '')
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
 }
 
 function isTurmaAEE(turma: TurmaHistorico | null): boolean {
@@ -178,59 +193,109 @@ export default function Historico() {
     limparCamposComplementares();
 
     try {
-      const { data: rows, error: alunoError } = await supabase
-        .from('Aluno')
-        .select(`ra, nome, data_nascimento, cpf, situacao,
-                 turmaId, data_inicio_matricula, data_fim_matricula, id,
-                 Turma:turmaId ( nome, professora, periodo )`)
-        .eq('ra', ra);
+      const [alunoResult, historicoResult] = await Promise.all([
+        supabase
+          .from('Aluno')
+          .select('ra, nome, data_nascimento, cpf, situacao, turmaId, data_inicio_matricula, data_fim_matricula, id')
+          .eq('ra', ra),
+        supabase.from('HistoricoAluno').select('*').eq('ra', ra).order('ciclo'),
+      ]);
 
-      if (alunoError) throw new Error(`Não foi possível buscar o aluno: ${alunoError.message}`);
-      if (!rows || rows.length === 0) {
-        setErro(`Aluno com RA ${ra} não encontrado no sistema.`);
-        return;
+      if (alunoResult.error) {
+        throw new Error(`Não foi possível buscar o aluno: ${alunoResult.error.message}`);
+      }
+      if (historicoResult.error) {
+        throw new Error(`Não foi possível carregar o histórico: ${historicoResult.error.message}`);
+      }
+
+      const rows = alunoResult.data ?? [];
+      const historico = (historicoResult.data ?? []) as HistoricoSalvo[];
+      const primeiraLinha = historico[0];
+      const turmaIds = [...new Set(rows.map(row => row.turmaId).filter((id): id is string => Boolean(id)))];
+      const turmasPorId = new Map<string, TurmaHistorico>();
+
+      if (turmaIds.length > 0) {
+        const { data: turmas, error: turmasError } = await supabase
+          .from('Turma')
+          .select('id, nome, professora, periodo')
+          .in('id', turmaIds);
+        if (turmasError) {
+          throw new Error(`Não foi possível carregar a turma do aluno: ${turmasError.message}`);
+        }
+        (turmas ?? []).forEach(turma => turmasPorId.set(turma.id, turma));
       }
 
       const candidatos = rows
         .filter(row => row.situacao !== 'REMA')
         .map(row => ({
           ...row,
-          Turma: Array.isArray(row.Turma) ? (row.Turma[0] ?? null) : (row.Turma ?? null),
+          Turma: row.turmaId ? (turmasPorId.get(row.turmaId) ?? null) : null,
         })) as AlunoHistorico[];
       const baseSelecao = candidatos.length > 0
         ? candidatos
         : rows.map(row => ({
             ...row,
-            Turma: Array.isArray(row.Turma) ? (row.Turma[0] ?? null) : (row.Turma ?? null),
+            Turma: row.turmaId ? (turmasPorId.get(row.turmaId) ?? null) : null,
           })) as AlunoHistorico[];
-      const selecionado =
+      const encontrado =
         baseSelecao.find(row => isAtivo(row.situacao) && !isTurmaAEE(row.Turma)) ??
         baseSelecao.find(row => isAtivo(row.situacao)) ??
         baseSelecao.find(row => !isTurmaAEE(row.Turma)) ??
-        baseSelecao[0];
+        baseSelecao[0] ?? null;
 
-      if (rows.length === 1 && isTurmaAEE(selecionado.Turma)) {
+      const selecionado: AlunoHistorico = encontrado
+        ? {
+            ...encontrado,
+            nome: primeiraLinha?.nome_aluno ?? encontrado.nome,
+            data_nascimento: primeiraLinha?.data_nascimento ?? encontrado.data_nascimento,
+            cpf: primeiraLinha?.cpf ?? encontrado.cpf,
+            situacao: primeiraLinha?.situacao ?? encontrado.situacao,
+            data_inicio_matricula: primeiraLinha?.data_inicio_matricula ?? encontrado.data_inicio_matricula,
+            data_fim_matricula: primeiraLinha?.data_fim_matricula ?? encontrado.data_fim_matricula,
+            Turma: primeiraLinha?.turma_nome
+              ? { nome: primeiraLinha.turma_nome, professora: null, periodo: null }
+              : encontrado.Turma,
+          }
+        : {
+            id: '',
+            ra,
+            nome: primeiraLinha?.nome_aluno ?? '',
+            data_nascimento: primeiraLinha?.data_nascimento ?? null,
+            cpf: primeiraLinha?.cpf ?? null,
+            situacao: primeiraLinha?.situacao ?? 'TRAN',
+            turmaId: null,
+            data_inicio_matricula: primeiraLinha?.data_inicio_matricula ?? null,
+            data_fim_matricula: primeiraLinha?.data_fim_matricula ?? null,
+            Turma: primeiraLinha?.turma_nome
+              ? { nome: primeiraLinha.turma_nome, professora: null, periodo: null }
+              : null,
+          };
+
+      if (!encontrado) {
+        setAviso(
+          primeiraLinha
+            ? 'Aluno fora do cadastro atual. O histórico salvo foi aberto para edição manual.'
+            : `RA ${ra} não encontrado no cadastro atual. Preencha os dados manualmente e depois salve ou imprima.`,
+        );
+      }
+
+      if (encontrado && rows.length === 1 && isTurmaAEE(selecionado.Turma)) {
         setAviso('O único cadastro encontrado está vinculado a uma turma AEE/Atendimento. Confira os dados antes de emitir o histórico.');
       }
 
-      const [faltasResult, historicoResult] = await Promise.all([
-        supabase.from('Falta').select('faltas').eq('alunoId', selecionado.id),
-        supabase.from('HistoricoAluno').select('*').eq('ra', ra).order('ciclo'),
-      ]);
+      const faltasResult = selecionado.id
+        ? await supabase.from('Falta').select('faltas').eq('alunoId', selecionado.id)
+        : { data: [], error: null };
 
       if (faltasResult.error) {
         throw new Error(`Não foi possível carregar as faltas: ${faltasResult.error.message}`);
       }
-      if (historicoResult.error) {
-        throw new Error(`Não foi possível carregar o histórico: ${historicoResult.error.message}`);
-      }
 
-      const total = (faltasResult.data ?? []).reduce(
+      const totalCalculado = (faltasResult.data ?? []).reduce(
         (soma, falta) => soma + Number(falta.faltas ?? 0),
         0,
       );
-      const historico = (historicoResult.data ?? []) as HistoricoSalvo[];
-      const primeiraLinha = historico[0];
+      const total = primeiraLinha?.total_faltas ?? totalCalculado;
       if (primeiraLinha) {
         setCertNum(primeiraLinha.cert_num ?? '');
         setCertFolha(primeiraLinha.cert_folha ?? '');
@@ -290,8 +355,23 @@ export default function Historico() {
     }));
   };
 
+  const atualizarAluno = <K extends keyof AlunoHistorico>(campo: K, valor: AlunoHistorico[K]) => {
+    setAluno(atual => atual ? { ...atual, [campo]: valor } : atual);
+  };
+
+  const atualizarTurma = (nome: string) => {
+    setAluno(atual => atual ? {
+      ...atual,
+      Turma: { nome, professora: atual.Turma?.professora ?? null, periodo: atual.Turma?.periodo ?? null },
+    } : atual);
+  };
+
   const salvarHistorico = async (): Promise<boolean> => {
     if (!aluno) return false;
+    if (!Number.isInteger(aluno.ra) || aluno.ra <= 0) {
+      setErro('Informe um RA válido antes de salvar ou imprimir.');
+      return false;
+    }
     setSalvando(true);
     setErro(null);
     setSucesso(null);
@@ -313,6 +393,15 @@ export default function Historico() {
       municipio: linha.municipio || null,
       uf: linha.uf || null,
       resultado: linha.resultado || null,
+      nome_aluno: aluno.nome.trim() || null,
+      data_nascimento: aluno.data_nascimento || null,
+      cpf: aluno.cpf?.trim() || null,
+      situacao: aluno.situacao?.trim().toUpperCase() || null,
+      data_inicio_matricula: aluno.data_inicio_matricula || null,
+      data_fim_matricula: aluno.data_fim_matricula || null,
+      turma_nome: aluno.Turma?.nome.trim() || null,
+      total_faltas: totalFaltas,
+      updated_at: new Date().toISOString(),
       ...certFields,
     }));
 
@@ -335,7 +424,13 @@ export default function Historico() {
   };
 
   const mostrarResultado = linhas.some(linha => linha.resultado.trim() !== '');
-  const mostrarCertificado = Boolean(aluno && isAtivo(aluno.situacao) && linhas[4]?.anoLetivo.trim());
+  const situacaoNormalizada = normalizarSituacao(aluno?.situacao ?? null);
+  const mostrarTransferencia = situacaoNormalizada === 'TRAN' || situacaoNormalizada === 'BXTR';
+  const mostrarCertificado = Boolean(
+    aluno
+    && (isAtivo(aluno.situacao) || situacaoNormalizada.startsWith('CONCLUI'))
+    && linhas[4]?.anoLetivo.trim(),
+  );
   const presencas = Math.max(0, 200 - totalFaltas);
 
   return (
@@ -343,10 +438,12 @@ export default function Historico() {
       <style>{`
         .historico-tabela { width: 100%; border-collapse: collapse; }
         .historico-tabela th, .historico-tabela td { border: 1px solid #111827; padding: 5px; vertical-align: top; }
-        .historico-grid-aluno { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 8px 14px; }
+        .historico-grid-aluno { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 14px; }
+        .historico-campo-largo { grid-column: span 2; }
         .historico-grid-certidao { display: grid; grid-template-columns: 2fr 1fr 1fr 2fr; gap: 8px; }
         @media (max-width: 720px) {
           .historico-grid-aluno, .historico-grid-certidao { grid-template-columns: 1fr; }
+          .historico-campo-largo { grid-column: span 1; }
           .historico-tabela-wrap { overflow-x: auto; }
         }
         @media print {
@@ -380,7 +477,7 @@ export default function Historico() {
       <section style={{ background: theme.card, borderRadius: theme.radiusMd, boxShadow: theme.shadow, padding: 20, marginBottom: 18 }}>
         <h1 style={{ margin: '0 0 4px', fontSize: 22 }}>📜 Histórico Escolar</h1>
         <p style={{ margin: '0 0 16px', color: theme.textSecondary }}>
-          Busque o aluno pelo RA, confira os dados, complete os anos cursados e imprima o documento oficial.
+          Busque o aluno pelo RA. Se ele não estiver mais no cadastro, o formulário será aberto para preenchimento manual.
         </p>
         <form
           onSubmit={event => { event.preventDefault(); void buscarPorRA(); }}
@@ -437,9 +534,22 @@ export default function Historico() {
             <section className="sec-impressao" style={estiloSecao}>
               <h3 style={estiloTituloSecao}>01 — Dados do aluno</h3>
               <div className="historico-grid-aluno">
-                <div><strong>Nome:</strong> {aluno.nome || '—'}</div>
-                <div><strong>R.A.:</strong> {aluno.ra || '—'}</div>
-                <div><strong>Nascimento:</strong> {formatarData(aluno.data_nascimento) || '—'}</div>
+                <label className="historico-campo-largo" style={{ margin: 0 }}>
+                  <strong>Nome</strong>
+                  <input style={estiloCampoImpressao} value={aluno.nome} onChange={event => atualizarAluno('nome', event.target.value)} />
+                </label>
+                <label style={{ margin: 0 }}>
+                  <strong>R.A.</strong>
+                  <input inputMode="numeric" style={estiloCampoImpressao} value={aluno.ra || ''} onChange={event => atualizarAluno('ra', Number.parseInt(event.target.value, 10) || 0)} />
+                </label>
+                <label style={{ margin: 0 }}>
+                  <strong>Nascimento</strong>
+                  <input type="date" style={estiloCampoImpressao} value={aluno.data_nascimento?.slice(0, 10) ?? ''} onChange={event => atualizarAluno('data_nascimento', event.target.value || null)} />
+                </label>
+                <label style={{ margin: 0 }}>
+                  <strong>CPF</strong>
+                  <input style={estiloCampoImpressao} value={aluno.cpf ?? ''} onChange={event => atualizarAluno('cpf', event.target.value || null)} />
+                </label>
                 <label style={{ margin: 0 }}>
                   <strong>Cidade de nascimento</strong>
                   <input style={estiloCampoImpressao} value={cidadeNasc} onChange={event => setCidadeNasc(event.target.value)} />
@@ -448,7 +558,28 @@ export default function Historico() {
                   <strong>UF</strong>
                   <input maxLength={2} style={estiloCampoImpressao} value={estadoNasc} onChange={event => setEstadoNasc(event.target.value.toUpperCase())} />
                 </label>
-                <div><strong>Situação:</strong> {aluno.situacao || 'ATIVO'}</div>
+                <label style={{ margin: 0 }}>
+                  <strong>Situação</strong>
+                  <input list="historico-situacoes" style={estiloCampoImpressao} value={aluno.situacao ?? ''} onChange={event => atualizarAluno('situacao', event.target.value.toUpperCase() || null)} />
+                  <datalist id="historico-situacoes">
+                    <option value="ATIVO" />
+                    <option value="TRAN" />
+                    <option value="BXTR" />
+                    <option value="CONCLUÍDO" />
+                  </datalist>
+                </label>
+                <label style={{ margin: 0 }}>
+                  <strong>Início da matrícula</strong>
+                  <input type="date" style={estiloCampoImpressao} value={aluno.data_inicio_matricula?.slice(0, 10) ?? ''} onChange={event => atualizarAluno('data_inicio_matricula', event.target.value || null)} />
+                </label>
+                <label style={{ margin: 0 }}>
+                  <strong>Data de saída</strong>
+                  <input type="date" style={estiloCampoImpressao} value={aluno.data_fim_matricula?.slice(0, 10) ?? ''} onChange={event => atualizarAluno('data_fim_matricula', event.target.value || null)} />
+                </label>
+                <label className="historico-campo-largo" style={{ margin: 0 }}>
+                  <strong>Última turma</strong>
+                  <input style={estiloCampoImpressao} value={aluno.Turma?.nome ?? ''} onChange={event => atualizarTurma(event.target.value)} />
+                </label>
               </div>
             </section>
 
@@ -516,12 +647,12 @@ export default function Historico() {
               </div>
             </section>
 
-            {aluno.situacao === 'TRAN' && (
+            {mostrarTransferencia && (
               <section className="sec-impressao" style={estiloSecao}>
                 <h3 style={estiloTituloSecao}>05 — Transferência</h3>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
                   <div><strong>Dias letivos:</strong> 200</div>
-                  <div><strong>Faltas:</strong> {totalFaltas}</div>
+                  <label style={{ margin: 0 }}><strong>Faltas</strong><input type="number" min={0} style={estiloCampoImpressao} value={totalFaltas} onChange={event => setTotalFaltas(Math.max(0, Number(event.target.value) || 0))} /></label>
                   <div><strong>Presenças:</strong> {presencas}</div>
                   <div><strong>Data de saída:</strong> {formatarData(aluno.data_fim_matricula) || '—'}</div>
                 </div>
