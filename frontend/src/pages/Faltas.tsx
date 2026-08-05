@@ -98,6 +98,7 @@ export default function Faltas() {
   const [statusTextos, setStatusTextos] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [controleErro, setControleErro] = useState('');
   const [loading, setLoading] = useState(true);
   const [showBF, setShowBF] = useState(false);
   const [bfAlunos, setBfAlunos] = useState<any[]>([]);
@@ -306,6 +307,7 @@ export default function Faltas() {
   const salvar = async () => {
     if (!podeEditar) return;
     setSaving(true);
+    setControleErro('');
     const registros = alunos.map(a => {
       if (statusTextos[a.id]) {
         return { alunoId: a.id, turmaId, mes, ano, faltas: 0, frequencia: statusTextos[a.id] };
@@ -323,7 +325,10 @@ export default function Faltas() {
       const totalFaltas = registros.reduce((s, r) => s + (r.faltas ?? 0), 0);
       const alunosComFalta = registros.filter(r => (r.faltas ?? 0) > 0).length;
       await api.upsertLancamento(turmaId, mes, ano, username ?? 'desconhecido', totalFaltas, alunosComFalta);
-    } catch { /* tabela ainda não criada — ignorar silenciosamente */ }
+    } catch (error) {
+      console.error('Faltas salvas, mas o Controle de Lançamentos não foi atualizado:', error);
+      setControleErro('As faltas foram salvas, mas o Controle de Lançamentos não foi atualizado. Tente salvar novamente ou avise a administração.');
+    }
     setSaving(false);
     setSaved(true);
   };
@@ -1606,22 +1611,29 @@ export default function Faltas() {
           )}
 
           {podeEditar ? (
-            <button
-              style={{
-                ...btn('primary', { full: true }),
-                padding: '14px', fontSize: 17,
-                background: saved ? theme.success : theme.primary,
-                transition: 'all 0.2s ease',
-                borderRadius: isMobile ? 0 : theme.radiusMd,
-                position: isMobile ? 'sticky' : 'static',
-                bottom: isMobile ? 0 : 'auto',
-                zIndex: isMobile ? 10 : 'auto',
-                boxShadow: isMobile ? '0 -2px 10px rgba(0,0,0,0.2)' : 'none',
-              }}
-              onClick={salvar} disabled={saving}
-            >
-              {saving ? <><Spinner size={20} /> Salvando...</> : saved ? '✅ Salvo!' : '💾 Salvar Faltas'}
-            </button>
+            <>
+              <button
+                style={{
+                  ...btn('primary', { full: true }),
+                  padding: '14px', fontSize: 17,
+                  background: saved ? theme.success : theme.primary,
+                  transition: 'all 0.2s ease',
+                  borderRadius: isMobile ? 0 : theme.radiusMd,
+                  position: isMobile ? 'sticky' : 'static',
+                  bottom: isMobile ? 0 : 'auto',
+                  zIndex: isMobile ? 10 : 'auto',
+                  boxShadow: isMobile ? '0 -2px 10px rgba(0,0,0,0.2)' : 'none',
+                }}
+                onClick={salvar} disabled={saving}
+              >
+                {saving ? <><Spinner size={20} /> Salvando...</> : saved ? '✅ Salvo!' : '💾 Salvar Faltas'}
+              </button>
+              {controleErro && (
+                <div role="alert" style={{ marginTop: 10, padding: '10px 12px', borderRadius: theme.radius, background: theme.warningLight, color: theme.warning, fontSize: 13, fontWeight: 600 }}>
+                  ⚠️ {controleErro}
+                </div>
+              )}
+            </>
           ) : (
             <div style={{
               padding: '14px', fontSize: 14, fontWeight: 600, textAlign: 'center',

@@ -7,7 +7,8 @@ import { useAno } from '../AnoContext';
 
 type Filtro = 'todas' | 'lancadas' | 'com_faltas' | 'sem_faltas' | 'nao_lancadas';
 
-function fmtData(iso: string) {
+function fmtData(iso: string | null | undefined) {
+  if (!iso) return '—';
   try {
     const d = new Date(iso);
     return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -21,15 +22,25 @@ export default function Controle() {
   const [mes, setMes] = useState(new Date().getMonth() + 1);
   const [turmas, setTurmas] = useState<any[]>([]);
   const [lancamentos, setLancamentos] = useState<any[]>([]);
+  const [faltasMes, setFaltasMes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtro, setFiltro] = useState<Filtro>('todas');
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([api.getTurmas(), api.getLancamentos(mes, ano)])
-      .then(([t, l]) => {
+    Promise.all([
+      api.getTurmas(),
+      api.getLancamentos(mes, ano).catch(error => {
+        // Falha no registro auxiliar não pode esconder faltas já salvas.
+        console.error('Falha ao carregar LancamentoFaltas; usando dados de Falta:', error);
+        return [];
+      }),
+      api.getFaltasMes(mes, ano),
+    ])
+      .then(([t, l, f]) => {
         setTurmas(sortTurmasPedagogico(t ?? []));
         setLancamentos(l ?? []);
+        setFaltasMes(f ?? []);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -38,8 +49,32 @@ export default function Controle() {
   const lancMap = useMemo(() => {
     const m = new Map<string, any>();
     lancamentos.forEach(l => m.set(l.turma_id, l));
+
+    // Compatibilidade com lançamentos anteriores à criação de LancamentoFaltas:
+    // a existência de linhas em Falta comprova que a turma/mês foi salva.
+    const agregados = new Map<string, { total: number; alunos: number }>();
+    faltasMes.forEach(f => {
+      const atual = agregados.get(f.turmaId) ?? { total: 0, alunos: 0 };
+      const faltas = Number(f.faltas ?? 0);
+      atual.total += faltas;
+      if (faltas > 0) atual.alunos += 1;
+      agregados.set(f.turmaId, atual);
+    });
+    agregados.forEach((a, turmaId) => {
+      if (!m.has(turmaId)) {
+        m.set(turmaId, {
+          turma_id: turmaId,
+          mes,
+          ano,
+          total_faltas: a.total,
+          alunos_com_falta: a.alunos,
+          lancado_por: 'Dados existentes',
+          lancado_em: null,
+        });
+      }
+    });
     return m;
-  }, [lancamentos]);
+  }, [lancamentos, faltasMes, mes, ano]);
 
   const rows = useMemo(() =>
     turmas.map(t => ({ turma: t, lancamento: lancMap.get(t.id) ?? null })),
