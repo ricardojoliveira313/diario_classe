@@ -156,6 +156,7 @@ export default function Alunos() {
   const professoras = [...new Set(turmas.map(t => t.professora).filter(Boolean))].sort();
   const deficiencias = [...new Set(alunos.map(a => a.deficiencia).filter(Boolean))].sort();
   const turmaMap = new Map(turmas.map(t => [t.id, t]));
+  const turmaSelecionada = turmaId !== '__all__' ? turmaMap.get(turmaId) : null;
 
   const alunosFiltrados = alunos.filter(a => {
     if (busca && !a.nome?.toLowerCase().includes(busca.toLowerCase()) && !String(a.ra ?? '').includes(busca)) return false;
@@ -593,6 +594,12 @@ export default function Alunos() {
           </label>
         </div>
       </div>}
+
+      {!modoCpfRapido && turmaSelecionada?.professora && (
+        <div style={{ fontSize: 14, color: theme.textSecondary, marginBottom: 10 }}>
+          👩‍🏫 {labelDocente(turmaSelecionada.professora)} {turmaSelecionada.professora}
+        </div>
+      )}
 
       {!modoCpfRapido && loading ? <Loading /> : !modoCpfRapido && alunos.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10, marginBottom: 14 }}>
