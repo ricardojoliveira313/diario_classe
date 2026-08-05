@@ -22,6 +22,7 @@ Repositório: `ricardojoliveira313/diario_classe`
 10. [CSS de Impressão](#10-css-de-impressão)
 11. [Restrições — O Que NÃO Alterar](#11-restrições--o-que-não-alterar)
 12. [Critérios de Aceite](#12-critérios-de-aceite)
+13. [Ajuste oficial de layout, notas e transferência](#13-ajuste-oficial-de-layout-notas-e-transferência)
 
 ---
 
@@ -572,3 +573,92 @@ Incluir no componente (via tag `<style>` dentro do JSX ou arquivo CSS importado)
 - [ ] Campos sem dados aparecem em branco — nunca "null", "undefined" ou "NaN"
 - [ ] Aluno buscado por RA com múltiplos registros: seleciona automaticamente o ATIVO, ignora REMA
 - [ ] Data de emissão preenchida automaticamente com a data atual, mas editável antes de imprimir
+
+---
+
+## 13. Ajuste oficial de layout, notas e transferência
+
+> Esta seção registra a versão vigente da funcionalidade e prevalece sobre os
+> exemplos anteriores deste documento quando houver divergência. A referência
+> visual é o Histórico Escolar oficial da EMEIEF Luiz Gonzaga fornecido pela
+> secretaria.
+
+### 13.1. Documento impresso
+
+- A impressão deve gerar **frente e verso em duas páginas A4**, sempre nesta ordem.
+- Cada página usa dimensões físicas de `210 mm × 297 mm`, fonte Arial e margens
+  internas equivalentes ao modelo: 13 mm superior, 10 mm direita, 14 mm inferior
+  e 13 mm esquerda.
+- A frente contém brasão/cabeçalho oficial, identificação do aluno, certidão,
+  estudos realizados por ciclo e o quadro de resultados/notas.
+- O verso contém, em posições fixas, o quadro de transferência, observações
+  legais, certificado, data/assinatura da direção e o aviso final.
+- A impressão usa `visibility` para ocultar a interface e páginas com quebra
+  explícita; não usa elementos `fixed` para montar o documento.
+- Se houver mais de dez disciplinas com notas, ou notas em mais de um ciclo,
+  os quadros adicionais são impressos em páginas A4 de anexo sem comprimir o
+  documento oficial.
+
+### 13.2. Estabelecimento e transferência
+
+- Cada ciclo possui o campo opcional `complemento_estabelecimento`.
+- Quando preenchido com `TRANSFERE-SE`, o texto aparece **na mesma célula de
+  Estabelecimento**, logo abaixo do nome da escola, como no documento oficial.
+- O preenchimento de `TRANSFERE-SE` sugere automaticamente o ano/ciclo no quadro
+  de transferência e o ano de prosseguimento, mas ambos continuam editáveis.
+- O verso mantém editáveis: ano/ciclo, período cursado, dias letivos, presenças,
+  ausências e ano em que o aluno deverá prosseguir os estudos.
+
+### 13.3. Notas de outras redes
+
+- As notas são opcionais e independentes para cada ciclo.
+- O usuário pode adicionar, remover e editar livremente disciplina, nota e carga
+  horária. A lista inicial oferece as disciplinas mais comuns, sem limitar nomes.
+- Escolas municipais sem notas continuam usando normalmente o histórico: se
+  nenhuma nota for informada, o quadro permanece vazio conforme o modelo.
+- Os dados são persistidos como JSONB em `notas_disciplinas`, no formato:
+
+```json
+[
+  { "disciplina": "Língua Portuguesa", "nota": "7", "cargaHoraria": "200" },
+  { "disciplina": "Matemática", "nota": "5", "cargaHoraria": "200" }
+]
+```
+
+### 13.4. Aluno fora do cadastro atual
+
+- Um RA não localizado na tabela `Aluno` abre o modo manual; não bloqueia a tela.
+- Nome, RA apresentado, nascimento, CPF, situação, datas de matrícula/saída,
+  última turma, faltas, certidão, ciclos, notas e transferência permanecem
+  editáveis e são salvos somente em `HistoricoAluno`.
+- `ra` continua sendo a chave numérica de busca; `ra_exibicao` preserva zeros,
+  pontuação ou outra forma necessária para o documento.
+- O modo manual nunca cria ou altera registros em `Aluno`, `Turma` ou `Falta`.
+
+### 13.5. Colunas adicionais
+
+Executar `ADICIONAR_LAYOUT_OFICIAL_HISTORICO.sql`. A operação é aditiva,
+idempotente e não modifica a política RLS vigente:
+
+| Coluna | Tipo | Uso |
+|---|---|---|
+| `ra_exibicao` | `text` | RA exatamente como será impresso |
+| `complemento_estabelecimento` | `text` | Ex.: `TRANSFERE-SE` |
+| `notas_disciplinas` | `jsonb` | Disciplinas, notas e cargas do ciclo |
+| `transferencia_ano_ciclo` | `text` | Ano/ciclo no quadro do verso |
+| `transferencia_periodo` | `text` | Período cursado |
+| `transferencia_dias_letivos` | `text` | Dias letivos |
+| `transferencia_presencas` | `text` | Presenças |
+| `transferencia_ausencias` | `text` | Ausências |
+| `prosseguimento_ano` | `text` | Ano de prosseguimento dos estudos |
+| `data_emissao` | `text` | Data apresentada no documento |
+
+### 13.6. Critérios adicionais de aceite
+
+- [ ] Frente e verso conservam o formato oficial em A4 e não cortam conteúdo.
+- [ ] `TRANSFERE-SE` pode ser digitado em qualquer ciclo e sai abaixo da escola.
+- [ ] É possível registrar notas e cargas por disciplina em qualquer ciclo.
+- [ ] Histórico sem notas continua imprimindo normalmente.
+- [ ] Todos os campos necessários a um ex-aluno são preenchíveis manualmente.
+- [ ] Reabrir o mesmo RA restaura notas, transferência e demais dados salvos.
+- [ ] Nenhuma tabela ou aba fora do Histórico é alterada.
