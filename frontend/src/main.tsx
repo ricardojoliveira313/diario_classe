@@ -42,6 +42,10 @@ const NAV_ITEMS: { to: string; label: string; end?: boolean; badge?: boolean; ad
 
 const ANOS_DISPONIVEIS = [2025, 2026, 2027];
 
+// No desktop, os ícones ocupavam espaço suficiente para empurrar as últimas
+// abas para fora da área visível. O menu móvel continua usando o rótulo completo.
+const labelDesktop = (label: string) => label.replace(/^\S+\s+/, '');
+
 // Primeira aba que o viewer realmente tem acesso, na ordem do menu — usado
 // como destino de redirecionamento em vez de sempre mandar pra "/", que
 // trava numa tela em branco se "Dashboard" não estiver entre as liberadas.
@@ -143,8 +147,8 @@ function AppShell() {
   };
 
   const linkBase: React.CSSProperties = {
-    color: '#bfdbfe', textDecoration: 'none', padding: '7px 8px',
-    borderRadius: theme.radius, fontSize: 13, fontWeight: 500,
+    color: '#bfdbfe', textDecoration: 'none', padding: '7px 5px',
+    borderRadius: theme.radius, fontSize: 12, fontWeight: 500,
     transition: 'all 0.15s ease', whiteSpace: 'nowrap',
     userSelect: 'none', WebkitUserSelect: 'none',
   };
@@ -178,10 +182,10 @@ function AppShell() {
                   style={({ isActive }) => isActive ? linkActive : linkBase}
                 >
                   {item.badge && nPendentes > 0 ? (
-                    <span>{item.label}
+                    <span>{labelDesktop(item.label)}
                       <span style={{ marginLeft: 4, background: theme.danger, color: 'white', borderRadius: 10, padding: '0px 5px', fontSize: 11, fontWeight: 700 }}>{nPendentes}</span>
                     </span>
-                  ) : item.label}
+                  ) : labelDesktop(item.label)}
                 </NavLink>
               ))}
             </div>
