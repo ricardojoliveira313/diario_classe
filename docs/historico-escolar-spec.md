@@ -70,6 +70,16 @@ export const PAGINAS_VIEWER = [
 
 > ℹ️ O TypeScript irá inferir automaticamente `PageKey` incluindo `'historico'`. Não é necessário alterar mais nada neste arquivo.
 
+> ⚠️ **Permissões para usuários existentes:** Adicionar `'historico'` ao `PAGINAS_VIEWER` só concede acesso automático a usuários do tipo `admin`. Usuários `viewer` com lista explícita de permissões (campo `permissoes` na tabela `Usuario`) precisam ter `'historico'` adicionado manualmente via página de Usuários ou via SQL:
+> ```sql
+> -- Adicionar 'historico' para todos os viewers que ainda não têm:
+> UPDATE "Usuario"
+> SET permissoes = array_append(permissoes, 'historico')
+> WHERE tipo = 'viewer'
+>   AND NOT ('historico' = ANY(permissoes));
+> ```
+> Se a intenção for restringir o histórico apenas a admin/secretaria, não executar o SQL acima e deixar o acesso liberado somente via concessão manual na página de Usuários.
+
 ---
 
 ## 4. Passo 2 — Editar main.tsx
@@ -219,7 +229,6 @@ const buscarPorRA = async () => {
     .eq('ra', ra)
     .order('ciclo');
 
-  const anoAtual = new Date().getFullYear().toString();
   const cicloAtual = detectarCiclo(selecionado.Turma?.nome ?? '');
 
   const novasLinhas: LinhaCiclo[] = CICLOS_LABELS.map((label, i) => {
@@ -235,7 +244,9 @@ const buscarPorRA = async () => {
     }
     // Ciclo atual: preencher escola/ano automaticamente
     const ehCicloAtual = ciclo === cicloAtual;
-    return { ciclo, label, anoLetivo: ehCicloAtual ? anoAtual : '',
+    // anoLetivo: usar ano de data_inicio_matricula, não o ano corrente do sistema
+    const anoMatricula = selecionado.data_inicio_matricula?.slice(0, 4) ?? '';
+    return { ciclo, label, anoLetivo: ehCicloAtual ? anoMatricula : '',
       cargaHoraria: '1000',
       escola: ehCicloAtual ? ESCOLA_PADRAO : '',
       municipio: ehCicloAtual ? MUN_PADRAO : '',
@@ -248,19 +259,56 @@ const buscarPorRA = async () => {
 };
 ```
 
+**Estados adicionais necessários para campos de certidão e cidade:**
+
+```typescript
+// Adicionar ao bloco de estados do componente:
+const [certNum,      setCertNum]      = useState('');
+const [certFolha,    setCertFolha]    = useState('');
+const [certLivro,    setCertLivro]    = useState('');
+const [certDistrito, setCertDistrito] = useState('');
+const [cidadeNasc,   setCidadeNasc]   = useState('SANTO ANDRÉ');
+const [estadoNasc,   setEstadoNasc]   = useState('SP');
+```
+
+Ao carregar o histórico salvo (`buscarPorRA`), restaurar esses campos da primeira linha disponível:
+
+```typescript
+// Dentro do bloco "if (hist && hist.length > 0)":
+const primeira = hist[0]; // cert fields são iguais em todas as linhas do RA
+if (primeira) {
+  setCertNum(primeira.cert_num ?? '');
+  setCertFolha(primeira.cert_folha ?? '');
+  setCertLivro(primeira.cert_livro ?? '');
+  setCertDistrito(primeira.cert_distrito ?? '');
+  setCidadeNasc(primeira.cidade_nasc ?? 'SANTO ANDRÉ');
+  setEstadoNasc(primeira.estado_nasc ?? 'SP');
+}
+```
+
 **Salvar linhas na tabela HistoricoAluno (upsert por ra+ciclo):**
 
 ```typescript
 const salvarHistorico = async () => {
   if (!aluno) return;
+  // Campos de certidão e cidade são RA-nível mas armazenados em cada linha
+  const certFields = {
+    cert_num:      certNum      || null,
+    cert_folha:    certFolha    || null,
+    cert_livro:    certLivro    || null,
+    cert_distrito: certDistrito || null,
+    cidade_nasc:   cidadeNasc   || null,
+    estado_nasc:   estadoNasc   || null,
+  };
   const registros = linhas.map(l => ({
     ra: aluno.ra, ciclo: l.ciclo,
-    ano_letivo: l.anoLetivo || null,
+    ano_letivo:    l.anoLetivo    || null,
     carga_horaria: l.cargaHoraria || null,
-    escola: l.escola || null,
-    municipio: l.municipio || null,
-    uf: l.uf || null,
-    resultado: l.resultado || null,
+    escola:        l.escola       || null,
+    municipio:     l.municipio    || null,
+    uf:            l.uf           || null,
+    resultado:     l.resultado    || null,
+    ...certFields,
   }));
   await supabase.from('HistoricoAluno')
     .upsert(registros, { onConflict: 'ra,ciclo' });
@@ -307,7 +355,7 @@ function detectarCiclo(nomeTurma: string): number | null {
 }
 ```
 
-Após detectar o ciclo, preencher `linhas[ciclo - 1]` com: `escola = ESCOLA_PADRAO`, `municipio = MUN_PADRAO`, `anoLetivo = ano de data_inicio_matricula`. As demais linhas ficam em branco para preenchimento manual.
+Após detectar o ciclo, preencher `linhas[ciclo - 1]` com: `escola = ESCOLA_PADRAO`, `municipio = MUN_PADRAO`, `anoLetivo = ano extraído de data_inicio_matricula` (ex: `aluno.data_inicio_matricula?.slice(0, 4) ?? ''`). As demais linhas ficam em branco para preenchimento manual.
 
 ### 7.3. Cenário TRAN — aluno vindo de outra escola para Luiz Gonzaga no meio do ano
 
@@ -342,7 +390,7 @@ Quando um aluno fez parte do ano em outra escola (ex: EMEF Augusto Boal) e depoi
 | | Faltas / Presenças | `totalFaltas` da tabela Falta. Presenças = 200 − totalFaltas | Não |
 | | Data de saída | `aluno.data_fim_matricula` | Não |
 | **Observações legais** | Texto institucional | Fixo — sempre exibido | Não |
-| **Certificado** (condicional: ATIVO + 5º ano) | Nome / escola / ano | `aluno.nome` · "EMEIEF LUIZ GONZAGA" · `new Date().getFullYear()` | Não |
+| **Certificado** (condicional: ATIVO + `linhas[4].anoLetivo` preenchido) | Nome / escola / ano | `aluno.nome` · "EMEIEF LUIZ GONZAGA" · `linhas[4].anoLetivo` | Não |
 | **Rodapé** | Data de emissão | `new Date()` formatado — editável | Sim |
 | | Assinatura | Fixo: Terezinha Babichaka Squiavoni — Diretora de Unidade Escolar | Não |
 | | Aviso final | Fixo: "ESTE DOCUMENTO NÃO CONTÉM EMENDA NEM RASURA" | Não |
@@ -384,11 +432,16 @@ CREATE TABLE IF NOT EXISTS "HistoricoAluno" (
   UNIQUE (ra, ciclo)         -- upsert via ra+ciclo
 );
 
--- RLS: permitir leitura e escrita autenticada
-ALTER TABLE "HistoricoAluno" ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "auth_all" ON "HistoricoAluno"
-  FOR ALL USING (auth.role() = 'authenticated')
-  WITH CHECK (auth.role() = 'authenticated');
+-- RLS: política aberta (app usa autenticação própria via verificar_login,
+-- chegando ao Supabase como role 'anon' — não usa Supabase Auth)
+ALTER TABLE public."HistoricoAluno" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "auth_all" ON public."HistoricoAluno";
+DROP POLICY IF EXISTS "permitir_app_HistoricoAluno" ON public."HistoricoAluno";
+CREATE POLICY "permitir_app_HistoricoAluno"
+  ON public."HistoricoAluno"
+  FOR ALL TO anon, authenticated
+  USING (true) WITH CHECK (true);
+NOTIFY pgrst, 'reload schema';
 ```
 
 ---
@@ -403,7 +456,7 @@ CREATE POLICY "auth_all" ON "HistoricoAluno"
 - **Carga horária 2020:** se o usuário preencher `anoLetivo = '2020'` em qualquer linha, sugerir automaticamente carga horária `'800'` (pode ser sobrescrito).
 - **Linhas vazias na impressão:** linhas onde `anoLetivo`, `escola` e `municipio` estão todos em branco devem ter classe CSS `linha-vazia`. No `@media print`, ocultar essas linhas.
 - **Campo Resultado:** exibir coluna "Resultado" na tabela de ciclos somente se ao menos uma linha tiver o campo `resultado` preenchido.
-- **Certificado de conclusão:** exibir somente se `isAtivo(aluno.situacao)`. Texto: "O diretor da EMEIEF LUIZ GONZAGA, de acordo com o inciso VII do artigo 24 da lei 9394/96, certifica que [NOME], concluiu o 5º Ano do Ensino Fundamental, no ano letivo de [ANO]."
+- **Certificado de conclusão:** exibir somente se `isAtivo(aluno.situacao)` **E** a linha do ciclo 5 tiver `anoLetivo` preenchido (`linhas[4].anoLetivo !== ''`). O aluno precisa estar ativo E ter o 5º ano registrado no histórico para que o certificado faça sentido. Texto: "O diretor da EMEIEF LUIZ GONZAGA, de acordo com o inciso VII do artigo 24 da lei 9394/96, certifica que [NOME], concluiu o 5º Ano do Ensino Fundamental, no ano letivo de [linhas[4].anoLetivo]."
 - **Transferência (Campo 05):** exibir somente se `aluno.situacao === 'TRAN'`. Período letivo: usar `aluno.data_fim_matricula` se disponível.
 - **TRAN de outra escola PARA Luiz Gonzaga:** quando o aluno ingressou vindo de outra escola no mesmo ano, o sistema importa-o como ATIVO. O autopreenchimento preenche a linha do ciclo com Luiz Gonzaga. O secretário deve preencher manualmente a escola anterior se houver parte do ano lá. **O sistema não tem dados de outras escolas — só de Luiz Gonzaga.**
 - **Série → Ciclo (regra crítica):** a coluna "Série" do arquivo SED (valores 1, 2, 3, 4, 5) corresponde diretamente ao número do ciclo no histórico. O nome da turma (ex: "4° ANO C TARDE") codifica o mesmo número. A função `detectarCiclo(nomeTurma)` extrai esse número com regex. **Ciclo = Série = Número do Ano no ensino fundamental.**
@@ -417,21 +470,24 @@ Incluir no componente (via tag `<style>` dentro do JSX ou arquivo CSS importado)
 
 ```css
 @media print {
-  /* Oculta tudo exceto o documento */
-  body > * { display: none !important; }
-  #historico-doc { display: block !important; }
-
-  /* Tamanho A4, margens padrão */
-  @page { size: A4; margin: 15mm 15mm 12mm 15mm; }
-
+  /* Usa visibility (não display) para ocultar o restante da página.
+     Com display:none no body>*, o React root (#root) some e o filho
+     #historico-doc não consegue reaparecer (pai com display:none bloqueia filhos).
+     Com visibility:hidden no body + visibility:visible no doc o filho
+     pode sobrescrever o pai — esse é o padrão correto para este caso. */
+  body { visibility: hidden; }
   #historico-doc {
+    visibility: visible;
+    position: fixed;
+    top: 0; left: 0;
     font-family: Arial, sans-serif;
     font-size: 10pt;
     color: black;
     width: 180mm;
-    position: fixed;
-    top: 0; left: 0;
   }
+
+  /* Tamanho A4, margens padrão */
+  @page { size: A4; margin: 15mm 15mm 12mm 15mm; }
 
   /* Linhas sem dados: ocultar na impressão */
   .linha-vazia { display: none !important; }
@@ -450,7 +506,7 @@ Incluir no componente (via tag `<style>` dentro do JSX ou arquivo CSS importado)
 }
 ```
 
-> 🖨️ A abordagem `body > * display:none + #historico-doc display:block` é mais robusta que ocultar elementos individualmente, porque cobre automaticamente qualquer elemento adicionado ao layout no futuro.
+> ⚠️ **Atenção:** NÃO usar `body > * { display: none }`. O `#root` (container do React) é filho direto do `body` — se ele receber `display: none`, nenhum filho seu pode sobrescrever com `display: block`, pois a renderização da subárvore para. A abordagem correta é `visibility: hidden` no body + `visibility: visible` no `#historico-doc`, pois a propriedade `visibility` pode ser revertida em descendentes.
 
 ---
 
