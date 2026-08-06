@@ -110,13 +110,13 @@ const DIRETOR = 'Terezinha Babichaka Squiavoni';
 const CARGO_DIRETOR = 'Diretora de Unidade Escolar';
 
 const OBSERVACOES_LEGAIS = [
-  'O Sistema Continuado de Ensino, conforme deliberação CEE 9/97, indicação 22/97 das Escolas Municipais de Santo André prevê avaliação contínua, cumulativa e sistemática, através da síntese de desempenho do aluno, elaborada por meio de registro. A verificação do rendimento escolar não prevê notas, conceitos ou menções.',
+  'O Sistema Continuado de Ensino, conforme deliberação CEE 9/97, indicação 22/97 das Escolas Municipais de Santo André prevê avaliação contínua, cumulativa e sistemática, através da síntese de desempenho do aluno, elaborado por meio de registro. A verificação do rendimento escolar não prevê notas.',
   'O Curso de Ensino Fundamental Regular mantido pela Secretaria de Educação do Município de Santo André está organizado em dois ciclos:',
   'O referido curso equivale às cinco primeiras séries iniciais do Ensino Fundamental de 09 anos.',
   'Carga Horária Anual mínima de 1000 horas, distribuídas em 200 dias letivos.',
-  'A organização do 1º ao 5º ano foi adotada a partir de 2011. (Deliberação CME nº 03/2010)',
-  'O referido curso, criado pelo Decreto Municipal 14.146, de 27/04/98 e publicado no Diário do Grande ABC, equivale aos estudos das séries iniciais do Ensino Fundamental.',
-  'De acordo com a Lei nº 14.040/2020, de 18 de agosto de 2020, art. 2º, os estabelecimentos de ensino de educação básica ficaram dispensados, em caráter excepcional, do cumprimento da obrigatoriedade dos 200 dias letivos, mantida a carga horária mínima anual. Na Rede Municipal de Santo André, em 2020 foram cumpridas 940 horas.',
+  'A organização do 1º ao 5º ano foi adotada a partir de 2011. (Deliberação CME nº.03/2010)',
+  'O referido curso, Decreto Municipal 14.146, de 27/04/98 publicado no Diário do Grande ABC, equivale aos estudos das séries iniciais do Ensino Fundamental.',
+  'De acordo com Lei nº 14.040/2020, de 18 de agosto de 2020, Art. 2º, em seu caput, indica que os estabelecimentos de ensino de educação básica ficam dispensados em caráter excepcional do cumprimento da obrigatoriedade dos 200 dias letivos (LDB nº 9394/96), especificando no Inciso II do mesmo artigo, que no ensino fundamental seja cumprida a carga horária mínima de 800 horas, também prevista na LDB. Na Rede Municipal de Santo André em 2020 foram cumpridas 940h.',
 ];
 
 const campoDocumento: CSSProperties = {
@@ -805,7 +805,7 @@ export default function Historico() {
                         <td className="campo-aluno">R.A.: <input aria-label="RA exibido" style={{ ...campoDocumento, width: '68%', fontWeight: 800 }} value={raExibicao} onChange={event => setRaExibicao(event.target.value)} /></td>
                       </tr>
                       <tr><th rowSpan={2}>LOCAL DE<br />NASCIMENTO</th><th colSpan={2}>CIDADE</th><th>ESTADO</th><th>DATA DE NASCIMENTO</th></tr>
-                      <tr className="linha-valor"><td colSpan={2}><input aria-label="Cidade de nascimento" style={campoDocumento} value={cidadeNasc} onChange={event => setCidadeNasc(event.target.value)} /></td><td><input aria-label="Estado de nascimento" maxLength={2} style={campoDocumento} value={estadoNasc} onChange={event => setEstadoNasc(event.target.value.toUpperCase())} /></td><td>{formatarData(aluno.data_nascimento)}</td></tr>
+                      <tr className="linha-valor"><td colSpan={2}><input aria-label="Cidade de nascimento" style={campoDocumento} value={cidadeNasc} onChange={event => setCidadeNasc(event.target.value)} /></td><td><input aria-label="Estado de nascimento" maxLength={2} style={campoDocumento} value={estadoNasc} onChange={event => setEstadoNasc(event.target.value.toUpperCase())} /></td><td><input aria-label="Data de nascimento" style={campoDocumento} value={formatarData(aluno.data_nascimento)} onChange={event => atualizarAluno('data_nascimento', event.target.value || null)} placeholder="dd/mm/aaaa" /></td></tr>
                       <tr><th>CERTIDÃO DE<br />NASCIMENTO Nº</th><th>Fls.</th><th>LIVRO</th><th>DISTRITO/MUNICÍPIO</th><th>ESTADO</th></tr>
                       <tr className="linha-valor"><td><input aria-label="Número da certidão" style={campoDocumento} value={certNum} onChange={event => setCertNum(event.target.value)} /></td><td><input aria-label="Folha da certidão" style={campoDocumento} value={certFolha} onChange={event => setCertFolha(event.target.value)} /></td><td><input aria-label="Livro da certidão" style={campoDocumento} value={certLivro} onChange={event => setCertLivro(event.target.value)} /></td><td><input aria-label="Distrito da certidão" style={campoDocumento} value={certDistrito} onChange={event => setCertDistrito(event.target.value)} /></td><td><input aria-label="Estado da certidão" maxLength={2} style={campoDocumento} value={estadoNasc} onChange={event => setEstadoNasc(event.target.value.toUpperCase())} /></td></tr>
                     </tbody>
