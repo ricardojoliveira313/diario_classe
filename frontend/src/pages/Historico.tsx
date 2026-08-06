@@ -738,7 +738,6 @@ export default function Historico() {
               </div>
             </div>
             <div className="editor-grid">
-              <label style={label}>CPF<input style={input} value={aluno.cpf ?? ''} onChange={event => atualizarAluno('cpf', event.target.value || null)} /></label>
               <label style={label}>Situação<input list="historico-situacoes" style={input} value={aluno.situacao ?? ''} onChange={event => atualizarAluno('situacao', event.target.value.toUpperCase() || null)} /></label>
               <datalist id="historico-situacoes"><option value="ATIVO" /><option value="TRAN" /><option value="BXTR" /><option value="CONCLUÍDO" /></datalist>
               <label style={label}>Início da matrícula<input type="date" style={input} value={normalizarDataParaBanco(aluno.data_inicio_matricula) ?? ''} onChange={event => atualizarAluno('data_inicio_matricula', event.target.value || null)} /></label>
