@@ -674,16 +674,18 @@ export default function Historico() {
   return (
     <div style={{ marginTop: 16 }}>
       <style>{`
-        .historico-pagina { width: 210mm; min-height: 297mm; box-sizing: border-box; padding: 13mm 10mm 14mm 13mm; margin: 0 auto 20px; background: #fff; color: #111; font-family: Arial, sans-serif; font-size: 10pt; box-shadow: ${theme.shadow}; overflow: hidden; }
+        .historico-pagina { width: 210mm; min-height: 297mm; box-sizing: border-box; padding: 9mm 8mm 10mm 9mm; margin: 0 auto 20px; background: #fff; color: #111; font-family: Arial, sans-serif; font-size: 10.5pt; box-shadow: ${theme.shadow}; overflow: hidden; }
         .historico-pagina * { box-sizing: border-box; }
         .pagina-etiqueta { width: 210mm; margin: 0 auto 5px; font-weight: 800; color: ${theme.textSecondary}; }
-        .quadro-oficial { border: 1.5px solid #111; margin-bottom: 7mm; }
-        .titulo-quadro { border-bottom: 1px solid #111; font-size: 12pt; font-weight: 800; margin: 0; padding: 2.5mm 2mm; text-align: center; text-transform: uppercase; }
-        .historico-frente .quadro-oficial { margin-bottom: 4mm; }
-        .cabecalho-oficial { height: 30mm; display: grid; grid-template-columns: 46mm 1fr; align-items: center; padding: 2mm; position: relative; }
+        .quadro-oficial { border: 1.5px solid #111; margin-bottom: 5mm; }
+        .titulo-quadro { border-bottom: 1px solid #111; font-size: 12pt; font-weight: 800; margin: 0; padding: 2mm 2mm; text-align: center; text-transform: uppercase; }
+        .historico-frente .quadro-oficial { margin-bottom: 3mm; }
+        .cabecalho-wrapper { position: relative; border: 1.5px solid #111; margin-bottom: 3mm; }
+        .cabecalho-oficial { height: 32mm; display: grid; grid-template-columns: 46mm 1fr; align-items: center; padding: 2mm; }
         .cabecalho-oficial img { width: 43mm; height: auto; }
-        .cabecalho-texto { text-align: center; font-weight: 800; font-size: 12pt; line-height: 1.25; }
-        .cabecalho-texto h2 { font-size: 14pt; margin: 6mm 0 0; }
+        .cabecalho-texto { text-align: center; font-weight: 800; font-size: 12.5pt; line-height: 1.3; }
+        .cabecalho-texto h2 { font-size: 15pt; margin: 5mm 0 0; }
+        .select-via { position: absolute; top: 2mm; right: 3mm; font-family: Arial, sans-serif; font-weight: 800; font-size: 9pt; border: 1px solid #555; background: transparent; color: #111; padding: 1px 4px; cursor: pointer; }
         .dados-escola { min-height: 32mm; padding: 2mm; font-size: 9.5pt; font-weight: 800; line-height: 1.28; }
         .tabela-oficial, .tabela-estudos, .tabela-transferencia, .tabela-notas { width: 100%; border-collapse: collapse; table-layout: fixed; }
         .tabela-oficial { font-size: 9pt; }
@@ -746,7 +748,7 @@ export default function Historico() {
           #historico-doc { visibility: visible; position: static; width: 210mm; }
           #historico-doc, #historico-doc * { visibility: visible; }
           .nao-imprimir, .pagina-etiqueta { display: none !important; }
-          .historico-pagina { width: 210mm; height: 295mm; min-height: 295mm; margin: 0; padding: 13mm 10mm 14mm 13mm; box-shadow: none; break-after: page; page-break-after: always; }
+          .historico-pagina { width: 210mm; height: 295mm; min-height: 295mm; margin: 0; padding: 9mm 8mm 10mm 9mm; box-shadow: none; break-after: page; page-break-after: always; }
           #historico-doc > div:last-child .historico-pagina { break-after: auto; page-break-after: auto; }
           input, textarea, select { border: none !important; outline: none !important; background: transparent !important; color: #111 !important; box-shadow: none !important; }
           @page { size: A4 portrait; margin: 0; }
@@ -854,18 +856,20 @@ export default function Historico() {
             <div className="pagina-etiqueta nao-imprimir">Frente — página 1</div>
             <div className="historico-rolagem">
               <section className="historico-pagina historico-frente">
-                <div className="quadro-oficial cabecalho-oficial">
-                  <img src="/brasao-santo-andre.png" alt="Prefeitura de Santo André" />
-                  <div className="cabecalho-texto">
-                    <div>SECRETARIA DE EDUCAÇÃO</div>
-                    <div>DEPARTAMENTO DE EDUCAÇÃO E ENSINO FUNDAMENTAL</div>
-                    <h2>HISTÓRICO ESCOLAR</h2>
+                <div className="cabecalho-wrapper">
+                  <div className="cabecalho-oficial">
+                    <img src="/brasao-santo-andre.png" alt="Prefeitura de Santo André" />
+                    <div className="cabecalho-texto">
+                      <div>SECRETARIA DE EDUCAÇÃO</div>
+                      <div>DEPARTAMENTO DE EDUCAÇÃO E ENSINO FUNDAMENTAL</div>
+                      <h2>HISTÓRICO ESCOLAR</h2>
+                    </div>
                   </div>
                   <select
                     aria-label="Via do documento"
+                    className="select-via"
                     value={via}
                     onChange={event => setVia(event.target.value)}
-                    style={{ position: 'absolute', top: '2mm', right: '3mm', font: 'inherit', fontWeight: 800, fontSize: '9pt', border: '1px solid #555', background: 'transparent', color: '#111', padding: '1px 4px', cursor: 'pointer' }}
                   >
                     <option>1ª VIA</option>
                     <option>2ª VIA</option>
