@@ -680,7 +680,7 @@ export default function Historico() {
         .quadro-oficial { border: 1.5px solid #111; margin-bottom: 7mm; }
         .titulo-quadro { border-bottom: 1px solid #111; font-size: 12pt; font-weight: 800; margin: 0; padding: 2.5mm 2mm; text-align: center; text-transform: uppercase; }
         .historico-frente .quadro-oficial { margin-bottom: 4mm; }
-        .cabecalho-oficial { height: 30mm; display: grid; grid-template-columns: 46mm 1fr; align-items: center; padding: 2mm; }
+        .cabecalho-oficial { height: 30mm; display: grid; grid-template-columns: 46mm 1fr; align-items: center; padding: 2mm; position: relative; }
         .cabecalho-oficial img { width: 43mm; height: auto; }
         .cabecalho-texto { text-align: center; font-weight: 800; font-size: 12pt; line-height: 1.25; }
         .cabecalho-texto h2 { font-size: 14pt; margin: 6mm 0 0; }
@@ -872,6 +872,17 @@ export default function Historico() {
                       <option>4ª VIA</option>
                     </select>
                   </div>
+                  <select
+                    aria-label="Via do documento"
+                    value={via}
+                    onChange={event => setVia(event.target.value)}
+                    style={{ position: 'absolute', top: '2mm', right: '3mm', font: 'inherit', fontWeight: 800, fontSize: '9pt', border: '1px solid #555', background: 'transparent', color: '#111', padding: '1px 4px', cursor: 'pointer' }}
+                  >
+                    <option>1ª VIA</option>
+                    <option>2ª VIA</option>
+                    <option>3ª VIA</option>
+                    <option>4ª VIA</option>
+                  </select>
                 </div>
 
                 <div className="quadro-oficial dados-escola">
