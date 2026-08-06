@@ -7,16 +7,17 @@ const selectStyle = { ...input, cursor: 'pointer' as const, appearance: 'menulis
 
 const TIPOS = [
   { value: 'falta_abonada',       label: 'Falta Abonada',                        color: '#0d9488' },
-  { value: 'atestado_medico',     label: 'Atestado Médico (até 14 dias)',        color: '#f59e0b' },
-  { value: 'licenca_medica',      label: 'Licença Médica (15 dias ou mais)',     color: '#8b5cf6' },
+  { value: 'atestado_medico',     label: 'Falta Médica (até 15 dias)',            color: '#f59e0b' },
+  { value: 'licenca_medica',      label: 'Licença Médica (a partir de 16 dias)', color: '#8b5cf6' },
   { value: 'ltpf',                label: 'LTPF',                                 color: '#a855f7' },
   { value: 'tre',                 label: 'TRE',                                  color: '#3b82f6' },
+  { value: 'licenca_premio',      label: 'Licença-prêmio',                       color: '#06b6d4' },
   { value: 'pedido_justificacao', label: 'Pedido de Justificação',               color: '#10b981' },
   { value: 'doacao_sangue',       label: 'Doação de Sangue',                     color: '#ec4899' },
 ];
 
-// Atestado Médico (curto) vs Licença Médica (longo) — classificação automática pelo nº de dias
-const LIMITE_DIAS_LICENCA = 15;
+// Falta Médica (curto) vs Licença Médica (longo) — classificação automática pelo nº de dias
+const LIMITE_DIAS_LICENCA = 16;
 function classificarPorDias(tipo: string, dias: number): string {
   if (tipo === 'atestado_medico' || tipo === 'licenca_medica') {
     return dias >= LIMITE_DIAS_LICENCA ? 'licenca_medica' : 'atestado_medico';
@@ -196,7 +197,7 @@ export default function Ocorrencias() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
           <div>
             <h1 style={{ fontSize: 24, fontWeight: 800, color: theme.text, margin: 0 }}>📋 Ocorrências</h1>
-            <p style={{ color: theme.textMuted, fontSize: 13, margin: '2px 0 0' }}>Registro de faltas de servidores — Falta Abonada, Atestado Médico, Licença Médica, LTPF, TRE, Ped. Justificação e Doação de Sangue</p>
+            <p style={{ color: theme.textMuted, fontSize: 13, margin: '2px 0 0' }}>Registro de faltas de servidores — Falta Abonada, Falta Médica, Licença Médica, LTPF, TRE, Licença-prêmio, Ped. Justificação e Doação de Sangue</p>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button onClick={exportarPDF} style={{ ...btn("ghost"), fontSize: 13 }} disabled={ocorrencias.length === 0}>📄 Relatório PDF</button>
@@ -313,7 +314,7 @@ export default function Ocorrencias() {
                 </select>
                 {(form.tipo === 'atestado_medico' || form.tipo === 'licenca_medica') && (
                   <p style={{ color: theme.textMuted, fontSize: 11, margin: '4px 0 0' }}>
-                    Classificação automática pelos dias: até {LIMITE_DIAS_LICENCA - 1} dias = Atestado Médico; {LIMITE_DIAS_LICENCA} dias ou mais = Licença Médica.
+                    Classificação automática pelos dias: até {LIMITE_DIAS_LICENCA - 1} dias = Falta Médica; {LIMITE_DIAS_LICENCA} dias ou mais = Licença Médica.
                   </p>
                 )}
               </div>
