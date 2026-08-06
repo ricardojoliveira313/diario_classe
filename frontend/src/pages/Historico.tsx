@@ -672,9 +672,10 @@ export default function Historico() {
         .observacoes-corpo { padding: 3mm 2mm; font-size: 8.1pt; font-weight: 700; line-height: 1.14; }
         .observacao-item { display: grid; grid-template-columns: 7mm 1fr; margin-bottom: 2mm; }
         .ciclos-observacao { display: grid; grid-template-columns: 24mm 1fr; font-family: 'Courier New', monospace; font-size: 7.8pt; font-weight: 400; margin: 1mm 0 1.5mm 8mm; }
-        .certificado-oficial { min-height: 30mm; }
-        .certificado-texto { font-size: 10.5pt; line-height: 1.5; padding: 3mm 2mm; text-align: justify; word-wrap: break-word; }
-        .certificado-texto input { border-bottom: 1px solid #aaa !important; display: inline !important; vertical-align: baseline; min-width: 10mm; }
+        .certificado-oficial { min-height: 32mm; }
+        .certificado-texto { font-size: 10pt; line-height: 1.55; padding: 3mm 2mm; }
+        .certificado-linha { display: block; margin-bottom: 1mm; }
+        .certificado-campo { border: none; border-bottom: 1px solid #555; background: transparent; color: #111; font: inherit; font-weight: 800; outline: none; padding: 0 1px; vertical-align: baseline; }
         .historico-verso .quadro-oficial { margin-bottom: 5mm; }
         .assinatura-oficial { display: grid; grid-template-columns: 45% 55%; height: 42mm; margin-top: 5mm; }
         .assinatura-coluna { border-right: 1px solid #111; display: flex; flex-direction: column; justify-content: flex-end; text-align: center; }
@@ -902,14 +903,35 @@ export default function Historico() {
                   <h3 className="titulo-quadro">Certificado</h3>
                   {linhas[4]?.anoLetivo.trim() ? (
                     <div className="certificado-texto">
-                      O diretor da{' '}
-                      <strong><input aria-label="Escola no certificado" style={{ ...campoDocumento, display: 'inline', width: `${ESCOLA_PADRAO.length * 6.5}px`, fontWeight: 800 }} value={ESCOLA_PADRAO} readOnly /></strong>,{' '}
-                      de acordo com o inciso VII do artigo 24 da lei 9394/96, certifica que{' '}
-                      <strong><input aria-label="Nome do aluno no certificado" style={{ ...campoDocumento, display: 'inline', width: `${Math.max(aluno.nome.length * 6.5, 60)}px`, fontWeight: 800 }} value={aluno.nome} onChange={event => atualizarAluno('nome', event.target.value)} /></strong>,{' '}
-                      concluiu o{' '}
-                      <strong><input aria-label="Série no certificado" style={{ ...campoDocumento, display: 'inline', width: `${Math.max(certSerie.length * 6.5, 40)}px`, fontWeight: 800 }} value={certSerie} onChange={event => setCertSerie(event.target.value)} /></strong>{' '}
-                      do Ensino Fundamental, no ano letivo de{' '}
-                      <strong><input aria-label="Ano letivo no certificado" style={{ ...campoDocumento, display: 'inline', width: '32px', fontWeight: 800 }} value={linhas[4].anoLetivo} onChange={event => atualizarLinha(4, 'anoLetivo', event.target.value)} /></strong>.
+                      <span className="certificado-linha">
+                        O diretor da <strong>{ESCOLA_PADRAO}</strong>, de acordo com o inciso VII do artigo 24 da lei 9394/96,
+                      </span>
+                      <span className="certificado-linha">
+                        certifica que{' '}
+                        <input
+                          aria-label="Nome do aluno no certificado"
+                          className="certificado-campo"
+                          size={Math.max(aluno.nome.length + 2, 20)}
+                          value={aluno.nome}
+                          onChange={event => atualizarAluno('nome', event.target.value)}
+                        />
+                        , concluiu o{' '}
+                        <input
+                          aria-label="Série no certificado"
+                          className="certificado-campo"
+                          size={Math.max(certSerie.length + 2, 8)}
+                          value={certSerie}
+                          onChange={event => setCertSerie(event.target.value)}
+                        />
+                        {' '}do Ensino Fundamental, no ano letivo de{' '}
+                        <input
+                          aria-label="Ano letivo no certificado"
+                          className="certificado-campo"
+                          size={6}
+                          value={linhas[4].anoLetivo}
+                          onChange={event => atualizarLinha(4, 'anoLetivo', event.target.value)}
+                        />.
+                      </span>
                     </div>
                   ) : null}
                 </div>
