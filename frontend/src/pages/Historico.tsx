@@ -280,6 +280,7 @@ export default function Historico() {
   const [transferenciaPresencas, setTransferenciaPresencas] = useState('');
   const [transferenciaAusencias, setTransferenciaAusencias] = useState('');
   const [prosseguimentoAno, setProsseguimentoAno] = useState('');
+  const [certSerie, setCertSerie] = useState('5º Ano do Ensino Fundamental');
   const [nomeAssinante, setNomeAssinante] = useState(DIRETOR);
   const [cargoAssinante, setCargoAssinante] = useState(CARGO_DIRETOR);
   const printRef = useRef<HTMLDivElement>(null);
@@ -673,6 +674,7 @@ export default function Historico() {
         .ciclos-observacao { display: grid; grid-template-columns: 24mm 1fr; font-family: 'Courier New', monospace; font-size: 7.8pt; font-weight: 400; margin: 1mm 0 1.5mm 8mm; }
         .certificado-oficial { height: 30mm; }
         .certificado-texto { font-size: 11pt; line-height: 1.35; padding: 4mm 2mm; text-align: justify; }
+        .certificado-texto input { border-bottom: 1px solid #aaa !important; display: inline !important; vertical-align: baseline; }
         .historico-verso .quadro-oficial { margin-bottom: 5mm; }
         .assinatura-oficial { display: grid; grid-template-columns: 45% 55%; height: 42mm; margin-top: 5mm; }
         .assinatura-coluna { border-right: 1px solid #111; display: flex; flex-direction: column; justify-content: flex-end; text-align: center; }
@@ -898,11 +900,16 @@ export default function Historico() {
 
                 <div className="quadro-oficial certificado-oficial">
                   <h3 className="titulo-quadro">Certificado</h3>
-                  {mostrarCertificado && (
-                    <div className="certificado-texto">
-                      O diretor da <strong>{ESCOLA_PADRAO}</strong>, de acordo com o inciso VII do artigo 24 da Lei 9.394/96, certifica que <strong>{aluno.nome}</strong> concluiu o <strong>5º Ano do Ensino Fundamental</strong>, no ano letivo de <strong>{linhas[4].anoLetivo}</strong>.
-                    </div>
-                  )}
+                  <div className="certificado-texto">
+                    O diretor da{' '}
+                    <strong><input aria-label="Escola no certificado" style={{ ...campoDocumento, display: 'inline', width: 'auto', minWidth: '40mm', fontWeight: 800 }} value={ESCOLA_PADRAO} readOnly /></strong>,{' '}
+                    de acordo com o inciso VII do artigo 24 da lei 9394/96, certifica que{' '}
+                    <strong><input aria-label="Nome do aluno no certificado" style={{ ...campoDocumento, display: 'inline', width: 'auto', minWidth: '50mm', fontWeight: 800 }} value={aluno.nome} onChange={event => atualizarAluno('nome', event.target.value)} /></strong>,{' '}
+                    concluiu o{' '}
+                    <strong><input aria-label="Série no certificado" style={{ ...campoDocumento, display: 'inline', width: 'auto', minWidth: '45mm', fontWeight: 800 }} value={certSerie} onChange={event => setCertSerie(event.target.value)} /></strong>{' '}
+                    do Ensino Fundamental, no ano letivo de{' '}
+                    <strong><input aria-label="Ano letivo no certificado" style={{ ...campoDocumento, display: 'inline', width: 'auto', minWidth: '14mm', fontWeight: 800 }} value={linhas[4]?.anoLetivo ?? ''} onChange={event => atualizarLinha(4, 'anoLetivo', event.target.value)} /></strong>.
+                  </div>
                 </div>
 
                 <div className="quadro-oficial assinatura-oficial">
