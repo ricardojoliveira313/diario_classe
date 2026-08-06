@@ -656,7 +656,7 @@ export default function Historico() {
         .tabela-estudos .col-municipio { width: 32mm; }
         .tabela-estudos .col-uf { width: 13mm; }
         .campo-estabelecimento { display: flex; min-height: 8mm; flex-direction: column; justify-content: center; line-height: 1.1; }
-        .campo-escola-documento { display: block; font-size: 8pt !important; height: 5.4mm; line-height: 1.02; overflow: hidden; resize: none; }
+        .campo-escola-documento { display: block; font-size: 8pt !important; min-height: 5mm; line-height: 1.2; overflow: visible; resize: none; word-break: break-word; white-space: pre-wrap; }
         .complemento-estabelecimento { font-size: 8pt; font-weight: 800; text-transform: uppercase; }
         .resultados-frente { min-height: 48mm; }
         .texto-equivalencia { font-size: 9pt; font-weight: 700; line-height: 1.2; padding: 3mm 2mm; text-align: center; }
@@ -830,7 +830,7 @@ export default function Historico() {
                           <td><input aria-label={`Carga horária do ${linha.label}`} style={campoDocumento} value={linha.cargaHoraria} onChange={event => atualizarLinha(index, 'cargaHoraria', event.target.value)} /></td>
                           <td>
                             <div className="campo-estabelecimento">
-                              <textarea aria-label={`Estabelecimento do ${linha.label}`} className="campo-escola-documento" rows={2} style={campoDocumento} value={linha.escola} onChange={event => atualizarLinha(index, 'escola', event.target.value)} />
+                              <textarea aria-label={`Estabelecimento do ${linha.label}`} className="campo-escola-documento" rows={Math.max(2, Math.ceil(linha.escola.length / 22))} style={campoDocumento} value={linha.escola} onChange={event => atualizarLinha(index, 'escola', event.target.value)} />
                               <input aria-label={`Complemento do estabelecimento do ${linha.label}`} list="complementos-estabelecimento" className="complemento-estabelecimento" style={campoDocumento} value={linha.complementoEstabelecimento} onChange={event => atualizarLinha(index, 'complementoEstabelecimento', event.target.value.toUpperCase())} />
                             </div>
                           </td>
