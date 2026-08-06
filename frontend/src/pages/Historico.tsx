@@ -452,9 +452,8 @@ export default function Historico() {
 
       const cicloAtual = detectarCiclo(selecionado.Turma?.nome ?? '');
       const anoMatricula = extrairAno(selecionado.data_inicio_matricula);
-      const novasLinhas = CICLOS_LABELS.map((labelCiclo, index): LinhaCiclo => {
-        const ciclo = index + 1;
-        const salva = historico.find(item => item.ciclo === ciclo);
+
+      const construirLinha = (ciclo: number, labelCiclo: string, salva: HistoricoSalvo | undefined, ehCicloAtual: boolean): LinhaCiclo => {
         if (salva) {
           return {
             ciclo,
@@ -469,7 +468,6 @@ export default function Historico() {
             notas: normalizarNotas(salva.notas_disciplinas),
           };
         }
-        const ehCicloAtual = ciclo === cicloAtual;
         return {
           ciclo,
           label: labelCiclo,
@@ -482,7 +480,30 @@ export default function Historico() {
           resultado: '',
           notas: [],
         };
+      };
+
+      const novasLinhas: LinhaCiclo[] = CICLOS_LABELS.map((labelCiclo, index) => {
+        const ciclo = index + 1;
+        return construirLinha(ciclo, labelCiclo, historico.find(item => item.ciclo === ciclo), ciclo === cicloAtual);
       });
+
+      // Repetições: ciclo 6 = 3º Ano permanente, ciclo 7 = 5º Ano permanente
+      const rep3 = historico.find(item => item.ciclo === 6);
+      const rep5 = historico.find(item => item.ciclo === 7);
+      if (rep3) {
+        const idx3 = novasLinhas.findIndex(l => l.ciclo === 3);
+        if (idx3 !== -1) {
+          novasLinhas[idx3] = { ...novasLinhas[idx3], resultado: 'PERMANENTE' };
+          novasLinhas.splice(idx3 + 1, 0, construirLinha(6, '3º Ano / Final', rep3, false));
+        }
+      }
+      if (rep5) {
+        const idx5 = novasLinhas.findIndex(l => l.ciclo === 5);
+        if (idx5 !== -1) {
+          novasLinhas[idx5] = { ...novasLinhas[idx5], resultado: 'PERMANENTE' };
+          novasLinhas.splice(idx5 + 1, 0, construirLinha(7, '5º Ano / Final', rep5, false));
+        }
+      }
 
       setAluno(selecionado);
       setTotalFaltas(total);
@@ -532,6 +553,37 @@ export default function Historico() {
       ...atual,
       Turma: { nome, professora: atual.Turma?.professora ?? null, periodo: atual.Turma?.periodo ?? null },
     } : atual);
+  };
+
+  // Gerencia resultado "PERMANENTE" para 3º Ano (ciclo 3) e 5º Ano (ciclo 5),
+  // inserindo ou removendo a linha de repetição (ciclos 6 e 7)
+  const atualizarResultadoFinal = (index: number, valor: string) => {
+    setAlteradoSemSalvar(true);
+    setLinhas(atuais => {
+      const linha = atuais[index];
+      const cicloExtra = linha.ciclo === 3 ? 6 : 7;
+      const updated = atuais.map((l, i) => i === index ? { ...l, resultado: valor } : l);
+      const jaTemExtra = updated.some(l => l.ciclo === cicloExtra);
+      if (valor === 'PERMANENTE' && !jaTemExtra) {
+        const novaLinha: LinhaCiclo = {
+          ciclo: cicloExtra,
+          label: linha.label,
+          anoLetivo: linha.anoLetivo ? String(Number(linha.anoLetivo) + 1) : '',
+          cargaHoraria: linha.cargaHoraria,
+          escola: linha.escola,
+          complementoEstabelecimento: '',
+          municipio: linha.municipio,
+          uf: linha.uf,
+          resultado: '',
+          notas: [],
+        };
+        return [...updated.slice(0, index + 1), novaLinha, ...updated.slice(index + 1)];
+      }
+      if (valor !== 'PERMANENTE' && jaTemExtra) {
+        return updated.filter(l => l.ciclo !== cicloExtra);
+      }
+      return updated;
+    });
   };
 
   const iniciarNotas = (index: number) => {
@@ -627,6 +679,13 @@ export default function Historico() {
     }));
 
     const { error } = await supabase.from('HistoricoAluno').upsert(registros, { onConflict: 'ra,ciclo' });
+    // Remove linhas de repetição do banco se o aluno não é mais PERMANENTE
+    if (!registros.some(r => r.ciclo === 6)) {
+      await supabase.from('HistoricoAluno').delete().eq('ra', aluno.ra).eq('ciclo', 6);
+    }
+    if (!registros.some(r => r.ciclo === 7)) {
+      await supabase.from('HistoricoAluno').delete().eq('ra', aluno.ra).eq('ciclo', 7);
+    }
     setSalvando(false);
     if (error) {
       setErro(`Não foi possível salvar o histórico: ${error.message}`);
@@ -670,6 +729,10 @@ export default function Historico() {
   });
   const tabelaNotasFrente = tabelasNotas[0] ?? null;
   const tabelasNotasAnexo = tabelasNotas.slice(1);
+
+  const rowspan1Ciclo = linhas.filter(l => l.ciclo <= 3 || l.ciclo === 6).length;
+  const rowspan2Ciclo = linhas.filter(l => (l.ciclo >= 4 && l.ciclo <= 5) || l.ciclo === 7).length;
+  const idxPrimeiro2Ciclo = linhas.findIndex(l => l.ciclo === 4);
 
   return (
     <div style={{ marginTop: 16 }}>
@@ -907,23 +970,53 @@ export default function Historico() {
                   <table className="tabela-estudos">
                     <thead><tr><th colSpan={2}>ANO/CICLO</th><th className="col-ano">ANO</th><th className="col-carga">C. HORÁRIA</th><th className="col-estabelecimento">ESTABELECIMENTO</th><th className="col-municipio">MUNICÍPIO</th><th className="col-uf">U.F.</th></tr></thead>
                     <tbody>
-                      {linhas.map((linha, index) => (
-                        <tr key={`ciclo-${linha.ciclo}`}>
-                          {index === 0 && <td className="col-ciclo" rowSpan={3}>1º ciclo</td>}
-                          {index === 3 && <td className="col-ciclo" rowSpan={2}>2º ciclo</td>}
-                          <td className="col-ano-ciclo">{linha.label}</td>
-                          <td><input aria-label={`Ano letivo do ${linha.label}`} style={campoDocumento} value={linha.anoLetivo} onChange={event => atualizarLinha(index, 'anoLetivo', event.target.value)} /></td>
-                          <td><input aria-label={`Carga horária do ${linha.label}`} style={campoDocumento} value={linha.cargaHoraria} onChange={event => atualizarLinha(index, 'cargaHoraria', event.target.value)} /></td>
-                          <td>
-                            <div className="campo-estabelecimento">
-                              <textarea aria-label={`Estabelecimento do ${linha.label}`} className="campo-escola-documento" rows={Math.max(2, Math.ceil(linha.escola.length / 22))} style={campoDocumento} value={linha.escola} onChange={event => atualizarLinha(index, 'escola', event.target.value)} />
-                              <input aria-label={`Complemento do estabelecimento do ${linha.label}`} list="complementos-estabelecimento" className="complemento-estabelecimento" style={campoDocumento} value={linha.complementoEstabelecimento} onChange={event => atualizarLinha(index, 'complementoEstabelecimento', event.target.value.toUpperCase())} />
-                            </div>
-                          </td>
-                          <td><input aria-label={`Município do ${linha.label}`} style={campoDocumento} value={linha.municipio} onChange={event => atualizarLinha(index, 'municipio', event.target.value)} /></td>
-                          <td><input aria-label={`UF do ${linha.label}`} maxLength={2} style={campoDocumento} value={linha.uf} onChange={event => atualizarLinha(index, 'uf', event.target.value.toUpperCase())} /></td>
-                        </tr>
-                      ))}
+                      {linhas.map((linha, index) => {
+                        const ehRepeticao = linha.ciclo === 6 || linha.ciclo === 7;
+                        const aceitaPermanente = linha.ciclo === 3 || linha.ciclo === 5;
+                        return (
+                          <tr key={`ciclo-${linha.ciclo}-${index}`} style={ehRepeticao ? { background: '#fffbe6' } : undefined}>
+                            {index === 0 && <td className="col-ciclo" rowSpan={rowspan1Ciclo}>1º ciclo</td>}
+                            {index === idxPrimeiro2Ciclo && idxPrimeiro2Ciclo !== -1 && <td className="col-ciclo" rowSpan={rowspan2Ciclo}>2º ciclo</td>}
+                            <td className="col-ano-ciclo">
+                              {ehRepeticao ? <em>{linha.label}</em> : linha.label}
+                              {aceitaPermanente && (
+                                <select
+                                  aria-label={`Resultado do ${linha.label}`}
+                                  style={{ ...campoDocumento, fontSize: '7.5pt', marginTop: '1mm', display: 'block' }}
+                                  value={linha.resultado}
+                                  onChange={event => atualizarResultadoFinal(index, event.target.value)}
+                                >
+                                  <option value=""></option>
+                                  <option value="PERMANENTE">PERMANENTE</option>
+                                  <option value="TRANSFERE-SE">TRANSFERE-SE</option>
+                                </select>
+                              )}
+                              {ehRepeticao && (
+                                <select
+                                  aria-label={`Resultado da repetição`}
+                                  style={{ ...campoDocumento, fontSize: '7.5pt', marginTop: '1mm', display: 'block', fontStyle: 'normal' }}
+                                  value={linha.resultado}
+                                  onChange={event => atualizarLinha(index, 'resultado', event.target.value)}
+                                >
+                                  <option value=""></option>
+                                  <option value="APROVADO">APROVADO</option>
+                                  <option value="TRANSFERE-SE">TRANSFERE-SE</option>
+                                </select>
+                              )}
+                            </td>
+                            <td><input aria-label={`Ano letivo do ${linha.label}`} style={campoDocumento} value={linha.anoLetivo} onChange={event => atualizarLinha(index, 'anoLetivo', event.target.value)} /></td>
+                            <td><input aria-label={`Carga horária do ${linha.label}`} style={campoDocumento} value={linha.cargaHoraria} onChange={event => atualizarLinha(index, 'cargaHoraria', event.target.value)} /></td>
+                            <td>
+                              <div className="campo-estabelecimento">
+                                <textarea aria-label={`Estabelecimento do ${linha.label}`} className="campo-escola-documento" rows={Math.max(2, Math.ceil(linha.escola.length / 22))} style={campoDocumento} value={linha.escola} onChange={event => atualizarLinha(index, 'escola', event.target.value)} />
+                                <input aria-label={`Complemento do estabelecimento do ${linha.label}`} list="complementos-estabelecimento" className="complemento-estabelecimento" style={campoDocumento} value={linha.complementoEstabelecimento} onChange={event => atualizarLinha(index, 'complementoEstabelecimento', event.target.value.toUpperCase())} />
+                              </div>
+                            </td>
+                            <td><input aria-label={`Município do ${linha.label}`} style={campoDocumento} value={linha.municipio} onChange={event => atualizarLinha(index, 'municipio', event.target.value)} /></td>
+                            <td><input aria-label={`UF do ${linha.label}`} maxLength={2} style={campoDocumento} value={linha.uf} onChange={event => atualizarLinha(index, 'uf', event.target.value.toUpperCase())} /></td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                   <datalist id="complementos-estabelecimento"><option value="TRANSFERE-SE" /></datalist>
