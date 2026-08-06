@@ -280,6 +280,8 @@ export default function Historico() {
   const [transferenciaPresencas, setTransferenciaPresencas] = useState('');
   const [transferenciaAusencias, setTransferenciaAusencias] = useState('');
   const [prosseguimentoAno, setProsseguimentoAno] = useState('');
+  const [nomeAssinante, setNomeAssinante] = useState(DIRETOR);
+  const [cargoAssinante, setCargoAssinante] = useState(CARGO_DIRETOR);
   const printRef = useRef<HTMLDivElement>(null);
 
   const limparCamposComplementares = () => {
@@ -891,7 +893,7 @@ export default function Historico() {
 
                 <div className="quadro-oficial assinatura-oficial">
                   <div className="assinatura-coluna"><div className="assinatura-conteudo"><strong>Santo André, <input aria-label="Data de emissão" style={{ ...campoDocumento, display: 'inline-block', width: '36mm', fontWeight: 800 }} value={dataEmissao} onChange={event => setDataEmissao(event.target.value)} /></strong></div><div className="assinatura-legenda">DATA</div></div>
-                  <div className="assinatura-coluna"><div className="assinatura-conteudo"><strong>{DIRETOR}</strong><br />{CARGO_DIRETOR}</div><div className="assinatura-legenda">ASSINATURA DO DIRETOR (Carimbo)</div></div>
+                  <div className="assinatura-coluna"><div className="assinatura-conteudo"><strong><input aria-label="Nome do assinante" style={{ ...campoDocumento, fontWeight: 800 }} value={nomeAssinante} onChange={event => setNomeAssinante(event.target.value)} /></strong><input aria-label="Cargo do assinante" style={campoDocumento} value={cargoAssinante} onChange={event => setCargoAssinante(event.target.value)} /></div><div className="assinatura-legenda">ASSINATURA DO DIRETOR (Carimbo)</div></div>
                 </div>
 
                 <div className="quadro-oficial aviso-final">ESTE DOCUMENTO NÃO CONTÉM EMENDA NEM RASURA</div>
