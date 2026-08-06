@@ -666,7 +666,7 @@ export default function Historico() {
         .notas-frente { padding: 0 1mm 1mm; }
         .tabela-transferencia th { height: 8mm; }
         .tabela-transferencia td { height: 9mm; }
-        .linha-prosseguimento { border-top: 1px solid #111; font-size: 10pt; font-weight: 800; min-height: 9mm; padding: 2.2mm 1mm; }
+        input::placeholder { color: #888; opacity: 1; }
         .observacoes-oficiais { height: 112mm; }
         .observacoes-corpo { padding: 3mm 2mm; font-size: 8.1pt; font-weight: 700; line-height: 1.14; }
         .observacao-item { display: grid; grid-template-columns: 7mm 1fr; margin-bottom: 2mm; }
@@ -857,9 +857,23 @@ export default function Historico() {
                   <h3 className="titulo-quadro">Transferência durante o período letivo</h3>
                   <table className="tabela-transferencia">
                     <thead><tr><th>ANO/CICLO</th><th style={{ width: '27%' }}>PERÍODO LETIVO</th><th>DIAS LETIVOS</th><th>PRESENÇAS</th><th>AUSÊNCIAS</th></tr></thead>
-                    <tbody><tr><td><input aria-label="Ano ou ciclo da transferência" style={campoDocumento} value={transferenciaAnoCiclo} onChange={event => setTransferenciaAnoCiclo(event.target.value)} /></td><td><input aria-label="Período letivo da transferência" style={campoDocumento} value={transferenciaPeriodo} onChange={event => setTransferenciaPeriodo(event.target.value)} placeholder="dd/mm/aaaa a dd/mm/aaaa" /></td><td><input aria-label="Dias letivos da transferência" style={campoDocumento} value={transferenciaDiasLetivos} onChange={event => setTransferenciaDiasLetivos(event.target.value)} /></td><td><input aria-label="Presenças da transferência" style={campoDocumento} value={transferenciaPresencas} onChange={event => setTransferenciaPresencas(event.target.value)} /></td><td><input aria-label="Ausências da transferência" style={campoDocumento} value={transferenciaAusencias} onChange={event => setTransferenciaAusencias(event.target.value)} /></td></tr></tbody>
+                    <tbody>
+                      <tr>
+                        <td><input aria-label="Ano ou ciclo da transferência" style={campoDocumento} value={transferenciaAnoCiclo} onChange={event => setTransferenciaAnoCiclo(event.target.value)} placeholder="- - - - -" /></td>
+                        <td><input aria-label="Período letivo da transferência" style={campoDocumento} value={transferenciaPeriodo} onChange={event => setTransferenciaPeriodo(event.target.value)} placeholder="- - - - - - - - - - - - - - -" /></td>
+                        <td><input aria-label="Dias letivos da transferência" style={campoDocumento} value={transferenciaDiasLetivos} onChange={event => setTransferenciaDiasLetivos(event.target.value)} placeholder="- - -" /></td>
+                        <td><input aria-label="Presenças da transferência" style={campoDocumento} value={transferenciaPresencas} onChange={event => setTransferenciaPresencas(event.target.value)} placeholder="- - -" /></td>
+                        <td><input aria-label="Ausências da transferência" style={campoDocumento} value={transferenciaAusencias} onChange={event => setTransferenciaAusencias(event.target.value)} placeholder="- - -" /></td>
+                      </tr>
+                      <tr>
+                        <td colSpan={5} style={{ textAlign: 'left', fontWeight: 800, padding: '2mm 1mm' }}>
+                          O aluno tem direito a prosseguimento de estudos no{' '}
+                          <input aria-label="Ano de prosseguimento" style={{ ...campoDocumento, display: 'inline-block', width: '28%', fontWeight: 800 }} value={prosseguimentoAno} onChange={event => setProsseguimentoAno(event.target.value)} placeholder="- - - - - - - - -" />
+                          {' '}do Ensino Fundamental de 9 anos.
+                        </td>
+                      </tr>
+                    </tbody>
                   </table>
-                  <div className="linha-prosseguimento">O aluno tem direito a prosseguimento de estudos no <input aria-label="Ano de prosseguimento" style={{ ...campoDocumento, display: 'inline-block', width: '25%', fontWeight: 800 }} value={prosseguimentoAno} onChange={event => setProsseguimentoAno(event.target.value)} /> do Ensino Fundamental de 9 anos.</div>
                 </div>
 
                 <div className="quadro-oficial observacoes-oficiais">
