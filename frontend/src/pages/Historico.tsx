@@ -730,10 +730,10 @@ export default function Historico() {
       {aluno && (
         <>
           <section className="editor-card nao-imprimir">
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
               <div>
-                <h2 style={{ margin: 0, fontSize: 18 }}>Dados complementares e impressão</h2>
-                <small style={{ color: theme.textSecondary }}>Estes campos não alteram o cadastro original do aluno.</small>
+                <h2 style={{ margin: 0, fontSize: 18 }}>Impressão — {aluno.nome}</h2>
+                <small style={{ color: theme.textSecondary }}>Edite os campos diretamente no documento abaixo antes de imprimir.</small>
               </div>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 <button type="button" onClick={() => { void salvarHistorico(); }} disabled={salvando} style={btn('success')}>
@@ -741,14 +741,6 @@ export default function Historico() {
                 </button>
                 <button type="button" onClick={() => { void imprimir(); }} disabled={salvando} style={btn('primary')}>🖨️ Salvar e imprimir</button>
               </div>
-            </div>
-            <div className="editor-grid">
-              <label style={label}>Situação<input list="historico-situacoes" style={input} value={aluno.situacao ?? ''} onChange={event => atualizarAluno('situacao', event.target.value.toUpperCase() || null)} /></label>
-              <datalist id="historico-situacoes"><option value="ATIVO" /><option value="TRAN" /><option value="BXTR" /><option value="CONCLUÍDO" /></datalist>
-              <label style={label}>Início da matrícula<input type="date" style={input} value={normalizarDataParaBanco(aluno.data_inicio_matricula) ?? ''} onChange={event => atualizarAluno('data_inicio_matricula', event.target.value || null)} /></label>
-              <label style={label}>Data de saída<input type="date" style={input} value={normalizarDataParaBanco(aluno.data_fim_matricula) ?? ''} onChange={event => atualizarAluno('data_fim_matricula', event.target.value || null)} /></label>
-              <label style={label}>Última turma<input style={input} value={aluno.Turma?.nome ?? ''} onChange={event => atualizarTurma(event.target.value)} /></label>
-              <label style={label}>Total de faltas<input type="number" min={0} style={input} value={totalFaltas} onChange={event => setTotalFaltas(Math.max(0, Number(event.target.value) || 0))} /></label>
             </div>
             <h3 style={{ margin: '18px 0 6px', fontSize: 16 }}>Notas de outra rede — opcional</h3>
             <p style={{ margin: '0 0 8px', color: theme.textSecondary }}>Adicione somente nos anos em que o histórico trouxer notas ou conceitos por disciplina.</p>
