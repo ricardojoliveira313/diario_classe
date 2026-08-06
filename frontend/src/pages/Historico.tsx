@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { supabase } from '../api';
 import { btn, input, label, theme } from '../styles';
@@ -281,9 +281,41 @@ export default function Historico() {
   const [transferenciaAusencias, setTransferenciaAusencias] = useState('');
   const [prosseguimentoAno, setProsseguimentoAno] = useState('');
   const [certSerie, setCertSerie] = useState('5º Ano');
+  const [via, setVia] = useState('1ª VIA');
   const [nomeAssinante, setNomeAssinante] = useState(DIRETOR);
   const [cargoAssinante, setCargoAssinante] = useState(CARGO_DIRETOR);
+  const [historicosSalvos, setHistoricosSalvos] = useState<{ ra: number; nome: string; updated_at: string }[]>([]);
+  const [buscaHistorico, setBuscaHistorico] = useState('');
+  const [alteradoSemSalvar, setAlteradoSemSalvar] = useState(false);
+  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const printRef = useRef<HTMLDivElement>(null);
+
+  // Carrega lista de históricos salvos ao montar
+  useEffect(() => {
+    void (async () => {
+      const { data } = await supabase
+        .from('HistoricoAluno')
+        .select('ra, nome_aluno, updated_at')
+        .order('updated_at', { ascending: false });
+      if (!data) return;
+      const vistos = new Set<number>();
+      const unicos = data
+        .filter(row => { if (vistos.has(row.ra)) return false; vistos.add(row.ra); return true; })
+        .map(row => ({ ra: row.ra, nome: row.nome_aluno ?? String(row.ra), updated_at: row.updated_at ?? '' }));
+      setHistoricosSalvos(unicos);
+    })();
+  }, []);
+
+  // Auto-save com debounce de 4 segundos
+  useEffect(() => {
+    if (!aluno || !alteradoSemSalvar) return;
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    autoSaveTimer.current = setTimeout(() => { void salvarHistorico(); }, 4000);
+    return () => { if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aluno, linhas, certNum, certFolha, certLivro, certDistrito, cidadeNasc, estadoNasc, raExibicao,
+      transferenciaAnoCiclo, transferenciaPeriodo, transferenciaDiasLetivos, transferenciaPresencas,
+      transferenciaAusencias, prosseguimentoAno, dataEmissao, totalFaltas, alteradoSemSalvar]);
 
   const limparCamposComplementares = () => {
     setCertNum('');
@@ -302,13 +334,8 @@ export default function Historico() {
     setDataEmissao(new Date().toLocaleDateString('pt-BR'));
   };
 
-  const buscarPorRA = async () => {
-    const ra = Number.parseInt(raInput.trim(), 10);
-    if (Number.isNaN(ra)) {
-      setErro('Digite um RA válido.');
-      return;
-    }
-
+  const buscarComRA = async (ra: number) => {
+    setRaInput(String(ra));
     setCarregando(true);
     setErro(null);
     setAviso(null);
@@ -467,11 +494,21 @@ export default function Historico() {
     }
   };
 
+  const buscarPorRA = async () => {
+    const ra = Number.parseInt(raInput.trim(), 10);
+    if (Number.isNaN(ra)) {
+      setErro('Digite um RA válido.');
+      return;
+    }
+    await buscarComRA(ra);
+  };
+
   const atualizarLinha = (
     index: number,
     campo: keyof Omit<LinhaCiclo, 'ciclo' | 'label' | 'notas'>,
     valor: string,
   ) => {
+    setAlteradoSemSalvar(true);
     setLinhas(atuais => atuais.map((linha, posicao) => {
       if (posicao !== index) return linha;
       if (campo === 'anoLetivo' && valor === '2020') {
@@ -486,6 +523,7 @@ export default function Historico() {
   };
 
   const atualizarAluno = <K extends keyof AlunoHistorico>(campo: K, valor: AlunoHistorico[K]) => {
+    setAlteradoSemSalvar(true);
     setAluno(atual => atual ? { ...atual, [campo]: valor } : atual);
   };
 
@@ -595,6 +633,15 @@ export default function Historico() {
       return false;
     }
     setSucesso('Histórico salvo com sucesso.');
+    setAlteradoSemSalvar(false);
+    // Atualiza lista de históricos salvos
+    setHistoricosSalvos(atuais => {
+      const existe = atuais.find(h => h.ra === aluno.ra);
+      const entrada = { ra: aluno.ra, nome: aluno.nome.trim() || String(aluno.ra), updated_at: new Date().toISOString() };
+      return existe
+        ? [entrada, ...atuais.filter(h => h.ra !== aluno.ra)]
+        : [entrada, ...atuais];
+    });
     return true;
   };
 
@@ -725,6 +772,38 @@ export default function Historico() {
           {aviso && <p style={{ color: theme.warningHover, margin: '12px 0 0' }}>⚠️ {aviso}</p>}
           {sucesso && <p style={{ color: theme.success, margin: '12px 0 0' }}>✅ {sucesso}</p>}
         </div>
+
+        {historicosSalvos.length > 0 && (
+          <div style={{ marginTop: 20, borderTop: `1px solid ${theme.border}`, paddingTop: 16 }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: 15 }}>Históricos salvos — segunda via</h3>
+            <input
+              style={{ ...input, marginBottom: 10 }}
+              placeholder="Buscar por nome ou RA..."
+              value={buscaHistorico}
+              onChange={event => setBuscaHistorico(event.target.value)}
+            />
+            <div style={{ maxHeight: 200, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {historicosSalvos
+                .filter(h => {
+                  const q = buscaHistorico.toLowerCase();
+                  return !q || h.nome.toLowerCase().includes(q) || String(h.ra).includes(q);
+                })
+                .map(h => (
+                  <button
+                    key={h.ra}
+                    type="button"
+                    style={{ ...btn('sky', { outline: true }), textAlign: 'left', justifyContent: 'flex-start' }}
+                    onClick={() => { void buscarComRA(h.ra); }}
+                  >
+                    <strong>RA {h.ra}</strong> — {h.nome}
+                    <span style={{ marginLeft: 'auto', fontSize: 11, color: theme.textSecondary }}>
+                      {h.updated_at ? new Date(h.updated_at).toLocaleDateString('pt-BR') : ''}
+                    </span>
+                  </button>
+                ))}
+            </div>
+          </div>
+        )}
       </section>
 
       {aluno && (
@@ -781,6 +860,17 @@ export default function Historico() {
                     <div>SECRETARIA DE EDUCAÇÃO</div>
                     <div>DEPARTAMENTO DE EDUCAÇÃO E ENSINO FUNDAMENTAL</div>
                     <h2>HISTÓRICO ESCOLAR</h2>
+                    <select
+                      aria-label="Via do documento"
+                      value={via}
+                      onChange={event => setVia(event.target.value)}
+                      style={{ font: 'inherit', fontWeight: 800, fontSize: '10pt', border: '1px solid #555', background: 'transparent', color: '#111', padding: '1px 4px', marginTop: '2mm', cursor: 'pointer' }}
+                    >
+                      <option>1ª VIA</option>
+                      <option>2ª VIA</option>
+                      <option>3ª VIA</option>
+                      <option>4ª VIA</option>
+                    </select>
                   </div>
                 </div>
 
