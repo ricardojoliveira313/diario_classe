@@ -268,6 +268,38 @@ export default function Capa() {
       <div style={{ background: theme.card, borderRadius: theme.radiusMd, padding: 20, marginBottom: 16, boxShadow: theme.shadow, border: `1px solid ${theme.borderLight}` }}>
         <h1 style={{ fontSize: 24, fontWeight: 800, color: theme.text, marginBottom: 18 }}>✉️ Capa de Envelope</h1>
 
+        {/* Impressão rápida — Folha de Frequência */}
+        <div style={{ background: isDark ? 'rgba(37,99,235,0.12)' : '#eff6ff', border: `1.5px solid ${isDark ? '#3b82f6' : '#93c5fd'}`, borderRadius: 10, padding: '14px 18px', marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 14, color: isDark ? '#93c5fd' : '#1d4ed8' }}>📋 Capa Mensal — Folha de Frequência</div>
+            <div style={{ fontSize: 12, color: theme.textMuted, marginTop: 2 }}>A/C Melissa Lopes · Controle de Frequência · 12° andar – Sala 03 · Prédio Executivo</div>
+          </div>
+          <button
+            style={{ ...btn, background: '#1d4ed8', fontSize: 13, whiteSpace: 'nowrap' }}
+            onClick={() => {
+              const capa: CapaSalva = {
+                id: 'freq-mensal',
+                titulo: 'FOLHA DE FREQUÊNCIA',
+                subtitulo: 'NÃO ABRIR',
+                ac: 'Melissa Lopes',
+                orientacao: 'paisagem',
+                modelo: 'colorido',
+                local: '',
+                endereco: '12° andar – Sala 03\nPrédio Executivo',
+                criadaEm: '',
+              };
+              const win = window.open('', '_blank');
+              if (!win) return;
+              win.document.write(htmlColorido(capa));
+              win.document.close();
+              win.focus();
+              setTimeout(() => { win.print(); win.close(); }, 400);
+            }}
+          >
+            🖨️ Imprimir agora
+          </button>
+        </div>
+
         {/* Seleção de modelo */}
         <div style={{ marginBottom: 18 }}>
           <label style={label}>Modelo</label>
