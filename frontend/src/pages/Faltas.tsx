@@ -110,6 +110,7 @@ export default function Faltas() {
 
   // ── Modo Digitação Sequencial — teclado assume a grade, sem clicar em cada dia ──
   const [cursor, setCursor] = useState<{ alunoId: string; day: number } | null>(null);
+  const [linhaFocusada, setLinhaFocusada] = useState<string | null>(null);
   const [numBuffer, setNumBuffer] = useState('');
   const cursorRef = useRef<{ alunoId: string; day: number } | null>(null);
   const numBufferRef = useRef('');
@@ -1552,6 +1553,7 @@ export default function Faltas() {
                   const emAlerta = !statusTxt && ausencias >= limiteAlerta;
                   const freq = numDias > 0 ? ((numDias - ausencias) / numDias * 100).toFixed(0) : '100';
                   const rowBg = emAlerta ? 'var(--row-alerta)' : i % 2 === 0 ? 'var(--row-even)' : 'var(--row-odd)';
+                  const linhaAtiva = linhaFocusada === a.id;
                   const campoNum = (tipo: 'F' | 'J' | 'A', valor: number, cor: string) => (
                     <td style={{ textAlign: 'center', padding: '4px 6px' }}>
                       <input
@@ -1559,7 +1561,8 @@ export default function Faltas() {
                         type="number" min={0} max={numDias}
                         value={valor}
                         disabled={!podeEditar}
-                        onFocus={e => e.target.select()}
+                        onFocus={e => { e.target.select(); setLinhaFocusada(a.id); }}
+                        onBlur={() => setLinhaFocusada(null)}
                         onChange={e => setContagem(a.id, tipo, parseInt(e.target.value) || 0)}
                         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); focusProximoCampo(e.currentTarget); } }}
                         style={{
@@ -1572,10 +1575,10 @@ export default function Faltas() {
                     </td>
                   );
                   return (
-                    <tr key={a.id} style={{ background: rowBg }}>
-                      <td style={{ padding: '8px 12px', borderRight: `2px solid ${theme.borderLight}` }}>
+                    <tr key={a.id} style={{ background: linhaAtiva ? (isDark ? 'rgba(37,99,235,0.15)' : '#eff6ff') : rowBg }}>
+                      <td style={{ padding: '8px 12px', borderRight: `2px solid ${theme.borderLight}`, background: linhaAtiva ? (isDark ? 'rgba(37,99,235,0.15)' : '#eff6ff') : undefined }}>
                         <span style={{ fontSize: 11, color: theme.textMuted, marginRight: 6 }}>{(a._nrDisplay === 0 ? '—' : a.numero) || '—'}</span>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: theme.text }}>
+                        <span style={{ fontSize: 13, fontWeight: linhaAtiva ? 800 : 600, color: linhaAtiva ? (isDark ? '#93c5fd' : '#1d4ed8') : theme.text }}>
                           {emAlerta && <span title="Frequência abaixo do limite">⚠️ </span>}
                           {a.nome}
                         </span>
