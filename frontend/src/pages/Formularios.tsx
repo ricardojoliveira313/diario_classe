@@ -66,29 +66,27 @@ function htmlParaImprimir(titulo: string, corpo: string, paisagem = false) {
 }
 
 // ─── Formulário: Entrada de Aluno ─────────────────────────────────────────────
-function FormEntrada({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
-  const [turmaId, setTurmaId] = useState('');
-  const [alunoId, setAlunoId] = useState('');
+function FormEntrada({ turmas: _turmas, alunos: _alunos }: { turmas: any[]; alunos: any[] }) {
+  const [nomeAluno, setNomeAluno] = useState('');
+  const [dataNasc, setDataNasc] = useState('');
+  const [professora, setProfessora] = useState('');
+  const [sala, setSala] = useState('');
+  const [periodo, setPeriodo] = useState('');
   const [dataMatricula, setDataMatricula] = useState('');
   const [escolaAnterior, setEscolaAnterior] = useState('');
   const [numeroNoDiario, setNumeroNoDiario] = useState('');
   const [totalAlunos, setTotalAlunos] = useState('');
 
-  const turma = turmas.find(t => t.id === turmaId);
-  const alunosFiltrados = alunos.filter(a => a.turmaId === turmaId);
-  const aluno = alunos.find(a => a.id === alunoId);
-
   const imprimir = () => {
-    const dataNasc = aluno?.data_nascimento
-      ? new Date(aluno.data_nascimento + 'T12:00:00').toLocaleDateString('pt-BR')
-      : '___/___/______';
+    const dnFmt = dataNasc ? new Date(dataNasc + 'T12:00:00').toLocaleDateString('pt-BR') : '___/___/______';
+    const dmFmt = dataMatricula ? new Date(dataMatricula + 'T12:00:00').toLocaleDateString('pt-BR') : '';
     const corpo = `
-      <p><strong>Aluno:</strong> <span class="campo" style="min-width:300px">${aluno?.nome ?? ''}</span></p>
-      <p><strong>Data de nascimento:</strong> <span class="campo">${dataNasc}</span></p>
-      <p><strong>Professor(a):</strong> <span class="campo" style="min-width:200px">${turma?.professora ?? ''}</span>
-         &nbsp;&nbsp;<strong>Sala:</strong> <span class="campo" style="min-width:80px">${turma?.nome ?? ''}</span>
-         &nbsp;&nbsp;<strong>Período:</strong> <span class="campo" style="min-width:100px">${turma?.periodo ?? ''}</span></p>
-      <p><strong>Data de início do aluno (data da matrícula):</strong> <span class="campo">${dataMatricula ? new Date(dataMatricula + 'T12:00:00').toLocaleDateString('pt-BR') : ''}</span></p>
+      <p><strong>Aluno:</strong> <span class="campo" style="min-width:300px">${nomeAluno}</span></p>
+      <p><strong>Data de nascimento:</strong> <span class="campo">${dnFmt}</span></p>
+      <p><strong>Professor(a):</strong> <span class="campo" style="min-width:200px">${professora}</span>
+         &nbsp;&nbsp;<strong>Sala:</strong> <span class="campo" style="min-width:80px">${sala}</span>
+         &nbsp;&nbsp;<strong>Período:</strong> <span class="campo" style="min-width:100px">${periodo}</span></p>
+      <p><strong>Data de início do aluno (data da matrícula):</strong> <span class="campo">${dmFmt}</span></p>
       <p><strong>O aluno estudava na escola:</strong> <span class="campo" style="min-width:280px">${escolaAnterior}</span></p>
       <br>
       <p>Favor inserir o aluno no n.º <strong>${numeroNoDiario}</strong> do diário.</p>
@@ -107,21 +105,25 @@ function FormEntrada({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <div>
-          <label style={label}>Turma</label>
-          <select style={{ ...input, width: '100%' }} value={turmaId} onChange={e => { setTurmaId(e.target.value); setAlunoId(''); }}>
-            <option value="">Selecione...</option>
-            {turmas.map(t => <option key={t.id} value={t.id}>{t.nome} – {t.professora}</option>)}
-          </select>
+          <label style={label}>Nome do aluno</label>
+          <input style={{ ...input, width: '100%' }} placeholder="Nome completo" value={nomeAluno} onChange={e => setNomeAluno(e.target.value)} />
         </div>
         <div>
-          <label style={label}>Aluno</label>
-          <select style={{ ...input, width: '100%' }} value={alunoId} onChange={e => setAlunoId(e.target.value)} disabled={!turmaId}>
-            <option value="">Selecione...</option>
-            {alunosFiltrados.map(a => <option key={a.id} value={a.id}>{a.nome}</option>)}
-          </select>
+          <label style={label}>Data de nascimento</label>
+          <input style={{ ...input, width: '100%' }} type="date" value={dataNasc} onChange={e => setDataNasc(e.target.value)} />
         </div>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <div>
+          <label style={label}>Professor(a)</label>
+          <input style={{ ...input, width: '100%' }} placeholder="Nome da professora" value={professora} onChange={e => setProfessora(e.target.value)} />
+        </div>
+        <div>
+          <label style={label}>Sala / Turma</label>
+          <input style={{ ...input, width: '100%' }} placeholder="Ex: 1º A" value={sala} onChange={e => setSala(e.target.value)} />
+        </div>
+        <div>
+          <label style={label}>Período</label>
+          <input style={{ ...input, width: '100%' }} placeholder="Ex: Manhã" value={periodo} onChange={e => setPeriodo(e.target.value)} />
+        </div>
         <div>
           <label style={label}>Data de matrícula</label>
           <input style={{ ...input, width: '100%' }} type="date" value={dataMatricula} onChange={e => setDataMatricula(e.target.value)} />
@@ -145,25 +147,23 @@ function FormEntrada({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
 }
 
 // ─── Formulário: Saída de Aluno ────────────────────────────────────────────────
-function FormSaida({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
-  const [turmaId, setTurmaId] = useState('');
-  const [alunoId, setAlunoId] = useState('');
+function FormSaida({ turmas: _turmas, alunos: _alunos }: { turmas: any[]; alunos: any[] }) {
+  const [nomeAluno, setNomeAluno] = useState('');
+  const [professora, setProfessora] = useState('');
+  const [sala, setSala] = useState('');
   const [dataTransf, setDataTransf] = useState('');
   const [totalAlunos, setTotalAlunos] = useState('');
   const [tipoSaida, setTipoSaida] = useState<'periodo' | 'escola' | ''>('');
   const [escolaDestino, setEscolaDestino] = useState('');
   const [totalFaltas, setTotalFaltas] = useState('');
 
-  const turma = turmas.find(t => t.id === turmaId);
-  const alunosFiltrados = alunos.filter(a => a.turmaId === turmaId);
-  const aluno = alunos.find(a => a.id === alunoId);
-
   const imprimir = () => {
+    const dtFmt = dataTransf ? new Date(dataTransf + 'T12:00:00').toLocaleDateString('pt-BR') : '';
     const corpo = `
-      <p><strong>Aluno:</strong> <span class="campo" style="min-width:300px">${aluno?.nome ?? ''}</span></p>
-      <p><strong>Professora:</strong> <span class="campo" style="min-width:200px">${turma?.professora ?? ''}</span>
-         &nbsp;&nbsp;<strong>Sala:</strong> <span class="campo" style="min-width:100px">${turma?.nome ?? ''}</span></p>
-      <p><strong>Data de transferência:</strong> <span class="campo">${dataTransf ? new Date(dataTransf + 'T12:00:00').toLocaleDateString('pt-BR') : ''}</span></p>
+      <p><strong>Aluno:</strong> <span class="campo" style="min-width:300px">${nomeAluno}</span></p>
+      <p><strong>Professora:</strong> <span class="campo" style="min-width:200px">${professora}</span>
+         &nbsp;&nbsp;<strong>Sala:</strong> <span class="campo" style="min-width:100px">${sala}</span></p>
+      <p><strong>Data de transferência:</strong> <span class="campo">${dtFmt}</span></p>
       <p>Sua turma está com <strong>${totalAlunos}</strong> alunos.</p>
       <br>
       <p><strong>Favor deixar material na Secretaria.</strong></p>
@@ -187,18 +187,16 @@ function FormSaida({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <div>
-          <label style={label}>Turma</label>
-          <select style={{ ...input, width: '100%' }} value={turmaId} onChange={e => { setTurmaId(e.target.value); setAlunoId(''); }}>
-            <option value="">Selecione...</option>
-            {turmas.map(t => <option key={t.id} value={t.id}>{t.nome} – {t.professora}</option>)}
-          </select>
+          <label style={label}>Nome do aluno</label>
+          <input style={{ ...input, width: '100%' }} placeholder="Nome completo" value={nomeAluno} onChange={e => setNomeAluno(e.target.value)} />
         </div>
         <div>
-          <label style={label}>Aluno</label>
-          <select style={{ ...input, width: '100%' }} value={alunoId} onChange={e => setAlunoId(e.target.value)} disabled={!turmaId}>
-            <option value="">Selecione...</option>
-            {alunosFiltrados.map(a => <option key={a.id} value={a.id}>{a.nome}</option>)}
-          </select>
+          <label style={label}>Professor(a)</label>
+          <input style={{ ...input, width: '100%' }} placeholder="Nome da professora" value={professora} onChange={e => setProfessora(e.target.value)} />
+        </div>
+        <div>
+          <label style={label}>Sala / Turma</label>
+          <input style={{ ...input, width: '100%' }} placeholder="Ex: 2º B" value={sala} onChange={e => setSala(e.target.value)} />
         </div>
         <div>
           <label style={label}>Data de transferência</label>
@@ -256,6 +254,8 @@ const OPCOES_INFANTIL = [
 function FormInfantil({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
   const [turmaId, setTurmaId] = useState('');
   const [alunoId, setAlunoId] = useState('');
+  const [nomeManual, setNomeManual] = useState('');
+  const [raManual, setRaManual] = useState('');
   const [opcao, setOpcao] = useState('freq');
   const [ciclo, setCiclo] = useState('');
   const [etapa, setEtapa] = useState('');
@@ -266,6 +266,9 @@ function FormInfantil({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
   const turma = turmas.find(t => t.id === turmaId);
   const alunosFiltrados = alunos.filter(a => a.turmaId === turmaId);
   const aluno = alunos.find(a => a.id === alunoId);
+
+  const nomeImpressao = nomeManual || aluno?.nome || '_'.repeat(40);
+  const raImpressao = raManual || aluno?.ra || '___________';
 
   const imprimir = () => {
     const dataNasc = aluno?.data_nascimento
@@ -278,8 +281,8 @@ function FormInfantil({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
     const per = periodo || '___/___/___ à ___/___/___';
 
     const corpo = `
-      <p>Declaro para os devidos fins, que <strong>${aluno?.nome ?? '_'.repeat(40)}</strong>
-      nascido(a) no dia <strong>${dataNasc}</strong>, RA: <strong>${aluno?.ra ?? '___________'}</strong>:</p>
+      <p>Declaro para os devidos fins, que <strong>${nomeImpressao}</strong>
+      nascido(a) no dia <strong>${dataNasc}</strong>, RA: <strong>${raImpressao}</strong>:</p>
       <br>
       ${OPCOES_INFANTIL.map(o => `
         <p style="margin:8px 0">
@@ -316,11 +319,19 @@ function FormInfantil({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
           </select>
         </div>
         <div>
-          <label style={label}>Aluno</label>
-          <select style={{ ...input, width: '100%' }} value={alunoId} onChange={e => setAlunoId(e.target.value)} disabled={!turmaId}>
-            <option value="">Selecione...</option>
+          <label style={label}>Aluno (do sistema)</label>
+          <select style={{ ...input, width: '100%' }} value={alunoId} onChange={e => { setAlunoId(e.target.value); setNomeManual(''); setRaManual(''); }} disabled={!turmaId}>
+            <option value="">Selecione ou deixe em branco para digitar abaixo</option>
             {alunosFiltrados.map(a => <option key={a.id} value={a.id}>{a.nome}</option>)}
           </select>
+        </div>
+        <div>
+          <label style={label}>Nome do aluno (digitar se não estiver no sistema)</label>
+          <input style={{ ...input, width: '100%' }} placeholder="Deixe em branco se selecionou acima" value={nomeManual} onChange={e => { setNomeManual(e.target.value); if (e.target.value) setAlunoId(''); }} />
+        </div>
+        <div>
+          <label style={label}>RA (digitar se não estiver no sistema)</label>
+          <input style={{ ...input, width: '100%' }} placeholder="Número do RA" value={raManual} onChange={e => setRaManual(e.target.value)} />
         </div>
         <div>
           <label style={label}>Ciclo (número)</label>
@@ -376,6 +387,8 @@ const OPCOES_DECL = [
 function FormFundamental({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
   const [turmaId, setTurmaId] = useState('');
   const [alunoId, setAlunoId] = useState('');
+  const [nomeManual, setNomeManual] = useState('');
+  const [raManual, setRaManual] = useState('');
   const [opcao, setOpcao] = useState('freq');
   const [ano, setAno] = useState('');
   const [horIni, setHorIni] = useState('');
@@ -388,19 +401,16 @@ function FormFundamental({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
   const alunosFiltrados = alunos.filter(a => a.turmaId === turmaId);
   const aluno = alunos.find(a => a.id === alunoId);
 
-  const textoOpcao = () => {
-    const op = OPCOES_DECL.find(o => o.id === opcao);
-    if (!op) return '';
-    return op.texto(ano, horIni, horFim, periodoInicio, anoConc);
-  };
+  const nomeImpressao = nomeManual || aluno?.nome || '_'.repeat(40);
+  const raImpressao = raManual || aluno?.ra || '___________';
 
   const imprimir = () => {
     const dataNasc = aluno?.data_nascimento
       ? new Date(aluno.data_nascimento + 'T12:00:00').toLocaleDateString('pt-BR')
       : '___/___/____';
     const corpo = `
-      <p>Declaro para os devidos fins, que <strong>${aluno?.nome ?? '_'.repeat(40)}</strong>
-      nascido(a) no dia <strong>${dataNasc}</strong>, RA: <strong>${aluno?.ra ?? '___________'}</strong>:</p>
+      <p>Declaro para os devidos fins, que <strong>${nomeImpressao}</strong>
+      nascido(a) no dia <strong>${dataNasc}</strong>, RA: <strong>${raImpressao}</strong>:</p>
       <br>
       ${OPCOES_DECL.map(o => `
         <p style="margin:8px 0">
@@ -438,11 +448,19 @@ function FormFundamental({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
           </select>
         </div>
         <div>
-          <label style={label}>Aluno</label>
-          <select style={{ ...input, width: '100%' }} value={alunoId} onChange={e => setAlunoId(e.target.value)} disabled={!turmaId}>
-            <option value="">Selecione...</option>
+          <label style={label}>Aluno (do sistema)</label>
+          <select style={{ ...input, width: '100%' }} value={alunoId} onChange={e => { setAlunoId(e.target.value); setNomeManual(''); setRaManual(''); }} disabled={!turmaId}>
+            <option value="">Selecione ou deixe em branco para digitar abaixo</option>
             {alunosFiltrados.map(a => <option key={a.id} value={a.id}>{a.nome}</option>)}
           </select>
+        </div>
+        <div>
+          <label style={label}>Nome do aluno (digitar se não estiver no sistema)</label>
+          <input style={{ ...input, width: '100%' }} placeholder="Deixe em branco se selecionou acima" value={nomeManual} onChange={e => { setNomeManual(e.target.value); if (e.target.value) setAlunoId(''); }} />
+        </div>
+        <div>
+          <label style={label}>RA (digitar se não estiver no sistema)</label>
+          <input style={{ ...input, width: '100%' }} placeholder="Número do RA" value={raManual} onChange={e => setRaManual(e.target.value)} />
         </div>
         <div>
           <label style={label}>Ano do Ensino Fundamental</label>
