@@ -137,9 +137,9 @@ function htmlGape(conteudo: string) {
     text-transform: uppercase;
   }
   .conteudo {
-    font-size: 22pt; font-weight: 800; color: #1e3a6e;
+    font-size: 32pt; font-weight: 900; color: #1e3a6e;
     text-transform: uppercase; text-align: center;
-    margin-top: 8mm; letter-spacing: 2px;
+    margin-top: 8mm; letter-spacing: 3px;
     max-width: 220mm;
   }
   .divider {
@@ -397,10 +397,13 @@ export default function Capa() {
           </div>
           {/* Atalhos rápidos GAPE */}
           <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {['FOLHA DE FREQUÊNCIA', 'DOCUMENTOS', 'FICHAS DE ALUNOS', 'CONTROLE DE PRESENÇA', ''].map(txt => (
+            {[
+              { label: '📋 Folha de Frequência', txt: 'FOLHA DE FREQUÊNCIA' },
+              { label: '🏫 Conselho de Escola', txt: 'CONSELHO DE ESCOLA' },
+            ].map(({ label: lbl, txt }) => (
               <button
-                key={txt || 'vazio'}
-                style={{ ...btn, fontSize: 11, padding: '4px 12px', background: isDark ? '#4338ca' : '#4f46e5', opacity: 0.9 }}
+                key={txt}
+                style={{ ...btn, fontSize: 12, padding: '6px 16px', background: isDark ? '#4338ca' : '#4f46e5' }}
                 onClick={() => {
                   const win = window.open('', '_blank');
                   if (!win) return;
@@ -409,7 +412,7 @@ export default function Capa() {
                   setTimeout(() => { win.print(); win.close(); }, 400);
                 }}
               >
-                {txt || '(sem conteúdo)'}
+                {lbl}
               </button>
             ))}
           </div>
