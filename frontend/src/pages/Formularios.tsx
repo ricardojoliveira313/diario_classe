@@ -79,8 +79,8 @@ function FormEntrada({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
   const aluno = alunos.find(a => a.id === alunoId);
 
   const imprimir = () => {
-    const dataNasc = aluno?.dataNascimento
-      ? new Date(aluno.dataNascimento).toLocaleDateString('pt-BR')
+    const dataNasc = aluno?.data_nascimento
+      ? new Date(aluno.data_nascimento + 'T12:00:00').toLocaleDateString('pt-BR')
       : '___/___/______';
     const corpo = `
       <p><strong>Aluno:</strong> <span class="campo" style="min-width:300px">${aluno?.nome ?? ''}</span></p>
@@ -88,7 +88,7 @@ function FormEntrada({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
       <p><strong>Professor(a):</strong> <span class="campo" style="min-width:200px">${turma?.professora ?? ''}</span>
          &nbsp;&nbsp;<strong>Sala:</strong> <span class="campo" style="min-width:80px">${turma?.nome ?? ''}</span>
          &nbsp;&nbsp;<strong>Período:</strong> <span class="campo" style="min-width:100px">${turma?.periodo ?? ''}</span></p>
-      <p><strong>Data de início do aluno (data da matrícula):</strong> <span class="campo">${dataMatricula}</span></p>
+      <p><strong>Data de início do aluno (data da matrícula):</strong> <span class="campo">${dataMatricula ? new Date(dataMatricula + 'T12:00:00').toLocaleDateString('pt-BR') : ''}</span></p>
       <p><strong>O aluno estudava na escola:</strong> <span class="campo" style="min-width:280px">${escolaAnterior}</span></p>
       <br>
       <p>Favor inserir o aluno no n.º <strong>${numeroNoDiario}</strong> do diário.</p>
@@ -268,8 +268,8 @@ function FormInfantil({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
   const aluno = alunos.find(a => a.id === alunoId);
 
   const imprimir = () => {
-    const dataNasc = aluno?.dataNascimento
-      ? new Date(aluno.dataNascimento).toLocaleDateString('pt-BR')
+    const dataNasc = aluno?.data_nascimento
+      ? new Date(aluno.data_nascimento + 'T12:00:00').toLocaleDateString('pt-BR')
       : '___/___/____';
     const c = ciclo || '__';
     const e = etapa || '_______________';
@@ -395,8 +395,8 @@ function FormFundamental({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
   };
 
   const imprimir = () => {
-    const dataNasc = aluno?.dataNascimento
-      ? new Date(aluno.dataNascimento).toLocaleDateString('pt-BR')
+    const dataNasc = aluno?.data_nascimento
+      ? new Date(aluno.data_nascimento + 'T12:00:00').toLocaleDateString('pt-BR')
       : '___/___/____';
     const corpo = `
       <p>Declaro para os devidos fins, que <strong>${aluno?.nome ?? '_'.repeat(40)}</strong>
@@ -503,6 +503,8 @@ function FormFrequencia({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
   const [horIni, setHorIni] = useState('');
   const [horFim, setHorFim] = useState('');
   const [codigoInep, setCodigoInep] = useState('');
+  const [sexo, setSexo] = useState('');
+  const [nomeMae, setNomeMae] = useState('');
   const [transferidoEm, setTransferidoEm] = useState('');
   const [transferidoPara, setTransferidoPara] = useState('');
   const [deixouEm, setDeixouEm] = useState('');
@@ -522,10 +524,10 @@ function FormFrequencia({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
   const aluno = alunos.find(a => a.id === alunoId);
 
   const imprimir = () => {
-    const dataNasc = aluno?.dataNascimento
-      ? new Date(aluno.dataNascimento).toLocaleDateString('pt-BR')
+    const dataNasc = aluno?.data_nascimento
+      ? new Date(aluno.data_nascimento + 'T12:00:00').toLocaleDateString('pt-BR')
       : '';
-    const [dmIni, dmFim] = dataMatricula ? dataMatricula.split('-').reverse().join('/') : ['',''];
+    const dmFmt = dataMatricula ? new Date(dataMatricula + 'T12:00:00').toLocaleDateString('pt-BR') : '';
     const corpo = `
       <h3 style="text-align:center;font-size:12pt;letter-spacing:1px">DECLARAÇÃO DE FREQUÊNCIA ESCOLAR</h3>
       <h4 style="text-align:center;margin-bottom:12px">MINISTÉRIO DA EDUCAÇÃO / INEP</h4>
@@ -550,13 +552,13 @@ function FormFrequencia({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
         </tr>
         <tr>
           <td style="font-weight:700">Sexo:</td>
-          <td>${aluno?.sexo === 'M' ? '☑ Masculino  ☐ Feminino' : aluno?.sexo === 'F' ? '☐ Masculino  ☑ Feminino' : '☐ Masculino  ☐ Feminino'}</td>
+          <td>${sexo === 'M' ? '☑ Masculino  ☐ Feminino' : sexo === 'F' ? '☐ Masculino  ☑ Feminino' : '☐ Masculino  ☐ Feminino'}</td>
           <td style="font-weight:700">Data de nascimento:</td>
           <td>${dataNasc}</td>
         </tr>
         <tr>
           <td style="font-weight:700">Nome completo da mãe:</td>
-          <td colspan="3">${aluno?.nomeMae ?? ''}</td>
+          <td colspan="3">${nomeMae}</td>
         </tr>
       </table>
 
@@ -564,7 +566,7 @@ function FormFrequencia({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
       frequentando o(a) <strong>${serieAno}</strong> da modalidade <strong>${modalidade}</strong>,
       na turma <strong>${turma?.nome ?? ''}</strong> que tem como horário: das <strong>${horIni}</strong> às <strong>${horFim}</strong>,
       no ano letivo de <strong>${ano}</strong>,
-      sendo sua data de matrícula <strong>${dataMatricula ? new Date(dataMatricula + 'T12:00:00').toLocaleDateString('pt-BR') : ''}</strong>.
+      sendo sua data de matrícula <strong>${dmFmt}</strong>.
       Logo o(a) mesmo(a) teve a seguinte frequência:</p>
 
       <table style="margin:12px 0">
@@ -625,6 +627,18 @@ function FormFrequencia({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
             <option value="">Selecione...</option>
             {alunosFiltrados.map(a => <option key={a.id} value={a.id}>{a.nome}</option>)}
           </select>
+        </div>
+        <div>
+          <label style={label}>Sexo</label>
+          <select style={{ ...input, width: '100%' }} value={sexo} onChange={e => setSexo(e.target.value)}>
+            <option value="">Selecione...</option>
+            <option value="M">Masculino</option>
+            <option value="F">Feminino</option>
+          </select>
+        </div>
+        <div>
+          <label style={label}>Nome completo da mãe</label>
+          <input style={{ ...input, width: '100%' }} value={nomeMae} onChange={e => setNomeMae(e.target.value)} />
         </div>
         <div>
           <label style={label}>Série / Ano</label>
