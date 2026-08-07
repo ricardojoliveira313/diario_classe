@@ -242,7 +242,6 @@ function FormSaida({ turmas: _turmas, alunos: _alunos }: { turmas: any[]; alunos
 
 // ─── Formulário: Declaração Infantil ──────────────────────────────────────────
 const CICLOS_INFANTIL = [
-  '1º CICLO',
   '2º CICLO INICIAL',
   '2º CICLO FINAL',
 ];
