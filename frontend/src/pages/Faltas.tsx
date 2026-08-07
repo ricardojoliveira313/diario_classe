@@ -1370,8 +1370,10 @@ export default function Faltas() {
                   const freq = ((numDias - ausencias) / numDias * 100).toFixed(0);
                   const freqAt = ((numDias - (nF + nJ)) / numDias * 100).toFixed(0);
                   const rowBg = emAlerta ? 'var(--row-alerta)' : i % 2 === 0 ? 'var(--row-even)' : 'var(--row-odd)';
+                  const linhaAtiva = cursor?.alunoId === a.id;
+                  const rowBgFinal = linhaAtiva ? (isDark ? 'rgba(37,99,235,0.18)' : '#dbeafe') : rowBg;
                   return (
-                    <tr key={a.id} style={{ background: rowBg }}>
+                    <tr key={a.id} style={{ background: rowBgFinal, outline: linhaAtiva ? `2px solid ${isDark ? '#3b82f6' : '#93c5fd'}` : 'none', outlineOffset: '-1px' }}>
                       <td
                         onClick={
                           paintStatus && podeEditar && !statusTxt
@@ -1393,7 +1395,7 @@ export default function Faltas() {
                         }
                         style={{
                           position: 'sticky', left: 0, zIndex: 1,
-                          background: cursor?.alunoId === a.id ? (isDark ? 'rgba(37,99,235,0.18)' : '#dbeafe') : rowBg,
+                          background: rowBgFinal,
                           padding: '8px 12px',
                           borderRight: '2px solid var(--border-light)',
                           cursor: podeEditar && !statusTxt ? 'pointer' : 'default',
