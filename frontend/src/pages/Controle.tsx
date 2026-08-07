@@ -190,7 +190,7 @@ export default function Controle() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: isDark ? 'rgba(255,255,255,0.05)' : '#f1f5f9', borderBottom: `1px solid ${theme.borderLight}` }}>
-                {['Turma', 'Professora', 'Status', 'Total de dias faltados', 'Alunos c/ falta', 'Lançado por', 'Quando'].map(h => (
+                {['Turma', 'Professora', 'Status', 'Alunos c/ falta', 'Lançado por', 'Quando'].map(h => (
                   <th key={h} style={{ padding: '10px 12px', textAlign: h === 'Status' ? 'center' : 'left', fontWeight: 700, color: theme.textSecondary, whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -201,9 +201,6 @@ export default function Controle() {
                   <td style={{ padding: '10px 12px', fontWeight: 700, color: theme.text, whiteSpace: 'nowrap' }}>{turma.nome}</td>
                   <td style={{ padding: '10px 12px', color: theme.textSecondary }}>{turma.professora ?? '—'}</td>
                   <td style={{ padding: '10px 12px', textAlign: 'center' }}>{statusBadge(lancamento)}</td>
-                  <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: lancamento?.total_faltas > 0 ? 700 : 400, color: lancamento?.total_faltas > 0 ? '#dc2626' : theme.textMuted }}>
-                    {lancamento != null ? lancamento.total_faltas : '—'}
-                  </td>
                   <td style={{ padding: '10px 12px', textAlign: 'center', color: theme.textSecondary }}>
                     {lancamento != null ? lancamento.alunos_com_falta : '—'}
                   </td>
