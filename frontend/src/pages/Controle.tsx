@@ -196,22 +196,28 @@ export default function Controle() {
               </tr>
             </thead>
             <tbody>
-              {filtradas.map(({ turma, lancamento }, i) => (
-                <tr key={turma.id} style={{ borderBottom: `1px solid ${theme.borderLight}`, background: i % 2 === 0 ? 'transparent' : (isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.01)') }}>
-                  <td style={{ padding: '10px 12px', fontWeight: 700, color: theme.text, whiteSpace: 'nowrap' }}>{turma.nome}</td>
-                  <td style={{ padding: '10px 12px', color: theme.textSecondary }}>{turma.professora ?? '—'}</td>
-                  <td style={{ padding: '10px 12px', textAlign: 'center' }}>{statusBadge(lancamento)}</td>
-                  <td style={{ padding: '10px 12px', textAlign: 'center', color: theme.textSecondary }}>
-                    {lancamento != null ? lancamento.alunos_com_falta : '—'}
-                  </td>
-                  <td style={{ padding: '10px 12px', color: theme.textSecondary, fontSize: 12 }}>
-                    {lancamento ? lancamento.lancado_por : '—'}
-                  </td>
-                  <td style={{ padding: '10px 12px', color: theme.textMuted, fontSize: 11, whiteSpace: 'nowrap' }}>
-                    {lancamento ? fmtData(lancamento.lancado_em) : '—'}
-                  </td>
-                </tr>
-              ))}
+              {filtradas.map(({ turma, lancamento }) => {
+                const naoLancado = !lancamento;
+                const rowBg = naoLancado
+                  ? (isDark ? 'rgba(239,68,68,0.08)' : '#fff5f5')
+                  : 'transparent';
+                return (
+                  <tr key={turma.id} style={{ borderBottom: `1px solid ${theme.borderLight}`, background: rowBg }}>
+                    <td style={{ padding: '10px 12px', fontWeight: 700, color: naoLancado ? '#dc2626' : theme.text, whiteSpace: 'nowrap' }}>{turma.nome}</td>
+                    <td style={{ padding: '10px 12px', fontWeight: naoLancado ? 700 : 400, color: naoLancado ? '#dc2626' : theme.textSecondary }}>{turma.professora ?? '—'}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'center' }}>{statusBadge(lancamento)}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'center', color: lancamento?.alunos_com_falta > 0 ? '#d97706' : theme.textSecondary, fontWeight: lancamento?.alunos_com_falta > 0 ? 700 : 400 }}>
+                      {lancamento != null ? lancamento.alunos_com_falta : '—'}
+                    </td>
+                    <td style={{ padding: '10px 12px', color: theme.textSecondary, fontSize: 12 }}>
+                      {lancamento ? lancamento.lancado_por : '—'}
+                    </td>
+                    <td style={{ padding: '10px 12px', color: theme.textMuted, fontSize: 11, whiteSpace: 'nowrap' }}>
+                      {lancamento ? fmtData(lancamento.lancado_em) : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
