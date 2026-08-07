@@ -163,6 +163,64 @@ function htmlGape(conteudo: string) {
 </html>`;
 }
 
+function htmlControleFrequencia(conteudo: string) {
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Ao Controle de Frequência</title>
+<style>
+  @page { size: A4 landscape; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; background: white; font-family: Arial, sans-serif; }
+  .pagina {
+    width: 297mm; height: 210mm;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: white; position: relative;
+  }
+  .remetente {
+    position: absolute; top: 14mm; left: 18mm;
+    font-size: 11pt; font-weight: 700; color: #1e3a6e;
+    line-height: 1.5;
+  }
+  .destino-label {
+    font-size: 14pt; font-weight: 700; color: #444;
+    letter-spacing: 4px; text-transform: uppercase;
+    margin-bottom: 6mm;
+  }
+  .setor {
+    font-size: 54pt; font-weight: 900; color: #1e3a6e;
+    letter-spacing: 4px; line-height: 1.1;
+    text-transform: uppercase; text-align: center;
+  }
+  .conteudo {
+    font-size: 32pt; font-weight: 900; color: #1e3a6e;
+    text-transform: uppercase; text-align: center;
+    margin-top: 8mm; letter-spacing: 3px;
+    max-width: 220mm;
+  }
+  .divider {
+    width: 160mm; height: 3px; background: #1e3a6e;
+    margin: 5mm 0;
+  }
+</style>
+</head>
+<body>
+<div class="pagina">
+  <div class="remetente">
+    <strong>De:</strong> EMEIEF LUIZ GONZAGA<br>
+    Santo André — SP
+  </div>
+  <div class="destino-label">Para</div>
+  <div class="setor">Ao Controle<br>de Frequência</div>
+  <div class="divider"></div>
+  ${conteudo ? `<div class="conteudo">${conteudo}</div>` : ''}
+</div>
+</body>
+</html>`;
+}
+
 export default function Capa() {
   const { theme: themeMode } = useTheme();
   const isDark = themeMode === 'dark';
@@ -175,6 +233,7 @@ export default function Capa() {
   const [local, setLocal] = useState('');
   const [endereco, setEndereco] = useState('');
   const [gapeConteudo, setGapeConteudo] = useState('');
+  const [freqConteudo, setFreqConteudo] = useState('');
   const [capas, setCapas] = useState<CapaSalva[]>(carregarCapas);
   const [previewAtivo, setPreviewAtivo] = useState<CapaSalva | null>(null);
   const printRef = useRef<HTMLDivElement>(null);
@@ -393,6 +452,44 @@ export default function Capa() {
               }}
             >
               🖨️ Imprimir GAPE
+            </button>
+          </div>
+        </div>
+
+        {/* Impressão rápida — Controle de Frequência */}
+        <div style={{ background: isDark ? 'rgba(22,163,74,0.12)' : '#f0fdf4', border: `1.5px solid ${isDark ? '#22c55e' : '#86efac'}`, borderRadius: 10, padding: '14px 18px', marginBottom: 20 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: isDark ? '#86efac' : '#15803d', marginBottom: 8 }}>📂 Capa para Controle de Frequência</div>
+          <div style={{ fontSize: 12, color: theme.textMuted, marginBottom: 10 }}>De: EMEIEF LUIZ GONZAGA → Ao Controle de Frequência — letras grandes.</div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <label style={{ ...label, marginBottom: 4 }}>Conteúdo do envelope (opcional)</label>
+              <input
+                style={{ ...input, width: '100%', textTransform: 'uppercase', fontWeight: 700 }}
+                placeholder="Ex: FOLHA DE FREQUÊNCIA"
+                value={freqConteudo}
+                onChange={e => setFreqConteudo(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    const win = window.open('', '_blank');
+                    if (!win) return;
+                    win.document.write(htmlControleFrequencia(freqConteudo.trim().toUpperCase()));
+                    win.document.close(); win.focus();
+                    setTimeout(() => { win.print(); win.close(); }, 400);
+                  }
+                }}
+              />
+            </div>
+            <button
+              style={{ ...btn, background: '#15803d', fontSize: 13, whiteSpace: 'nowrap' }}
+              onClick={() => {
+                const win = window.open('', '_blank');
+                if (!win) return;
+                win.document.write(htmlControleFrequencia(freqConteudo.trim().toUpperCase()));
+                win.document.close(); win.focus();
+                setTimeout(() => { win.print(); win.close(); }, 400);
+              }}
+            >
+              🖨️ Imprimir Controle de Freq.
             </button>
           </div>
         </div>
