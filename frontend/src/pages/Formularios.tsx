@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '../api';
-import { theme, btn, input, label, MESES } from '../styles';
+import { theme, btn, input, label, MESES, isInfantilTurma } from '../styles';
 import { useTheme } from '../ThemeContext';
 import { useAno } from '../AnoContext';
 
@@ -268,6 +268,7 @@ function FormInfantil({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
   const [horFim, setHorFim] = useState('');
   const [periodo, setPeriodo] = useState('');
 
+  const turmasInfantil = turmas.filter(t => isInfantilTurma(t.nome));
   const turma = turmas.find(t => t.id === turmaId);
   const alunosFiltrados = alunos.filter(a => a.turmaId === turmaId);
   const aluno = alunos.find(a => a.id === alunoId);
@@ -316,10 +317,10 @@ function FormInfantil({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <div>
-          <label style={label}>Turma</label>
+          <label style={label}>Turma (Educação Infantil)</label>
           <select style={{ ...input, width: '100%' }} value={turmaId} onChange={e => { setTurmaId(e.target.value); setAlunoId(''); }}>
             <option value="">Selecione...</option>
-            {turmas.map(t => <option key={t.id} value={t.id}>{t.nome} – {t.professora}</option>)}
+            {turmasInfantil.map(t => <option key={t.id} value={t.id}>{t.nome} – {t.professora}</option>)}
           </select>
         </div>
         <div>
@@ -406,6 +407,7 @@ function FormFundamental({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
   const [anoConc, setAnoConc] = useState('2º ANO');
   const [obs, setObs] = useState('');
 
+  const turmasFundamental = turmas.filter(t => !isInfantilTurma(t.nome));
   const turma = turmas.find(t => t.id === turmaId);
   const alunosFiltrados = alunos.filter(a => a.turmaId === turmaId);
   const aluno = alunos.find(a => a.id === alunoId);
@@ -450,10 +452,10 @@ function FormFundamental({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <div>
-          <label style={label}>Turma</label>
+          <label style={label}>Turma (Ensino Fundamental)</label>
           <select style={{ ...input, width: '100%' }} value={turmaId} onChange={e => { setTurmaId(e.target.value); setAlunoId(''); }}>
             <option value="">Selecione...</option>
-            {turmas.map(t => <option key={t.id} value={t.id}>{t.nome} – {t.professora}</option>)}
+            {turmasFundamental.map(t => <option key={t.id} value={t.id}>{t.nome} – {t.professora}</option>)}
           </select>
         </div>
         <div>
