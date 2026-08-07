@@ -1491,7 +1491,7 @@ export default function Importar() {
         const ec = ecPorCPF ?? ecExato ?? ecFuzzy;
         if (ec) {
           a.cpf = ec.cpf || a.cpf || '';
-          a.deficiencia = a.deficiencia || ec.deficiencia || '';
+          // Deficiência NÃO é herdada do Educacenso (dados de outro ano) — somente o SED atual é autoritativo
           a.corRaca = a.corRaca || ec.corRaca || '';
         }
       }
@@ -2053,7 +2053,7 @@ export default function Importar() {
           const ec = ecPorCPF ?? ecExato ?? ecFuzzy;
           if (ec) {
             if (!a.cpf) a.cpf = ec.cpf;
-            if (!a.deficiencia) a.deficiencia = ec.deficiencia;
+            // Deficiência NÃO é herdada do Educacenso (dados de outro ano) — somente o SED atual é autoritativo
             if (!a.corRaca) a.corRaca = ec.corRaca || '';
           }
         }
