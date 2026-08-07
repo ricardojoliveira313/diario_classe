@@ -395,27 +395,6 @@ export default function Capa() {
               🖨️ Imprimir GAPE
             </button>
           </div>
-          {/* Atalhos rápidos GAPE */}
-          <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {[
-              { label: '📋 Folha de Frequência', txt: 'FOLHA DE FREQUÊNCIA' },
-              { label: '🏫 Conselho de Escola', txt: 'CONSELHO DE ESCOLA' },
-            ].map(({ label: lbl, txt }) => (
-              <button
-                key={txt}
-                style={{ ...btn, fontSize: 12, padding: '6px 16px', background: isDark ? '#4338ca' : '#4f46e5' }}
-                onClick={() => {
-                  const win = window.open('', '_blank');
-                  if (!win) return;
-                  win.document.write(htmlGape(txt));
-                  win.document.close(); win.focus();
-                  setTimeout(() => { win.print(); win.close(); }, 400);
-                }}
-              >
-                {lbl}
-              </button>
-            ))}
-          </div>
         </div>
 
         {/* Seleção de modelo */}
