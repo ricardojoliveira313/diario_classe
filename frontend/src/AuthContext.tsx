@@ -39,6 +39,8 @@ export const PAGINAS_VIEWER = [
   { key: 'distorcao',  label: '📐 Distorção' },
   { key: 'pendentes',  label: '📋 Ata de Resultados' },
   { key: 'historico',  label: '📜 Histórico Escolar' },
+  { key: 'formularios', label: '📄 Formulários' },
+  { key: 'capa',        label: '✉️ Capa de Envelope' },
 ] as const;
 
 export type PageKey = typeof PAGINAS_VIEWER[number]['key'];

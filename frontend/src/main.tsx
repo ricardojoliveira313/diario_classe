@@ -38,8 +38,8 @@ const NAV_ITEMS: { to: string; label: string; end?: boolean; badge?: boolean; ad
   { to: '/distorcao', label: '📐 Distorção',                          pageKey: 'distorcao' },
   { to: '/pendentes', label: '📋 Ata',                badge: true,    pageKey: 'pendentes' },
   { to: '/historico', label: '📜 Histórico',                          pageKey: 'historico' },
-  { to: '/formularios', label: '📄 Formulários', adminOnly: true },
-  { to: '/capa',        label: '✉️ Capa',       adminOnly: true },
+  { to: '/formularios', label: '📄 Formulários', pageKey: 'formularios' },
+  { to: '/capa',        label: '✉️ Capa',       pageKey: 'capa' },
   { to: '/controle',  label: '📊 Controle',  adminOnly: true },
   { to: '/usuarios',  label: '👥 Usuários',  adminOnly: true },
 ];
@@ -285,8 +285,8 @@ function AppShell() {
             <Route path="/ocorrencias" element={<ViewerRoute pageKey="ocorrencias"><Ocorrencias /></ViewerRoute>} />
             <Route path="/pendentes" element={<ViewerRoute pageKey="pendentes"><Pendentes /></ViewerRoute>} />
             <Route path="/historico" element={<ViewerRoute pageKey="historico"><Historico /></ViewerRoute>} />
-            <Route path="/formularios" element={<AdminRoute><Formularios /></AdminRoute>} />
-            <Route path="/capa" element={<AdminRoute><Capa /></AdminRoute>} />
+            <Route path="/formularios" element={<ViewerRoute pageKey="formularios"><Formularios /></ViewerRoute>} />
+            <Route path="/capa" element={<ViewerRoute pageKey="capa"><Capa /></ViewerRoute>} />
             <Route path="/controle" element={<AdminRoute><Controle /></AdminRoute>} />
             <Route path="/usuarios" element={<AdminRoute><Usuarios /></AdminRoute>} />
           </Routes>
