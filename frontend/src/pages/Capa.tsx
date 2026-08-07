@@ -8,6 +8,7 @@ interface CapaSalva {
   id: string;
   titulo: string;
   subtitulo: string;
+  ac: string;
   orientacao: Orientacao;
   criadaEm: string;
 }
@@ -32,6 +33,7 @@ export default function Capa() {
 
   const [titulo, setTitulo] = useState('');
   const [subtitulo, setSubtitulo] = useState('');
+  const [ac, setAc] = useState('');
   const [orientacao, setOrientacao] = useState<Orientacao>('paisagem');
   const [capas, setCapas] = useState<CapaSalva[]>(carregarCapas);
   const [previewAtivo, setPreviewAtivo] = useState<CapaSalva | null>(null);
@@ -43,6 +45,7 @@ export default function Capa() {
       id: Date.now().toString(),
       titulo: titulo.trim().toUpperCase(),
       subtitulo: subtitulo.trim().toUpperCase(),
+      ac: ac.trim(),
       orientacao,
       criadaEm: new Date().toLocaleDateString('pt-BR'),
     };
@@ -104,6 +107,16 @@ export default function Capa() {
     margin-top: 10mm;
     text-transform: uppercase;
   }
+  .ac {
+    position: absolute;
+    top: 8mm;
+    left: 12mm;
+    font-family: Arial, sans-serif;
+    font-size: ${isPaisagem ? '11pt' : '10pt'};
+    color: #1e3a6e;
+    font-weight: 700;
+    text-align: left;
+  }
   .escola {
     position: absolute;
     bottom: 10mm;
@@ -119,6 +132,7 @@ export default function Capa() {
 <body>
 <div class="pagina">
   <div class="capa">
+    ${capa.ac ? `<div class="ac">A/C ${capa.ac}</div>` : ''}
     <div class="titulo">${capa.titulo}</div>
     ${capa.subtitulo ? `<div class="subtitulo">${capa.subtitulo}</div>` : ''}
     <div class="escola">EMEIEF LUIZ GONZAGA<br>Santo André — SP</div>
@@ -142,6 +156,7 @@ export default function Capa() {
     const h = mini ? (p ? 116 : 156) : (p ? 232 : 312);
     const fs = mini ? (p ? 9 : 8) : (p ? 18 : 15);
     const fsSub = mini ? 7 : (p ? 12 : 10);
+    const fsAc = mini ? 5.5 : (p ? 9 : 8);
     return (
       <div style={{
         width: w, height: h, border: '4px solid #1e3a6e', background: 'white',
@@ -149,6 +164,11 @@ export default function Capa() {
         padding: mini ? 8 : 24, position: 'relative', borderRadius: 2, flexShrink: 0,
         boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
       }}>
+        {capa.ac && (
+          <div style={{ position: 'absolute', top: mini ? 4 : 8, left: mini ? 4 : 10, fontSize: fsAc, color: '#1e3a6e', fontWeight: 700, fontFamily: 'Arial, sans-serif' }}>
+            A/C {capa.ac}
+          </div>
+        )}
         <div style={{ fontFamily: 'Arial, sans-serif', fontSize: fs, fontWeight: 900, color: '#1e3a6e', textAlign: 'center', lineHeight: 1.2, letterSpacing: 0.5 }}>
           {capa.titulo}
         </div>
@@ -175,7 +195,7 @@ export default function Capa() {
             <label style={label}>Título principal *</label>
             <input
               style={{ ...input, width: '100%', textTransform: 'uppercase', fontWeight: 700 }}
-              placeholder="Ex: CONSELHO DE ESCOLA"
+              placeholder="Ex: FOLHAS DE FREQUÊNCIA"
               value={titulo}
               onChange={e => setTitulo(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && gerarCapa()}
@@ -188,6 +208,16 @@ export default function Capa() {
               placeholder="Ex: MARÇO 2026"
               value={subtitulo}
               onChange={e => setSubtitulo(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && gerarCapa()}
+            />
+          </div>
+          <div>
+            <label style={label}>A/C — Aos Cuidados de (destinatário)</label>
+            <input
+              style={{ ...input, width: '100%' }}
+              placeholder="Ex: Melissa"
+              value={ac}
+              onChange={e => setAc(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && gerarCapa()}
             />
           </div>
@@ -243,6 +273,7 @@ export default function Capa() {
                   <CardPreview capa={c} mini />
                 </div>
                 <div style={{ textAlign: 'center', maxWidth: isPaisagem(c) ? 180 : 110 }}>
+                  {c.ac && <div style={{ fontSize: 10, color: theme.primary, fontWeight: 700 }}>A/C {c.ac}</div>}
                   <div style={{ fontSize: 11, fontWeight: 700, color: theme.text, lineHeight: 1.2 }}>{c.titulo}</div>
                   {c.subtitulo && <div style={{ fontSize: 10, color: theme.textMuted }}>{c.subtitulo}</div>}
                   <div style={{ fontSize: 10, color: theme.textMuted }}>{c.criadaEm}</div>
