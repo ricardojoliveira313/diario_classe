@@ -105,6 +105,64 @@ function htmlColorido(capa: CapaSalva) {
 </html>`;
 }
 
+function htmlGape(conteudo: string) {
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>GAPE</title>
+<style>
+  @page { size: A4 landscape; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; background: white; font-family: Arial, sans-serif; }
+  .pagina {
+    width: 297mm; height: 210mm;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: white; position: relative;
+  }
+  .remetente {
+    position: absolute; top: 14mm; left: 18mm;
+    font-size: 11pt; font-weight: 700; color: #1e3a6e;
+    line-height: 1.5;
+  }
+  .destino-label {
+    font-size: 14pt; font-weight: 700; color: #444;
+    letter-spacing: 4px; text-transform: uppercase;
+    margin-bottom: 6mm;
+  }
+  .gape {
+    font-size: 96pt; font-weight: 900; color: #1e3a6e;
+    letter-spacing: 12px; line-height: 1;
+    text-transform: uppercase;
+  }
+  .conteudo {
+    font-size: 22pt; font-weight: 800; color: #1e3a6e;
+    text-transform: uppercase; text-align: center;
+    margin-top: 8mm; letter-spacing: 2px;
+    max-width: 220mm;
+  }
+  .divider {
+    width: 160mm; height: 3px; background: #1e3a6e;
+    margin: 5mm 0;
+  }
+</style>
+</head>
+<body>
+<div class="pagina">
+  <div class="remetente">
+    <strong>De:</strong> EMEIEF LUIZ GONZAGA<br>
+    Santo André — SP
+  </div>
+  <div class="destino-label">Para</div>
+  <div class="gape">GAPE</div>
+  <div class="divider"></div>
+  ${conteudo ? `<div class="conteudo">${conteudo}</div>` : ''}
+</div>
+</body>
+</html>`;
+}
+
 export default function Capa() {
   const { theme: themeMode } = useTheme();
   const isDark = themeMode === 'dark';
@@ -116,6 +174,7 @@ export default function Capa() {
   const [modelo, setModelo] = useState<Modelo>('classico');
   const [local, setLocal] = useState('');
   const [endereco, setEndereco] = useState('');
+  const [gapeConteudo, setGapeConteudo] = useState('');
   const [capas, setCapas] = useState<CapaSalva[]>(carregarCapas);
   const [previewAtivo, setPreviewAtivo] = useState<CapaSalva | null>(null);
   const printRef = useRef<HTMLDivElement>(null);
@@ -298,6 +357,62 @@ export default function Capa() {
           >
             🖨️ Imprimir agora
           </button>
+        </div>
+
+        {/* Impressão rápida — GAPE */}
+        <div style={{ background: isDark ? 'rgba(30,58,110,0.15)' : '#eff3ff', border: `1.5px solid ${isDark ? '#6366f1' : '#818cf8'}`, borderRadius: 10, padding: '14px 18px', marginBottom: 20 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: isDark ? '#a5b4fc' : '#3730a3', marginBottom: 8 }}>📦 Capa para GAPE</div>
+          <div style={{ fontSize: 12, color: theme.textMuted, marginBottom: 10 }}>De: EMEIEF LUIZ GONZAGA → GAPE — letras grandes. Coloque o conteúdo do envelope (opcional).</div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <label style={{ ...label, marginBottom: 4 }}>Conteúdo do envelope (opcional)</label>
+              <input
+                style={{ ...input, width: '100%', textTransform: 'uppercase', fontWeight: 700 }}
+                placeholder="Ex: FOLHA DE FREQUÊNCIA"
+                value={gapeConteudo}
+                onChange={e => setGapeConteudo(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    const win = window.open('', '_blank');
+                    if (!win) return;
+                    win.document.write(htmlGape(gapeConteudo.trim().toUpperCase()));
+                    win.document.close(); win.focus();
+                    setTimeout(() => { win.print(); win.close(); }, 400);
+                  }
+                }}
+              />
+            </div>
+            <button
+              style={{ ...btn, background: '#3730a3', fontSize: 13, whiteSpace: 'nowrap' }}
+              onClick={() => {
+                const win = window.open('', '_blank');
+                if (!win) return;
+                win.document.write(htmlGape(gapeConteudo.trim().toUpperCase()));
+                win.document.close(); win.focus();
+                setTimeout(() => { win.print(); win.close(); }, 400);
+              }}
+            >
+              🖨️ Imprimir GAPE
+            </button>
+          </div>
+          {/* Atalhos rápidos GAPE */}
+          <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {['FOLHA DE FREQUÊNCIA', 'DOCUMENTOS', 'FICHAS DE ALUNOS', 'CONTROLE DE PRESENÇA', ''].map(txt => (
+              <button
+                key={txt || 'vazio'}
+                style={{ ...btn, fontSize: 11, padding: '4px 12px', background: isDark ? '#4338ca' : '#4f46e5', opacity: 0.9 }}
+                onClick={() => {
+                  const win = window.open('', '_blank');
+                  if (!win) return;
+                  win.document.write(htmlGape(txt));
+                  win.document.close(); win.focus();
+                  setTimeout(() => { win.print(); win.close(); }, 400);
+                }}
+              >
+                {txt || '(sem conteúdo)'}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Seleção de modelo */}
