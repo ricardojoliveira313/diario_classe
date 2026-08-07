@@ -80,7 +80,7 @@ function htmlColorido(capa: CapaSalva) {
     <div style="${bgPage}page-break-after:avoid;">
       ${faixas}
       <div style="position:relative;z-index:1;text-align:center;padding:0 60mm;">
-        <p style="${txtAzul}font-size:9pt;margin-bottom:3mm;">EMEIEF LUIZ GONZAGA</p>
+        <p style="${txtAzul}font-size:9pt;margin-bottom:3mm;">EMEIEF LUIZ GONZAGA — CR 61.015</p>
         <p style="${txtAzul}font-size:16pt;font-weight:700;margin-bottom:8mm;">Ao Controle de Frequência</p>
         <p style="${txtAzul}font-size:28pt;font-weight:900;margin-bottom:4mm;">
           ${capa.ac ? `A/C ${capa.ac}` : ''}
@@ -122,14 +122,9 @@ function htmlGape(conteudo: string) {
     background: white; position: relative;
   }
   .remetente {
-    position: absolute; top: 14mm; left: 18mm;
+    position: absolute; bottom: 12mm; left: 18mm;
     font-size: 11pt; font-weight: 700; color: #1e3a6e;
     line-height: 1.5;
-  }
-  .destino-label {
-    font-size: 14pt; font-weight: 700; color: #444;
-    letter-spacing: 4px; text-transform: uppercase;
-    margin-bottom: 6mm;
   }
   .gape {
     font-size: 96pt; font-weight: 900; color: #1e3a6e;
@@ -151,10 +146,9 @@ function htmlGape(conteudo: string) {
 <body>
 <div class="pagina">
   <div class="remetente">
-    <strong>De:</strong> EMEIEF LUIZ GONZAGA<br>
-    Santo André — SP
+    EMEIEF LUIZ GONZAGA<br>
+    CR 61.015
   </div>
-  <div class="destino-label">Para</div>
   <div class="gape">GAPE</div>
   <div class="divider"></div>
   ${conteudo ? `<div class="conteudo">${conteudo}</div>` : ''}
@@ -180,14 +174,9 @@ function htmlControleFrequencia(conteudo: string) {
     background: white; position: relative;
   }
   .remetente {
-    position: absolute; top: 14mm; left: 18mm;
+    position: absolute; bottom: 12mm; left: 18mm;
     font-size: 11pt; font-weight: 700; color: #1e3a6e;
     line-height: 1.5;
-  }
-  .destino-label {
-    font-size: 14pt; font-weight: 700; color: #444;
-    letter-spacing: 4px; text-transform: uppercase;
-    margin-bottom: 6mm;
   }
   .setor {
     font-size: 54pt; font-weight: 900; color: #1e3a6e;
@@ -209,10 +198,9 @@ function htmlControleFrequencia(conteudo: string) {
 <body>
 <div class="pagina">
   <div class="remetente">
-    <strong>De:</strong> EMEIEF LUIZ GONZAGA<br>
-    Santo André — SP
+    EMEIEF LUIZ GONZAGA<br>
+    CR 61.015
   </div>
-  <div class="destino-label">Para</div>
   <div class="setor">Ao Controle<br>de Frequência</div>
   <div class="divider"></div>
   ${conteudo ? `<div class="conteudo">${conteudo}</div>` : ''}
@@ -296,7 +284,7 @@ export default function Capa() {
     ${capa.ac ? `<div class="ac">A/C ${capa.ac}</div>` : ''}
     <div class="titulo">${capa.titulo}</div>
     ${capa.subtitulo ? `<div class="subtitulo">${capa.subtitulo}</div>` : ''}
-    <div class="escola">EMEIEF LUIZ GONZAGA<br>Santo André — SP</div>
+    <div class="escola">EMEIEF LUIZ GONZAGA<br>CR 61.015</div>
   </div>
 </div>
 </body>
@@ -337,7 +325,7 @@ export default function Capa() {
         {capa.ac && <div style={{ position: 'absolute', top: mini ? 4 : 8, left: mini ? 4 : 10, fontSize: fsAc, color: '#1e3a6e', fontWeight: 700, fontFamily: 'Arial,sans-serif' }}>A/C {capa.ac}</div>}
         <div style={{ fontFamily: 'Arial,sans-serif', fontSize: fs, fontWeight: 900, color: '#1e3a6e', textAlign: 'center', lineHeight: 1.2 }}>{capa.titulo}</div>
         {capa.subtitulo && <div style={{ fontFamily: 'Arial,sans-serif', fontSize: fsSub, fontWeight: 700, color: '#1e3a6e', textAlign: 'center', marginTop: mini ? 4 : 12 }}>{capa.subtitulo}</div>}
-        <div style={{ position: 'absolute', bottom: mini ? 4 : 8, right: mini ? 4 : 10, fontSize: mini ? 5 : 8, color: '#1e3a6e', fontWeight: 600, textAlign: 'right', fontFamily: 'Arial,sans-serif' }}>EMEIEF LUIZ GONZAGA<br />Santo André — SP</div>
+        <div style={{ position: 'absolute', bottom: mini ? 4 : 8, right: mini ? 4 : 10, fontSize: mini ? 5 : 8, color: '#1e3a6e', fontWeight: 600, textAlign: 'right', fontFamily: 'Arial,sans-serif' }}>EMEIEF LUIZ GONZAGA<br />CR 61.015</div>
       </div>
     );
   };
