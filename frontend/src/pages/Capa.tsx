@@ -157,12 +157,12 @@ function htmlGape(conteudo: string) {
 </html>`;
 }
 
-function htmlControleFrequencia(conteudo: string) {
+function htmlConselhoEscola(conteudo: string) {
   return `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
-<title>Ao Controle de Frequência</title>
+<title>Conselho de Escola</title>
 <style>
   @page { size: A4 landscape; margin: 0; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -201,7 +201,7 @@ function htmlControleFrequencia(conteudo: string) {
     EMEIEF LUIZ GONZAGA<br>
     CR 61.015
   </div>
-  <div class="setor">Ao Controle<br>de Frequência</div>
+  <div class="setor">Conselho<br>de Escola</div>
   <div class="divider"></div>
   ${conteudo ? `<div class="conteudo">${conteudo}</div>` : ''}
 </div>
@@ -444,23 +444,23 @@ export default function Capa() {
           </div>
         </div>
 
-        {/* Impressão rápida — Controle de Frequência */}
+        {/* Impressão rápida — Conselho de Escola */}
         <div style={{ background: isDark ? 'rgba(22,163,74,0.12)' : '#f0fdf4', border: `1.5px solid ${isDark ? '#22c55e' : '#86efac'}`, borderRadius: 10, padding: '14px 18px', marginBottom: 20 }}>
-          <div style={{ fontWeight: 700, fontSize: 14, color: isDark ? '#86efac' : '#15803d', marginBottom: 8 }}>📂 Capa para Controle de Frequência</div>
-          <div style={{ fontSize: 12, color: theme.textMuted, marginBottom: 10 }}>De: EMEIEF LUIZ GONZAGA → Ao Controle de Frequência — letras grandes.</div>
+          <div style={{ fontWeight: 700, fontSize: 14, color: isDark ? '#86efac' : '#15803d', marginBottom: 8 }}>🏫 Capa para Conselho de Escola</div>
+          <div style={{ fontSize: 12, color: theme.textMuted, marginBottom: 10 }}>EMEIEF LUIZ GONZAGA → Conselho de Escola — letras grandes.</div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
             <div style={{ flex: 1, minWidth: 200 }}>
               <label style={{ ...label, marginBottom: 4 }}>Conteúdo do envelope (opcional)</label>
               <input
                 style={{ ...input, width: '100%', textTransform: 'uppercase', fontWeight: 700 }}
-                placeholder="Ex: FOLHA DE FREQUÊNCIA"
+                placeholder="Ex: ATA DE REUNIÃO"
                 value={freqConteudo}
                 onChange={e => setFreqConteudo(e.target.value)}
                 onKeyDown={e => {
                   if (e.key === 'Enter') {
                     const win = window.open('', '_blank');
                     if (!win) return;
-                    win.document.write(htmlControleFrequencia(freqConteudo.trim().toUpperCase()));
+                    win.document.write(htmlConselhoEscola(freqConteudo.trim().toUpperCase()));
                     win.document.close(); win.focus();
                     setTimeout(() => { win.print(); win.close(); }, 400);
                   }
@@ -472,12 +472,12 @@ export default function Capa() {
               onClick={() => {
                 const win = window.open('', '_blank');
                 if (!win) return;
-                win.document.write(htmlControleFrequencia(freqConteudo.trim().toUpperCase()));
+                win.document.write(htmlConselhoEscola(freqConteudo.trim().toUpperCase()));
                 win.document.close(); win.focus();
                 setTimeout(() => { win.print(); win.close(); }, 400);
               }}
             >
-              🖨️ Imprimir Controle de Freq.
+              🖨️ Imprimir Conselho de Escola
             </button>
           </div>
         </div>
