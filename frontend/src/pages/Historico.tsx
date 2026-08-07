@@ -767,9 +767,9 @@ export default function Historico() {
         .tabela-estudos .col-estabelecimento { width: 48mm; }
         .tabela-estudos .col-municipio { width: 32mm; }
         .tabela-estudos .col-uf { width: 13mm; }
-        .campo-estabelecimento { display: flex; min-height: 8mm; flex-direction: column; justify-content: center; line-height: 1.1; }
-        .campo-escola-documento { display: block; font-size: 8pt !important; min-height: 5mm; line-height: 1.2; overflow: visible; resize: none; word-break: break-word; white-space: pre-wrap; }
-        .complemento-estabelecimento { font-size: 8pt; font-weight: 800; text-transform: uppercase; }
+        .campo-estabelecimento { display: flex; min-height: 8mm; flex-direction: column; justify-content: center; align-items: center; line-height: 1.1; }
+        .campo-escola-documento { display: block; font-size: 8pt !important; min-height: 5mm; line-height: 1.2; overflow: visible; resize: none; word-break: break-word; white-space: pre-wrap; text-align: center; }
+        .complemento-estabelecimento { font-size: 8pt; font-weight: 800; text-transform: uppercase; text-align: center; width: 100%; }
         .resultados-frente { min-height: 48mm; }
         .texto-equivalencia { font-size: 9pt; font-weight: 700; line-height: 1.2; padding: 3mm 2mm; text-align: center; }
         .notas-identificacao { font-size: 8pt; font-weight: 700; margin: 1mm 0; text-align: left; }
