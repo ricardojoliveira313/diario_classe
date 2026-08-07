@@ -4,6 +4,13 @@ import { theme, btn, input, label, MESES, isInfantilTurma } from '../styles';
 import { useTheme } from '../ThemeContext';
 import { useAno } from '../AnoContext';
 
+function horariosPorTurma(turma: any, infantil: boolean): { ini: string; fim: string } {
+  const nome = (turma?.nome ?? '').toUpperCase();
+  const manha = nome.includes('MANHA') || nome.includes('MANHÃ') || nome.includes('M)') || nome.includes('(M)');
+  if (infantil) return manha ? { ini: '08:00', fim: '12:00' } : { ini: '13:00', fim: '17:00' };
+  return manha ? { ini: '07:00', fim: '12:00' } : { ini: '13:00', fim: '18:00' };
+}
+
 const ESCOLA = 'E.M.E.I.E.F. LUIZ GONZAGA';
 const ENDERECO = 'Rua Ipanema, 253 – Parque Erasmo Assunção';
 const CIDADE = 'Santo André – SP';
@@ -318,7 +325,12 @@ function FormInfantil({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <div>
           <label style={label}>Turma (Educação Infantil)</label>
-          <select style={{ ...input, width: '100%' }} value={turmaId} onChange={e => { setTurmaId(e.target.value); setAlunoId(''); }}>
+          <select style={{ ...input, width: '100%' }} value={turmaId} onChange={e => {
+            const id = e.target.value;
+            setTurmaId(id); setAlunoId('');
+            const t = turmasInfantil.find(x => x.id === id);
+            if (t) { const h = horariosPorTurma(t, true); setHorIni(h.ini); setHorFim(h.fim); }
+          }}>
             <option value="">Selecione...</option>
             {turmasInfantil.map(t => <option key={t.id} value={t.id}>{t.nome} – {t.professora}</option>)}
           </select>
@@ -453,7 +465,12 @@ function FormFundamental({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <div>
           <label style={label}>Turma (Ensino Fundamental)</label>
-          <select style={{ ...input, width: '100%' }} value={turmaId} onChange={e => { setTurmaId(e.target.value); setAlunoId(''); }}>
+          <select style={{ ...input, width: '100%' }} value={turmaId} onChange={e => {
+            const id = e.target.value;
+            setTurmaId(id); setAlunoId('');
+            const t = turmasFundamental.find(x => x.id === id);
+            if (t) { const h = horariosPorTurma(t, false); setHorIni(h.ini); setHorFim(h.fim); }
+          }}>
             <option value="">Selecione...</option>
             {turmasFundamental.map(t => <option key={t.id} value={t.id}>{t.nome} – {t.professora}</option>)}
           </select>
