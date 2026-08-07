@@ -234,19 +234,25 @@ function FormSaida({ turmas: _turmas, alunos: _alunos }: { turmas: any[]; alunos
 }
 
 // ─── Formulário: Declaração Infantil ──────────────────────────────────────────
+const CICLOS_INFANTIL = [
+  '1º CICLO',
+  '2º CICLO INICIAL',
+  '2º CICLO FINAL',
+];
+
 const OPCOES_INFANTIL = [
-  { id: 'freq',   label: (ciclo: string, etapa: string, horIni: string, horFim: string) =>
-    `É aluno(a) regularmente matriculado(a) e está frequentando até a presente data no ${ciclo} ciclo ${etapa} da EDUCAÇÃO INFANTIL nesta Unidade Escolar no horário das ${horIni} às ${horFim}.` },
-  { id: 'matr',   label: (ciclo: string, etapa: string) =>
-    `É aluno(a) regularmente matriculado(a) até a presente data no ${ciclo} ciclo ${etapa} da EDUCAÇÃO INFANTIL nesta Unidade Escolar.` },
-  { id: 'foi',    label: (ciclo: string, etapa: string, _: string, __: string, periodo: string) =>
-    `Foi aluno(a) regularmente matriculado(a) no ${ciclo} ciclo ${etapa} da EDUCAÇÃO INFANTIL nesta Unidade Escolar, no período de ${periodo}.` },
+  { id: 'freq',   label: (ciclo: string, horIni: string, horFim: string) =>
+    `É aluno(a) regularmente matriculado(a) e está frequentando até a presente data no ${ciclo} da EDUCAÇÃO INFANTIL nesta Unidade Escolar no horário das ${horIni} às ${horFim}.` },
+  { id: 'matr',   label: (ciclo: string) =>
+    `É aluno(a) regularmente matriculado(a) até a presente data no ${ciclo} da EDUCAÇÃO INFANTIL nesta Unidade Escolar.` },
+  { id: 'foi',    label: (ciclo: string, _: string, __: string, periodo: string) =>
+    `Foi aluno(a) regularmente matriculado(a) no ${ciclo} da EDUCAÇÃO INFANTIL nesta Unidade Escolar, no período de ${periodo}.` },
   { id: 'conc',   label: () =>
     `Concluiu o curso da EDUCAÇÃO INFANTIL nesta Unidade Escolar estando apto(a) a cursar o 1º ano do Ensino Fundamental.` },
-  { id: 'tran',   label: (ciclo: string, etapa: string) =>
-    `Solicitou, nesta data, sua transferência para outra Unidade Escolar com direito a matricular-se no ${ciclo} ciclo ${etapa} da EDUCAÇÃO INFANTIL.` },
-  { id: 'vaga',   label: (ciclo: string, etapa: string) =>
-    `Solicitou uma vaga no ${ciclo} ciclo ${etapa} da EDUCAÇÃO INFANTIL nesta Unidade Escolar que poderá ser preenchida pelo(a) mesmo(a) desde que apresente a documentação necessária para sua matrícula.\n\n⚠️ ESTE ITEM TERÁ VALIDADE DE 3 DIAS, A PARTIR DESTA DATA.` },
+  { id: 'tran',   label: (ciclo: string) =>
+    `Solicitou, nesta data, sua transferência para outra Unidade Escolar com direito a matricular-se no ${ciclo} da EDUCAÇÃO INFANTIL.` },
+  { id: 'vaga',   label: (ciclo: string) =>
+    `Solicitou uma vaga no ${ciclo} da EDUCAÇÃO INFANTIL nesta Unidade Escolar que poderá ser preenchida pelo(a) mesmo(a) desde que apresente a documentação necessária para sua matrícula. ⚠️ ESTE ITEM TERÁ VALIDADE DE 3 DIAS, A PARTIR DESTA DATA.` },
   { id: 'canc',   label: () =>
     `Solicitou, nesta data, o cancelamento de sua matrícula nesta Unidade Escolar, estando ciente de qualquer implicação legal que possa ocorrer.` },
 ];
@@ -257,8 +263,7 @@ function FormInfantil({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
   const [nomeManual, setNomeManual] = useState('');
   const [raManual, setRaManual] = useState('');
   const [opcao, setOpcao] = useState('freq');
-  const [ciclo, setCiclo] = useState('');
-  const [etapa, setEtapa] = useState('');
+  const [ciclo, setCiclo] = useState('2º CICLO INICIAL');
   const [horIni, setHorIni] = useState('');
   const [horFim, setHorFim] = useState('');
   const [periodo, setPeriodo] = useState('');
@@ -274,8 +279,7 @@ function FormInfantil({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
     const dataNasc = aluno?.data_nascimento
       ? new Date(aluno.data_nascimento + 'T12:00:00').toLocaleDateString('pt-BR')
       : '___/___/____';
-    const c = ciclo || '__';
-    const e = etapa || '_______________';
+    const c = ciclo || '___________';
     const hi = horIni || '___:___';
     const hf = horFim || '___:___';
     const per = periodo || '___/___/___ à ___/___/___';
@@ -287,7 +291,7 @@ function FormInfantil({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
       ${OPCOES_INFANTIL.map(o => `
         <p style="margin:8px 0">
           <span class="checkbox">${opcao === o.id ? '✓' : ''}</span>
-          ${o.label(c, e, hi, hf, per)}
+          ${o.label(c, hi, hf, per)}
         </p>
       `).join('')}
       <br>
@@ -334,19 +338,22 @@ function FormInfantil({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
           <input style={{ ...input, width: '100%' }} placeholder="Número do RA" value={raManual} onChange={e => setRaManual(e.target.value)} />
         </div>
         <div>
-          <label style={label}>Ciclo (número)</label>
-          <input style={{ ...input, width: '100%' }} placeholder="Ex: 1" value={ciclo} onChange={e => setCiclo(e.target.value)} />
-        </div>
-        <div>
-          <label style={label}>Etapa / Nível</label>
-          <input style={{ ...input, width: '100%' }} placeholder="Ex: Berçário / Maternal / Jardim" value={etapa} onChange={e => setEtapa(e.target.value)} />
-        </div>
-        <div>
-          <label style={label}>Horário (início – fim)</label>
+          <label style={label}>Ciclo</label>
           <div style={{ display: 'flex', gap: 8 }}>
-            <input style={{ ...input, flex: 1 }} type="time" value={horIni} onChange={e => setHorIni(e.target.value)} />
-            <input style={{ ...input, flex: 1 }} type="time" value={horFim} onChange={e => setHorFim(e.target.value)} />
+            <select style={{ ...input, flex: 1 }} value={CICLOS_INFANTIL.includes(ciclo) ? ciclo : '__outro__'} onChange={e => { if (e.target.value !== '__outro__') setCiclo(e.target.value); }}>
+              {CICLOS_INFANTIL.map(c => <option key={c} value={c}>{c}</option>)}
+              <option value="__outro__">Outro (digitar abaixo)</option>
+            </select>
           </div>
+          <input style={{ ...input, width: '100%', marginTop: 6 }} placeholder="Ou digite o ciclo completo, ex: 2º CICLO INICIAL" value={ciclo} onChange={e => setCiclo(e.target.value)} />
+        </div>
+        <div>
+          <label style={label}>Horário de início (ex: 07:00)</label>
+          <input style={{ ...input, width: '100%' }} placeholder="HH:MM" value={horIni} onChange={e => setHorIni(e.target.value)} />
+        </div>
+        <div>
+          <label style={label}>Horário de término (ex: 11:00)</label>
+          <input style={{ ...input, width: '100%' }} placeholder="HH:MM" value={horFim} onChange={e => setHorFim(e.target.value)} />
         </div>
       </div>
 
@@ -356,7 +363,7 @@ function FormInfantil({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
           {OPCOES_INFANTIL.map(o => (
             <label key={o.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', color: theme.text, fontSize: 13 }}>
               <input type="radio" value={o.id} checked={opcao === o.id} onChange={() => setOpcao(o.id)} style={{ marginTop: 3 }} />
-              <span>{o.label(ciclo || 'X', etapa || '___', horIni || 'HH:MM', horFim || 'HH:MM', periodo || 'dd/mm/aaaa à dd/mm/aaaa')}</span>
+              <span>{o.label(ciclo || '___________', horIni || 'HH:MM', horFim || 'HH:MM', periodo || 'dd/mm/aaaa à dd/mm/aaaa')}</span>
             </label>
           ))}
         </div>
@@ -375,13 +382,15 @@ function FormInfantil({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
 }
 
 // ─── Formulário: Declaração Fundamental ───────────────────────────────────────
+const ANOS_FUNDAMENTAL = ['1º ANO', '2º ANO', '3º ANO', '4º ANO', '5º ANO'];
+
 const OPCOES_DECL = [
-  { id: 'freq',  texto: (ano: string, horIni: string, horFim: string) => `É aluno(a) regularmente matriculado(a) e está frequentando até a presente data no ${ano}º ano do Ensino Fundamental nesta Unidade Escolar no horário das ${horIni} às ${horFim}.` },
-  { id: 'matr',  texto: (ano: string) => `É aluno(a) regularmente matriculado(a) até a presente data no ${ano}º ano do Ensino Fundamental nesta Unidade Escolar.` },
-  { id: 'foi',   texto: (ano: string, _: string, __: string, periodoInicio: string) => `Foi aluno(a) regularmente matriculado(a) no ${ano}º ano do Ensino Fundamental frequentando às aulas nesta Unidade Escolar no período de ${periodoInicio}.` },
-  { id: 'conc',  texto: (ano: string, _: string, __: string, ___: string, anoConc: string) => `Concluiu o ${ano}º ano do Ensino Fundamental nesta Unidade Escolar estando apto(a) a cursar o ${anoConc}º ano do Ensino Fundamental.` },
-  { id: 'tran',  texto: (ano: string) => `Solicitou, nesta data, sua transferência para outra Unidade Escolar com direito a matricular-se no ${ano}º ano do Ensino Fundamental.` },
-  { id: 'vaga',  texto: (ano: string) => `Solicitou uma vaga nesta Unidade Escolar no ${ano}º ano do Ensino Fundamental que poderá ser preenchida pelo(a) mesmo(a) desde que apresente a documentação necessária para sua matrícula.\n\n⚠️ ESTE ITEM TERÁ VALIDADE DE 3 DIAS, A PARTIR DESTA DATA.` },
+  { id: 'freq',  texto: (ano: string, horIni: string, horFim: string) => `É aluno(a) regularmente matriculado(a) e está frequentando até a presente data no ${ano} do Ensino Fundamental nesta Unidade Escolar no horário das ${horIni} às ${horFim}.` },
+  { id: 'matr',  texto: (ano: string) => `É aluno(a) regularmente matriculado(a) até a presente data no ${ano} do Ensino Fundamental nesta Unidade Escolar.` },
+  { id: 'foi',   texto: (ano: string, _: string, __: string, periodoInicio: string) => `Foi aluno(a) regularmente matriculado(a) no ${ano} do Ensino Fundamental frequentando às aulas nesta Unidade Escolar no período de ${periodoInicio}.` },
+  { id: 'conc',  texto: (ano: string, _: string, __: string, ___: string, anoConc: string) => `Concluiu o ${ano} do Ensino Fundamental nesta Unidade Escolar estando apto(a) a cursar o ${anoConc} do Ensino Fundamental.` },
+  { id: 'tran',  texto: (ano: string) => `Solicitou, nesta data, sua transferência para outra Unidade Escolar com direito a matricular-se no ${ano} do Ensino Fundamental.` },
+  { id: 'vaga',  texto: (ano: string) => `Solicitou uma vaga nesta Unidade Escolar no ${ano} do Ensino Fundamental que poderá ser preenchida pelo(a) mesmo(a) desde que apresente a documentação necessária para sua matrícula. ⚠️ ESTE ITEM TERÁ VALIDADE DE 3 DIAS, A PARTIR DESTA DATA.` },
 ];
 
 function FormFundamental({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
@@ -390,11 +399,11 @@ function FormFundamental({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
   const [nomeManual, setNomeManual] = useState('');
   const [raManual, setRaManual] = useState('');
   const [opcao, setOpcao] = useState('freq');
-  const [ano, setAno] = useState('');
+  const [ano, setAno] = useState('1º ANO');
   const [horIni, setHorIni] = useState('');
   const [horFim, setHorFim] = useState('');
   const [periodoInicio, setPeriodoInicio] = useState('');
-  const [anoConc, setAnoConc] = useState('');
+  const [anoConc, setAnoConc] = useState('2º ANO');
   const [obs, setObs] = useState('');
 
   const turma = turmas.find(t => t.id === turmaId);
@@ -464,14 +473,17 @@ function FormFundamental({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
         </div>
         <div>
           <label style={label}>Ano do Ensino Fundamental</label>
-          <input style={{ ...input, width: '100%' }} placeholder="Ex: 3" value={ano} onChange={e => setAno(e.target.value)} />
+          <select style={{ ...input, width: '100%' }} value={ano} onChange={e => setAno(e.target.value)}>
+            {ANOS_FUNDAMENTAL.map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
         </div>
         <div>
-          <label style={label}>Horário (início – fim)</label>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input style={{ ...input, flex: 1 }} type="time" value={horIni} onChange={e => setHorIni(e.target.value)} />
-            <input style={{ ...input, flex: 1 }} type="time" value={horFim} onChange={e => setHorFim(e.target.value)} />
-          </div>
+          <label style={label}>Horário de início (ex: 07:00)</label>
+          <input style={{ ...input, width: '100%' }} placeholder="HH:MM" value={horIni} onChange={e => setHorIni(e.target.value)} />
+        </div>
+        <div>
+          <label style={label}>Horário de término (ex: 11:00)</label>
+          <input style={{ ...input, width: '100%' }} placeholder="HH:MM" value={horFim} onChange={e => setHorFim(e.target.value)} />
         </div>
       </div>
 
@@ -481,7 +493,7 @@ function FormFundamental({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
           {OPCOES_DECL.map(o => (
             <label key={o.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', color: theme.text, fontSize: 13 }}>
               <input type="radio" value={o.id} checked={opcao === o.id} onChange={() => setOpcao(o.id)} style={{ marginTop: 3 }} />
-              <span>{o.texto(ano || 'X', horIni || 'HH:MM', horFim || 'HH:MM', periodoInicio || 'dd/mm/aaaa', anoConc || 'X')}</span>
+              <span>{o.texto(ano, horIni || 'HH:MM', horFim || 'HH:MM', periodoInicio || 'dd/mm/aaaa', anoConc)}</span>
             </label>
           ))}
         </div>
@@ -495,8 +507,10 @@ function FormFundamental({ turmas, alunos }: { turmas: any[]; alunos: any[] }) {
       )}
       {opcao === 'conc' && (
         <div>
-          <label style={label}>Apto a cursar o ano</label>
-          <input style={{ ...input, maxWidth: 120 }} placeholder="Ex: 4" value={anoConc} onChange={e => setAnoConc(e.target.value)} />
+          <label style={label}>Apto a cursar o</label>
+          <select style={{ ...input, maxWidth: 160 }} value={anoConc} onChange={e => setAnoConc(e.target.value)}>
+            {ANOS_FUNDAMENTAL.map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
         </div>
       )}
 
