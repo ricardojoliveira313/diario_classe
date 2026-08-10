@@ -1328,22 +1328,32 @@ export default function Importar() {
 
           // ─── Situações diferentes na mesma turma → merge em um único registro ──
           // Regra: situação não-ATIVO prevalece sobre ATIVO (TRAN, BXTR, N COM são definitivos).
-          // Preserva número de chamada, datas e dados do registro existente.
+          // O ATIVO é sempre o registro vigente no SED — mantém SEMPRE o próprio número de
+          // chamada (nunca herda o número da linha TRAN/BXTR), senão a numeração da turma
+          // fica com buraco (ex: nº5 do ATIVO sendo descartado a favor do nº4 do TRAN).
           if (!seriesDiferentes && existente.situacao !== a.situacao) {
             const isAtivoExistente = !existente.situacao || existente.situacao === 'ATIVO';
             const isAtivoNovo = !a.situacao || a.situacao === 'ATIVO';
-            // Não-ATIVO vence: atualiza situação e mescla dados
+            if (isAtivoNovo && !isAtivoExistente) {
+              // Novo registro é o ATIVO — vira o registro vigente com o PRÓPRIO número
+              a.bolsaFamilia = a.bolsaFamilia || existente.bolsaFamilia;
+              a.nis = a.nis || existente.nis;
+              a.cpf = a.cpf || existente.cpf;
+              a.deficiencia = a.deficiencia || existente.deficiencia;
+              if (!a.dataInicioMatricula && existente.dataInicioMatricula)
+                a.dataInicioMatricula = existente.dataInicioMatricula;
+              Object.assign(a.faltas, existente.faltas);
+              todosAlunos.set(key, a);
+              return;
+            }
             if (!isAtivoNovo && isAtivoExistente) {
+              // Existente é o ATIVO, novo é TRAN/BXTR/etc — situação muda mas o número
+              // de chamada permanece o do ATIVO (o vigente), nunca o da linha TRAN.
               existente.situacao = a.situacao;
               if (!existente.dataMovimentacao && a.dataMovimentacao)
                 existente.dataMovimentacao = a.dataMovimentacao;
               if (!existente.dataFimMatricula && a.dataFimMatricula)
                 existente.dataFimMatricula = a.dataFimMatricula;
-            } else if (isAtivoNovo && !isAtivoExistente) {
-              // Existente já tem situação definitiva — herda apenas dados extras do ATIVO
-              if (!existente.numero && a.numero) existente.numero = a.numero;
-              if (!existente.dataInicioMatricula && a.dataInicioMatricula)
-                existente.dataInicioMatricula = a.dataInicioMatricula;
             }
             existente.bolsaFamilia = existente.bolsaFamilia || a.bolsaFamilia;
             existente.nis = existente.nis || a.nis;
