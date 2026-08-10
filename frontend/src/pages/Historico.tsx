@@ -254,10 +254,12 @@ function TabelaNotas({ grupo, anexo = false }: { grupo: GrupoNotas; anexo?: bool
   return (
     <div className={anexo ? 'notas-anexo' : 'notas-frente'}>
       <div className="notas-identificacao">
-        <strong>{grupo.label}</strong>
-        {grupo.anoLetivo && <> · {grupo.anoLetivo}</>}
-        {grupo.escola && <> · {grupo.escola}</>}
-        {grupo.titulo && <> · {grupo.titulo}</>}
+        <span className="notas-identificacao-texto">
+          <strong>{grupo.label}</strong>
+          {grupo.anoLetivo && <> · {grupo.anoLetivo}</>}
+          {grupo.escola && <> · {grupo.escola}</>}
+        </span>
+        {grupo.titulo && <span className="notas-titulo-badge">{grupo.titulo}</span>}
       </div>
       <table className="tabela-notas">
         <tbody>
@@ -786,14 +788,19 @@ export default function Historico() {
     && (isAtivo(aluno.situacao) || situacaoNormalizada.startsWith('CONCLUI'))
     && linhas[4]?.anoLetivo.trim(),
   );
-  const tabelasNotas = linhas.flatMap(linha => {
+  // Monta Base Nacional Comum + Parte Diversificada JUNTAS por ano — nunca separadas
+  // em páginas diferentes. Cada ano contribui suas tabelas em sequência (base antes
+  // da diversificada), e essa sequência é tratada como um bloco indivisível na hora
+  // de decidir o que vai na frente e o que vai para o anexo.
+  const todasTabelasNotas = linhas.flatMap(linha => {
     const notasPreenchidas = linha.notas.filter(nota => (
       nota.disciplina.trim() || nota.nota.trim() || nota.cargaHoraria.trim()
     ));
-    const temDiversificada = linha.notasDiversificada.some(nota => (
+    const diversificadaPreenchida = linha.notasDiversificada.filter(nota => (
       nota.disciplina.trim() || nota.nota.trim() || nota.cargaHoraria.trim()
     ));
-    return dividirEmGrupos(notasPreenchidas, 10).map(notas => ({
+    const temDiversificada = diversificadaPreenchida.length > 0;
+    const gruposBase = dividirEmGrupos(notasPreenchidas, 10).map(notas => ({
       ciclo: linha.ciclo,
       label: linha.label,
       anoLetivo: linha.anoLetivo,
@@ -801,12 +808,7 @@ export default function Historico() {
       notas,
       titulo: temDiversificada ? 'Base Nacional Comum' : undefined,
     }));
-  });
-  const tabelasNotasDiversificada = linhas.flatMap(linha => {
-    const notasPreenchidas = linha.notasDiversificada.filter(nota => (
-      nota.disciplina.trim() || nota.nota.trim() || nota.cargaHoraria.trim()
-    ));
-    return dividirEmGrupos(notasPreenchidas, 10).map(notas => ({
+    const gruposDiversificada = dividirEmGrupos(diversificadaPreenchida, 10).map(notas => ({
       ciclo: linha.ciclo,
       label: linha.label,
       anoLetivo: linha.anoLetivo,
@@ -814,10 +816,19 @@ export default function Historico() {
       notas,
       titulo: 'Parte Diversificada',
     }));
+    return [...gruposBase, ...gruposDiversificada];
   });
-  const todasTabelasNotas = [...tabelasNotas, ...tabelasNotasDiversificada];
-  const tabelaNotasFrente = todasTabelasNotas[0] ?? null;
-  const tabelasNotasAnexo = todasTabelasNotas.slice(1);
+  const primeiroCicloComNotas = todasTabelasNotas[0]?.ciclo;
+  const gruposFrente = todasTabelasNotas.filter(g => g.ciclo === primeiroCicloComNotas);
+  const gruposAnexoRestantes = todasTabelasNotas.filter(g => g.ciclo !== primeiroCicloComNotas);
+  // Agrupa os grupos restantes por ciclo — cada ciclo vira UMA página de anexo,
+  // com todas as suas tabelas (base + diversificada) juntas em sequência.
+  const paginasAnexo: (typeof todasTabelasNotas)[] = [];
+  for (const grupo of gruposAnexoRestantes) {
+    const ultimaPagina = paginasAnexo[paginasAnexo.length - 1];
+    if (ultimaPagina && ultimaPagina[0].ciclo === grupo.ciclo) ultimaPagina.push(grupo);
+    else paginasAnexo.push([grupo]);
+  }
 
   const rowspan1Ciclo = linhas.filter(l => l.ciclo <= 3 || l.ciclo === 6).length;
   const rowspan2Ciclo = linhas.filter(l => (l.ciclo >= 4 && l.ciclo <= 5) || l.ciclo === 7).length;
@@ -861,11 +872,14 @@ export default function Historico() {
         .complemento-estabelecimento { font-size: 8pt; font-weight: 800; text-transform: uppercase; text-align: center; width: 100%; }
         .resultados-frente { min-height: 48mm; }
         .texto-equivalencia { font-size: 9pt; font-weight: 700; line-height: 1.2; padding: 3mm 2mm; text-align: center; }
-        .notas-identificacao { font-size: 8pt; font-weight: 700; margin: 1mm 0; text-align: left; }
-        .tabela-notas { font-size: 6.6pt; }
+        .notas-identificacao { font-size: 8pt; font-weight: 700; margin: 1mm 0; text-align: left; display: flex; align-items: center; justify-content: space-between; gap: 2mm; flex-wrap: wrap; }
+        .notas-titulo-badge { font-size: 6.6pt; font-weight: 800; text-transform: uppercase; letter-spacing: .2px; color: #1e3a6e; background: #eef3fb; border: 0.3mm solid #b9c9e6; border-radius: 1mm; padding: .4mm 1.6mm; white-space: nowrap; }
+        .tabela-notas { font-size: 6.6pt; border: 0.3mm solid #555; }
         .tabela-notas th, .tabela-notas td { border: 1px solid #555; padding: .7mm .4mm; text-align: center; vertical-align: middle; word-break: break-word; }
-        .tabela-notas th:first-child { width: 17mm; text-align: left; }
+        .tabela-notas th { background: #f2f4f7; font-weight: 800; }
+        .tabela-notas th:first-child { width: 17mm; text-align: left; background: #e7ecf3; }
         .notas-frente { padding: 0 1mm 1mm; }
+        .notas-frente + .notas-frente, .notas-anexo + .notas-anexo { margin-top: 3mm; }
         .tabela-transferencia th { height: 8mm; }
         .tabela-transferencia td { height: 9mm; }
         input::placeholder { color: #888; opacity: 1; }
@@ -1135,9 +1149,9 @@ export default function Historico() {
                     <h3 className="titulo-quadro">Resultados de estudos realizados no Ensino Fundamental</h3>
                     <div className="texto-equivalencia">
                       O referido curso, criado pelo Decreto Municipal 14.146, de 27/04/98 e publicado em 29/04/98 no Diário do Grande ABC, equivale aos estudos das séries iniciais do Ensino Fundamental.<br />
-                      {tabelaNotasFrente ? 'Notas e cargas horárias da outra rede registradas abaixo.' : 'Segue em anexo Instrumento de Registro Individual do(a) estudante.'}
+                      {gruposFrente.length > 0 ? 'Notas e cargas horárias da outra rede registradas abaixo.' : 'Segue em anexo Instrumento de Registro Individual do(a) estudante.'}
                     </div>
-                    {tabelaNotasFrente && <TabelaNotas grupo={tabelaNotasFrente} />}
+                    {gruposFrente.map((grupo, index) => <TabelaNotas key={`frente-${grupo.ciclo}-${index}`} grupo={grupo} />)}
                   </div>
                 </div>
               </section>
@@ -1235,8 +1249,8 @@ export default function Historico() {
               </section>
             </div>
 
-            {tabelasNotasAnexo.map((grupo, index) => (
-              <div key={`anexo-${grupo.ciclo}-${index}`}>
+            {paginasAnexo.map((grupos, index) => (
+              <div key={`anexo-${grupos[0].ciclo}-${index}`}>
                 <div className="pagina-etiqueta nao-imprimir">Anexo de notas — página {index + 3}</div>
                 <div className="historico-rolagem">
                   <section className="historico-pagina historico-anexo">
@@ -1248,7 +1262,11 @@ export default function Historico() {
                       <div><strong>ALUNO:</strong> {aluno.nome}</div>
                       <div><strong>R.A.:</strong> {raExibicao}</div>
                     </div>
-                    <div className="quadro-oficial" style={{ padding: '3mm' }}><TabelaNotas grupo={grupo} anexo /></div>
+                    <div className="quadro-oficial" style={{ padding: '3mm' }}>
+                      {grupos.map((grupo, indexGrupo) => (
+                        <TabelaNotas key={`anexo-tabela-${grupo.ciclo}-${indexGrupo}`} grupo={grupo} anexo />
+                      ))}
+                    </div>
                   </section>
                 </div>
               </div>
