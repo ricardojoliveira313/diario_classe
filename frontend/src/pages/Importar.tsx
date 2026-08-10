@@ -1327,34 +1327,31 @@ export default function Importar() {
           }
 
           // ─── Situações diferentes na mesma turma → merge em um único registro ──
-          // Regra: situação não-ATIVO prevalece sobre ATIVO (TRAN, BXTR, N COM são definitivos).
-          // O ATIVO é sempre o registro vigente no SED — mantém SEMPRE o próprio número de
-          // chamada (nunca herda o número da linha TRAN/BXTR), senão a numeração da turma
-          // fica com buraco (ex: nº5 do ATIVO sendo descartado a favor do nº4 do TRAN).
+          // Regra de OURO: o número de chamada é do ALUNO, não da situação — uma vez
+          // estabelecido, NUNCA muda quando a situação muda (ex: aluno é nº5 desde o
+          // início do ano, é transferido → continua nº5, só a situação vira TRAN).
+          // A situação final é decidida pela Data de Movimentação mais recente entre
+          // os dois registros (o SED pode listar TRAN antes de um retorno como ATIVO,
+          // ou o inverso — quem tem a data mais nova é que reflete o estado atual real).
           if (!seriesDiferentes && existente.situacao !== a.situacao) {
             const isAtivoExistente = !existente.situacao || existente.situacao === 'ATIVO';
             const isAtivoNovo = !a.situacao || a.situacao === 'ATIVO';
-            if (isAtivoNovo && !isAtivoExistente) {
-              // Novo registro é o ATIVO — vira o registro vigente com o PRÓPRIO número
-              a.bolsaFamilia = a.bolsaFamilia || existente.bolsaFamilia;
-              a.nis = a.nis || existente.nis;
-              a.cpf = a.cpf || existente.cpf;
-              a.deficiencia = a.deficiencia || existente.deficiencia;
-              if (!a.dataInicioMatricula && existente.dataInicioMatricula)
-                a.dataInicioMatricula = existente.dataInicioMatricula;
-              Object.assign(a.faltas, existente.faltas);
-              todosAlunos.set(key, a);
-              return;
-            }
-            if (!isAtivoNovo && isAtivoExistente) {
-              // Existente é o ATIVO, novo é TRAN/BXTR/etc — situação muda mas o número
-              // de chamada permanece o do ATIVO (o vigente), nunca o da linha TRAN.
+            const dataExistente = normalizarData(existente.dataMovimentacao || '');
+            const dataNovo = normalizarData(a.dataMovimentacao || '');
+            const novoEhMaisRecente = dataNovo && dataExistente
+              ? dataNovo > dataExistente
+              : (isAtivoNovo && !isAtivoExistente); // sem datas comparáveis: mantém regra antiga (não-ATIVO é definitivo)
+
+            if (novoEhMaisRecente) {
               existente.situacao = a.situacao;
-              if (!existente.dataMovimentacao && a.dataMovimentacao)
-                existente.dataMovimentacao = a.dataMovimentacao;
+              if (a.dataMovimentacao) existente.dataMovimentacao = a.dataMovimentacao;
+              if (!existente.dataInicioMatricula && a.dataInicioMatricula)
+                existente.dataInicioMatricula = a.dataInicioMatricula;
               if (!existente.dataFimMatricula && a.dataFimMatricula)
                 existente.dataFimMatricula = a.dataFimMatricula;
             }
+            // Nº de chamada: NUNCA é sobrescrito por esta mesclagem — só entra se estava vazio.
+            if (!existente.numero && a.numero) existente.numero = a.numero;
             existente.bolsaFamilia = existente.bolsaFamilia || a.bolsaFamilia;
             existente.nis = existente.nis || a.nis;
             existente.cpf = existente.cpf || a.cpf;
