@@ -298,8 +298,46 @@ export default function Dashboard() {
     .filter(Boolean)
     .sort((a: any, b: any) => a.nome.localeCompare(b.nome));
 
+  // ─── Varredura preventiva de duplicidade de número de chamada ───
+  // Dois alunos DIFERENTES (RA distinto) na MESMA turma com o MESMO número, ambos
+  // contando na chamada (ATIVO/vazio). Remanejamento e TRAN/BXTR/REMA nunca entram.
+  const duplicidadesNumero = (() => {
+    const grupos = new Map<string, any[]>();
+    for (const a of alunos) {
+      if (!a.turmaId || !a.numero || !isAtivo(a)) continue;
+      const chave = `${a.turmaId}|${a.numero}`;
+      if (!grupos.has(chave)) grupos.set(chave, []);
+      grupos.get(chave)!.push(a);
+    }
+    const problemas: { turmaNome: string; numero: number; alunos: any[] }[] = [];
+    for (const lista of grupos.values()) {
+      const ras = new Set(lista.map(a => a.ra));
+      if (lista.length > 1 && ras.size > 1) {
+        const t = turmaMap.get(lista[0].turmaId);
+        problemas.push({ turmaNome: t?.nome ?? lista[0].turmaId, numero: lista[0].numero, alunos: lista });
+      }
+    }
+    return problemas.sort((x, y) => x.turmaNome.localeCompare(y.turmaNome) || x.numero - y.numero);
+  })();
+
   return (
     <div style={{ marginTop: 16, animation: 'fadeIn 0.25s ease both' }}>
+
+      {/* ─── ALERTA: duplicidade real de número de chamada ─── */}
+      {duplicidadesNumero.length > 0 && (
+        <div style={{ background: 'var(--danger-light)', border: '2px solid #dc2626', borderRadius: 10, padding: '14px 18px', marginBottom: 16 }}>
+          <div style={{ fontWeight: 800, fontSize: 15, color: '#dc2626', marginBottom: 8 }}>
+            🚨 {duplicidadesNumero.length} {duplicidadesNumero.length === 1 ? 'duplicidade' : 'duplicidades'} de número de chamada detectada{duplicidadesNumero.length === 1 ? '' : 's'} — corrija na página Alunos
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {duplicidadesNumero.map((d, i) => (
+              <div key={i} style={{ fontSize: 13, color: theme.text, background: theme.card, borderRadius: 6, padding: '8px 12px' }}>
+                <strong>{d.turmaNome}</strong> — nº {d.numero}: {d.alunos.map((a: any) => `${a.nome} (RA ${a.ra})`).join(' + ')}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ─── Modais (overlay fixo) ────────────────────────────── */}
       {modal === 'bf' && (
