@@ -1843,6 +1843,7 @@ export default function Importar() {
           bolsa_familia?: boolean;
           numero?: number;
           data_inicio_matricula?: string;
+          data_movimentacao?: string;
         }>>();
         for (const e of (existentes ?? [])) {
           // REMA tem registros legítimos separados por turma — não entra no dedup por RA
@@ -1866,10 +1867,16 @@ export default function Importar() {
             faltasPorAluno.get(f.alunoId)!.push(f);
           }
           for (const grupo of grupos) {
-            // Canônico: preferência para situação não-ATIVO (TRAN/BXTR/N COM são definitivos)
-            // Empate na prioridade: mais faltas ganha; empate total → primeiro da lista
-            const isAtivoSit = (sit: string) => !sit || sit === 'ATIVO';
+            // Canônico: quem tem a Data de Movimentação MAIS RECENTE é quem reflete o
+            // estado real e atual do aluno (o SED pode listar TRAN antes de um retorno
+            // como ATIVO, ou o inverso). Sem datas comparáveis, cai na regra antiga
+            // (situação não-ATIVO é definitiva). Empate total → mais faltas ganha.
+            const isAtivoSit = (sit?: string) => !sit || sit === 'ATIVO';
+            const dataDe = (e: { data_movimentacao?: string }) => normalizarData(e.data_movimentacao || '');
             const canonico = grupo.reduce((best, cur) => {
+              const dBest = dataDe(best);
+              const dCur = dataDe(cur);
+              if (dCur && dBest && dCur !== dBest) return dCur > dBest ? cur : best;
               const bestAtivo = isAtivoSit(best.situacao);
               const curAtivo = isAtivoSit(cur.situacao);
               if (!curAtivo && bestAtivo) return cur;
@@ -1880,6 +1887,9 @@ export default function Importar() {
             const mesesCanon = new Set(
               (faltasPorAluno.get(canonico.id) ?? []).map(f => `${f.mes}-${f.ano}`)
             );
+            // Nº de chamada: NUNCA some — se o canônico não tiver, herda de quem tiver
+            // (RA de mesmo aluno em duas linhas do SED = mesma criança, mesmo número).
+            const numeroFinal = canonico.numero || grupo.find(e => e.numero)?.numero;
             for (const extra of extras) {
               const faltasExtra = faltasPorAluno.get(extra.id) ?? [];
               const transferir = faltasExtra.filter(f => !mesesCanon.has(`${f.mes}-${f.ano}`)).map(f => f.id);
@@ -1894,7 +1904,7 @@ export default function Importar() {
               if (extra.cpf && !canonico.cpf) up.cpf = extra.cpf;
               if (extra.nis && !canonico.nis) up.nis = extra.nis;
               if (extra.responsavel && !canonico.responsavel) up.responsavel = extra.responsavel;
-              if (extra.numero && !canonico.numero) up.numero = extra.numero;
+              if (numeroFinal && canonico.numero !== numeroFinal) up.numero = numeroFinal;
               if (extra.data_inicio_matricula && !canonico.data_inicio_matricula)
                 up.data_inicio_matricula = extra.data_inicio_matricula;
               if (Object.keys(up).length > 0)
