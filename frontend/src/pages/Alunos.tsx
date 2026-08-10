@@ -143,7 +143,10 @@ export default function Alunos() {
     setEnriquecendo(false);
   };
 
+  const [todosParaAuditoria, setTodosParaAuditoria] = useState<any[]>([]);
+
   useEffect(() => { api.getTurmas().then(d => setTurmas(sortTurmasPedagogico(d || []))); }, []);
+  useEffect(() => { api.getAllAlunos().then(d => setTodosParaAuditoria(d || [])).catch(() => setTodosParaAuditoria([])); }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -155,6 +158,32 @@ export default function Alunos() {
   const deficiencias = [...new Set(alunos.map(a => a.deficiencia).filter(Boolean))].sort();
   const turmaMap = new Map(turmas.map(t => [t.id, t]));
   const turmaSelecionada = turmaId !== '__all__' ? turmaMap.get(turmaId) : null;
+
+  // ─── Varredura preventiva de duplicidade de número de chamada ───
+  // Detecta dois alunos DIFERENTES (RA diferente) na MESMA turma com o MESMO número,
+  // ambos contando na chamada (ATIVO ou situação vazia). Remanejamento (origem/destino
+  // em turmas diferentes) e TRAN/BXTR/REMA (excluídos da contagem) nunca entram aqui —
+  // só aponta erro real de numeração dentro do contexto correto.
+  const duplicidadesNumero = useMemo(() => {
+    const grupos = new Map<string, any[]>();
+    for (const a of todosParaAuditoria) {
+      if (!a.turmaId || !a.numero) continue;
+      const ativo = !a.situacao || a.situacao === 'ATIVO';
+      if (!ativo) continue;
+      const chave = `${a.turmaId}|${a.numero}`;
+      if (!grupos.has(chave)) grupos.set(chave, []);
+      grupos.get(chave)!.push(a);
+    }
+    const problemas: { turmaNome: string; numero: number; alunos: any[] }[] = [];
+    for (const lista of grupos.values()) {
+      const ras = new Set(lista.map(a => a.ra));
+      if (lista.length > 1 && ras.size > 1) {
+        const t = turmaMap.get(lista[0].turmaId);
+        problemas.push({ turmaNome: t?.nome ?? lista[0].turmaId, numero: lista[0].numero, alunos: lista });
+      }
+    }
+    return problemas.sort((x, y) => x.turmaNome.localeCompare(y.turmaNome) || x.numero - y.numero);
+  }, [todosParaAuditoria, turmaMap]);
 
   const alunosFiltrados = alunos.filter(a => {
     if (busca && !a.nome?.toLowerCase().includes(busca.toLowerCase()) && !String(a.ra ?? '').includes(busca)) return false;
@@ -414,6 +443,25 @@ export default function Alunos() {
           </div>
         )}
       </div>
+
+      {/* ─── ALERTA: duplicidade real de número de chamada ─── */}
+      {duplicidadesNumero.length > 0 && (
+        <div style={{ background: 'var(--danger-light)', border: '2px solid #dc2626', borderRadius: 10, padding: '14px 18px', marginBottom: 16 }}>
+          <div style={{ fontWeight: 800, fontSize: 15, color: '#dc2626', marginBottom: 8 }}>
+            🚨 {duplicidadesNumero.length} {duplicidadesNumero.length === 1 ? 'duplicidade' : 'duplicidades'} de número de chamada detectada{duplicidadesNumero.length === 1 ? '' : 's'}
+          </div>
+          <div style={{ fontSize: 12.5, color: theme.textMuted, marginBottom: 10 }}>
+            Dois alunos diferentes (RA distinto) na mesma turma com o mesmo número, ambos contando como ativos. Corrija em "Editar" abaixo — reimportar o SED da turma normalmente resolve.
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {duplicidadesNumero.map((d, i) => (
+              <div key={i} style={{ fontSize: 13, color: theme.text, background: theme.card, borderRadius: 6, padding: '8px 12px' }}>
+                <strong>{d.turmaNome}</strong> — nº {d.numero}: {d.alunos.map((a: any) => `${a.nome} (RA ${a.ra})`).join(' + ')}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ─── MODO CADASTRO RÁPIDO DE CPF ─── */}
       {modoCpfRapido && (() => {
