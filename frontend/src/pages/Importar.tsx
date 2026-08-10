@@ -269,6 +269,9 @@ export default function Importar() {
       const arrayBuf = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: arrayBuf }).promise;
       let texto = '';
+      // Chave por OCORRÊNCIA (RA#índice), não só RA — o mesmo RA pode aparecer 2x na
+      // página (ex: TRAN + ATIVO do mesmo aluno, cada linha com seu próprio número de
+      // chamada). Usar só o RA como chave faz a 2ª ocorrência herdar o número da 1ª.
       const raNumeroByPos = new Map<string, number>();
       const allPdfItems: Array<{ str: string; x: number; y: number; page: number }> = [];
       for (let p = 1; p <= pdf.numPages; p++) {
@@ -305,12 +308,24 @@ export default function Importar() {
         // Toma a coluna mais à DIREITA (Nr de chamada) — não a coluna Série (mais à esquerda)
         const nrCol = [...xBuckets.entries()].filter(([, b]) => b.length >= 3).sort((a, b) => b[0] - a[0])[0];
 
+        // Chave por OCORRÊNCIA: `${ra}#${índice}` — o índice é a ordem de aparição
+        // daquele RA em raAll (que preserva a ordem natural do documento, igual a
+        // allText). Isso garante que a 2ª linha do mesmo RA (ex: ATIVO após TRAN)
+        // tenha seu PRÓPRIO número mapeado, em vez de herdar o da 1ª linha.
+        const raOccurIndex = new Map<string, number>();
+        const chaveOcorrencia = (raStr: string): string => {
+          const i = raOccurIndex.get(raStr) ?? 0;
+          raOccurIndex.set(raStr, i + 1);
+          return `${raStr}#${i}`;
+        };
+        const raAllComChave = raAll.map(raItem => ({ ...raItem, chave: chaveOcorrencia(raItem.str) }));
+
         // ── Passo 1: detecção DIRECTA por RA (mais robusta — usa X+Y por aluno) ──
         // Para cada RA, encontra o número à esquerda na mesma linha (±30 Y).
         // Filtrado pela coluna Nr (se detectada) para evitar pegar série/cabeçalho.
         const colX = nrCol ? nrCol[0] : null;
-        for (const raItem of raAll) {
-          if (raNumeroByPos.has(raItem.str)) continue; // coluna já mapeou — não sobrescrever
+        for (const raItem of raAllComChave) {
+          if (raNumeroByPos.has(raItem.chave)) continue; // já mapeado — não sobrescrever
           const candidates = allPdfItems.filter(c =>
             /^\d{1,3}$/.test(c.str) &&
             parseInt(c.str) >= 1 && parseInt(c.str) <= 200 &&
@@ -327,18 +342,18 @@ export default function Importar() {
               return b.x - a.x;
             });
             const nr = parseInt(candidates[0].str);
-            if (nr >= 1 && nr <= 200) raNumeroByPos.set(raItem.str, nr);
+            if (nr >= 1 && nr <= 200) raNumeroByPos.set(raItem.chave, nr);
           }
         }
 
         // ── Passo 2: fallback por coluna — closest-Y para RAs não mapeados ──
         if (nrCol) {
           const nrAll2 = numCands.filter(n => Math.abs(n.x - colX!) <= 10);
-          const pages = new Set([...nrAll2.map(n => n.page), ...raAll.map(r => r.page)]);
+          const pages = new Set([...nrAll2.map(n => n.page), ...raAllComChave.map(r => r.page)]);
 
           for (const pg of pages) {
             const nrs = nrAll2.filter(n => n.page === pg).sort((a, b) => a.y - b.y);
-            const ras = raAll.filter(r => r.page === pg && !raNumeroByPos.has(r.str)).sort((a, b) => a.y - b.y);
+            const ras = raAllComChave.filter(r => r.page === pg && !raNumeroByPos.has(r.chave)).sort((a, b) => a.y - b.y);
             if (!ras.length) continue;
             const used = new Set<number>();
             for (const ra of ras) {
@@ -349,7 +364,7 @@ export default function Importar() {
                 if (d < bestD) { bestD = d; bestI = i; }
               }
               if (bestI >= 0 && bestD <= 60) {
-                raNumeroByPos.set(ra.str, parseInt(nrs[bestI].str));
+                raNumeroByPos.set(ra.chave, parseInt(nrs[bestI].str));
                 used.add(bestI);
               }
             }
@@ -357,8 +372,8 @@ export default function Importar() {
         }
 
         // ── Passo 3: fallback sem restrição de coluna (PDFs sem coluna detectável) ──
-        for (const raItem of raAll) {
-          if (raNumeroByPos.has(raItem.str)) continue;
+        for (const raItem of raAllComChave) {
+          if (raNumeroByPos.has(raItem.chave)) continue;
           const candidates = allPdfItems.filter(c =>
             /^\d{1,3}$/.test(c.str) &&
             parseInt(c.str) >= 1 && parseInt(c.str) <= 200 &&
@@ -374,7 +389,7 @@ export default function Importar() {
               return b.x - a.x;
             });
             const nr = parseInt(candidates[0].str);
-            if (nr >= 1 && nr <= 200) raNumeroByPos.set(raItem.str, nr);
+            if (nr >= 1 && nr <= 200) raNumeroByPos.set(raItem.chave, nr);
           }
         }
         console.log('[Import PDF] raNumeroByPos:', Object.fromEntries(raNumeroByPos));
@@ -427,9 +442,14 @@ export default function Importar() {
       // Âncora nos RAs de 12 dígitos (padrão SED: 000XXXXXXXXX)
       const raRe = /\b(0{3}\d{9})\b/g;
       let raMatch: RegExpExecArray | null;
+      // Conta ocorrências do mesmo RA em ORDEM DE TEXTO — usada para casar com a
+      // chave `${ra}#${índice}` de raNumeroByPos (mesmo RA pode repetir: TRAN+ATIVO).
+      const raOccurInText = new Map<string, number>();
       while ((raMatch = raRe.exec(allText)) !== null) {
         const raStr = raMatch[1];
         const raPos = raMatch.index;
+        const raOcorrencia = raOccurInText.get(raStr) ?? 0;
+        raOccurInText.set(raStr, raOcorrencia + 1);
 
         // ── Nome: último trecho todo em maiúsculas antes do RA ──
         const before = allText.substring(Math.max(0, raPos - 160), raPos);
@@ -438,7 +458,7 @@ export default function Importar() {
         const preNome = before.substring(0, nomeMatch.index);
         // XY usa coordenadas 2D reais; texto extrai directamente do stream antes do nome
         // Quando divergem, prefere texto — mais directo para PDFs SED de coluna única
-        const xyNr = raNumeroByPos.get(raStr);
+        const xyNr = raNumeroByPos.get(`${raStr}#${raOcorrencia}`);
         const nrMatch = preNome.trimEnd().match(/(\d{1,3})\s*$/);
         const textNr = nrMatch ? parseInt(nrMatch[1]) : 0;
         const numero = (xyNr && textNr && xyNr !== textNr) ? textNr : (xyNr || textNr);
