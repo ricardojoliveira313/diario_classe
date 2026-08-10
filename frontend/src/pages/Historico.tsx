@@ -39,6 +39,7 @@ interface LinhaCiclo {
   uf: string;
   resultado: string;
   notas: NotaDisciplina[];
+  notasDiversificada: NotaDisciplina[];
 }
 
 interface HistoricoSalvo {
@@ -51,6 +52,7 @@ interface HistoricoSalvo {
   uf: string | null;
   resultado: string | null;
   notas_disciplinas: unknown;
+  notas_diversificada: unknown;
   cert_num: string | null;
   cert_folha: string | null;
   cert_livro: string | null;
@@ -81,6 +83,7 @@ interface GrupoNotas {
   anoLetivo: string;
   escola: string;
   notas: NotaDisciplina[];
+  titulo?: string;
 }
 
 const CICLOS_LABELS = [
@@ -102,6 +105,20 @@ const DISCIPLINAS_PADRAO = [
   'Educação Física',
   'Filosofia',
   'Educação Financeira',
+];
+
+const DISCIPLINAS_DIVERSIFICADA_PADRAO = [
+  'Projeto de Convivência',
+  'Tecnologia e Inovação',
+  'Práticas Experimentais',
+  'Orientação de Estudos',
+  'Assembleia',
+  'Cultura do Movimento',
+  'Linguagem Artística',
+  'Inglês',
+  'Leitura e Produção de Textos',
+  'Experiências Matemáticas',
+  'Educação Socioemocional',
 ];
 
 const ESCOLA_PADRAO = 'EMEIEF LUIZ GONZAGA';
@@ -143,11 +160,16 @@ function criarLinhasVazias(): LinhaCiclo[] {
     uf: 'SP',
     resultado: '',
     notas: [],
+    notasDiversificada: [],
   }));
 }
 
 function criarNotasPadrao(): NotaDisciplina[] {
   return DISCIPLINAS_PADRAO.map(disciplina => ({ disciplina, nota: '', cargaHoraria: '' }));
+}
+
+function criarNotasDiversificadaPadrao(): NotaDisciplina[] {
+  return DISCIPLINAS_DIVERSIFICADA_PADRAO.map(disciplina => ({ disciplina, nota: '', cargaHoraria: '' }));
 }
 
 function normalizarNotas(valor: unknown): NotaDisciplina[] {
@@ -235,6 +257,7 @@ function TabelaNotas({ grupo, anexo = false }: { grupo: GrupoNotas; anexo?: bool
         <strong>{grupo.label}</strong>
         {grupo.anoLetivo && <> · {grupo.anoLetivo}</>}
         {grupo.escola && <> · {grupo.escola}</>}
+        {grupo.titulo && <> · {grupo.titulo}</>}
       </div>
       <table className="tabela-notas">
         <tbody>
@@ -466,6 +489,7 @@ export default function Historico() {
             uf: salva.uf ?? 'SP',
             resultado: salva.resultado ?? '',
             notas: normalizarNotas(salva.notas_disciplinas),
+            notasDiversificada: normalizarNotas(salva.notas_diversificada),
           };
         }
         return {
@@ -479,6 +503,7 @@ export default function Historico() {
           uf: 'SP',
           resultado: '',
           notas: [],
+          notasDiversificada: [],
         };
       };
 
@@ -576,6 +601,7 @@ export default function Historico() {
           uf: linha.uf,
           resultado: '',
           notas: [],
+          notasDiversificada: [],
         };
         return [...updated.slice(0, index + 1), novaLinha, ...updated.slice(index + 1)];
       }
@@ -623,6 +649,48 @@ export default function Historico() {
   const limparNotas = (indexLinha: number) => {
     setLinhas(atuais => atuais.map((linha, posicao) => (
       posicao === indexLinha ? { ...linha, notas: [] } : linha
+    )));
+  };
+
+  const iniciarNotasDiversificada = (index: number) => {
+    setLinhas(atuais => atuais.map((linha, posicao) => (
+      posicao === index && linha.notasDiversificada.length === 0
+        ? { ...linha, notasDiversificada: criarNotasDiversificadaPadrao() }
+        : linha
+    )));
+  };
+
+  const adicionarDisciplinaDiversificada = (index: number) => {
+    setLinhas(atuais => atuais.map((linha, posicao) => (
+      posicao === index
+        ? { ...linha, notasDiversificada: [...linha.notasDiversificada, { disciplina: '', nota: '', cargaHoraria: '' }] }
+        : linha
+    )));
+  };
+
+  const atualizarNotaDiversificada = (indexLinha: number, indexNota: number, campo: keyof NotaDisciplina, valor: string) => {
+    setLinhas(atuais => atuais.map((linha, posicao) => {
+      if (posicao !== indexLinha) return linha;
+      return {
+        ...linha,
+        notasDiversificada: linha.notasDiversificada.map((nota, posicaoNota) => (
+          posicaoNota === indexNota ? { ...nota, [campo]: valor } : nota
+        )),
+      };
+    }));
+  };
+
+  const removerDisciplinaDiversificada = (indexLinha: number, indexNota: number) => {
+    setLinhas(atuais => atuais.map((linha, posicao) => (
+      posicao === indexLinha
+        ? { ...linha, notasDiversificada: linha.notasDiversificada.filter((_, posicaoNota) => posicaoNota !== indexNota) }
+        : linha
+    )));
+  };
+
+  const limparNotasDiversificada = (indexLinha: number) => {
+    setLinhas(atuais => atuais.map((linha, posicao) => (
+      posicao === indexLinha ? { ...linha, notasDiversificada: [] } : linha
     )));
   };
 
@@ -675,6 +743,9 @@ export default function Historico() {
       notas_disciplinas: linha.notas.filter(nota => (
         nota.disciplina.trim() || nota.nota.trim() || nota.cargaHoraria.trim()
       )),
+      notas_diversificada: linha.notasDiversificada.filter(nota => (
+        nota.disciplina.trim() || nota.nota.trim() || nota.cargaHoraria.trim()
+      )),
       ...camposComuns,
     }));
 
@@ -719,16 +790,34 @@ export default function Historico() {
     const notasPreenchidas = linha.notas.filter(nota => (
       nota.disciplina.trim() || nota.nota.trim() || nota.cargaHoraria.trim()
     ));
+    const temDiversificada = linha.notasDiversificada.some(nota => (
+      nota.disciplina.trim() || nota.nota.trim() || nota.cargaHoraria.trim()
+    ));
     return dividirEmGrupos(notasPreenchidas, 10).map(notas => ({
       ciclo: linha.ciclo,
       label: linha.label,
       anoLetivo: linha.anoLetivo,
       escola: linha.escola,
       notas,
+      titulo: temDiversificada ? 'Base Nacional Comum' : undefined,
     }));
   });
-  const tabelaNotasFrente = tabelasNotas[0] ?? null;
-  const tabelasNotasAnexo = tabelasNotas.slice(1);
+  const tabelasNotasDiversificada = linhas.flatMap(linha => {
+    const notasPreenchidas = linha.notasDiversificada.filter(nota => (
+      nota.disciplina.trim() || nota.nota.trim() || nota.cargaHoraria.trim()
+    ));
+    return dividirEmGrupos(notasPreenchidas, 10).map(notas => ({
+      ciclo: linha.ciclo,
+      label: linha.label,
+      anoLetivo: linha.anoLetivo,
+      escola: linha.escola,
+      notas,
+      titulo: 'Parte Diversificada',
+    }));
+  });
+  const todasTabelasNotas = [...tabelasNotas, ...tabelasNotasDiversificada];
+  const tabelaNotasFrente = todasTabelasNotas[0] ?? null;
+  const tabelasNotasAnexo = todasTabelasNotas.slice(1);
 
   const rowspan1Ciclo = linhas.filter(l => l.ciclo <= 3 || l.ciclo === 6).length;
   const rowspan2Ciclo = linhas.filter(l => (l.ciclo >= 4 && l.ciclo <= 5) || l.ciclo === 7).length;
@@ -909,6 +998,28 @@ export default function Historico() {
                     <label style={label}>Nota/conceito<input style={input} value={nota.nota} onChange={event => atualizarNota(indexLinha, indexNota, 'nota', event.target.value)} placeholder="7,0; A; MB" /></label>
                     <label style={label}>Carga horária<input style={input} value={nota.cargaHoraria} onChange={event => atualizarNota(indexLinha, indexNota, 'cargaHoraria', event.target.value)} /></label>
                     <button type="button" aria-label={`Excluir ${nota.disciplina || 'disciplina'}`} style={btn('danger')} onClick={() => removerDisciplina(indexLinha, indexNota)}>Excluir</button>
+                  </div>
+                ))}
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 14, paddingTop: 12, borderTop: `1px dashed ${theme.border}` }}>
+                  <strong>Parte Diversificada</strong>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {linha.notasDiversificada.length === 0 ? (
+                      <button type="button" style={btn('sky', { outline: true })} onClick={() => iniciarNotasDiversificada(indexLinha)}>➕ Adicionar Parte Diversificada</button>
+                    ) : (
+                      <>
+                        <button type="button" style={btn('sky', { outline: true })} onClick={() => adicionarDisciplinaDiversificada(indexLinha)}>➕ Outra disciplina</button>
+                        <button type="button" style={btn('danger')} onClick={() => limparNotasDiversificada(indexLinha)}>Remover Parte Diversificada</button>
+                      </>
+                    )}
+                  </div>
+                </div>
+                {linha.notasDiversificada.map((nota, indexNota) => (
+                  <div className="editor-nota-linha" key={`nota-div-${linha.ciclo}-${indexNota}`}>
+                    <label style={label}>Disciplina<input style={input} value={nota.disciplina} onChange={event => atualizarNotaDiversificada(indexLinha, indexNota, 'disciplina', event.target.value)} /></label>
+                    <label style={label}>Nota/conceito<input style={input} value={nota.nota} onChange={event => atualizarNotaDiversificada(indexLinha, indexNota, 'nota', event.target.value)} placeholder="7,0; A; MB; F/NF" /></label>
+                    <label style={label}>Carga horária<input style={input} value={nota.cargaHoraria} onChange={event => atualizarNotaDiversificada(indexLinha, indexNota, 'cargaHoraria', event.target.value)} /></label>
+                    <button type="button" aria-label={`Excluir ${nota.disciplina || 'disciplina'}`} style={btn('danger')} onClick={() => removerDisciplinaDiversificada(indexLinha, indexNota)}>Excluir</button>
                   </div>
                 ))}
               </div>
