@@ -1326,7 +1326,27 @@ export default function Importar() {
             return;
           }
 
+          // ─── Retorno na mesma turma após TRAN: mesmo RA, mesma turma, TRAN + outra situação ──
+          // Ex: Bernardo saiu (TRAN nº4) e depois voltou pra MESMA turma (ATIVO nº5).
+          // O SED lista as DUAS linhas — espelho fiel do relatório: TRAN nunca é único por RA
+          // na constraint do banco (só ATIVO/BXTR/N COM são), então mantemos as duas linhas
+          // separadas, com seus próprios números, exatamente como aparecem no SED.
+          const ehRetornoAposTranMesmaTurma = !seriesDiferentes && (
+            (existente.situacao === 'TRAN' && a.situacao !== 'TRAN') ||
+            (existente.situacao !== 'TRAN' && a.situacao === 'TRAN')
+          );
+          if (ehRetornoAposTranMesmaTurma) {
+            const tranEntry = existente.situacao === 'TRAN' ? existente : a;
+            const outraEntry = existente.situacao === 'TRAN' ? a : existente;
+            const tranKey = `${key}|TRAN|${tranEntry.numero || tranEntry.dataMovimentacao || 'X'}`;
+            todosAlunos.set(key, outraEntry);
+            todosAlunos.set(tranKey, tranEntry);
+            return;
+          }
+
           // ─── Situações diferentes na mesma turma → merge em um único registro ──
+          // (BXTR/N COM/ATIVO entre si — a constraint do banco só permite UM desses por RA,
+          // então aqui sim precisa virar um único registro.)
           // O registro VIGENTE (o mais recente pela Data de Movimentação) é quem manda:
           // fornece a situação E o número de chamada JUNTOS — o número impresso na linha
           // do SED que está correta agora é o número certo, mesmo que a outra linha
@@ -1846,9 +1866,11 @@ export default function Importar() {
           data_movimentacao?: string;
         }>>();
         for (const e of (existentes ?? [])) {
-          // REMA tem registros legítimos separados por turma — não entra no dedup por RA
-          // TRAN/BXTR/N COM/ATIVO são todos o mesmo aluno → unificar em um único registro
-          if (!e.ra || e.situacao === 'REMA') continue;
+          // REMA e TRAN têm registros legítimos que coexistem com outra situação do
+          // mesmo RA (aluno saiu e voltou pra mesma turma — o SED lista as duas linhas,
+          // e a constraint aluno_ra_uniq do banco já as isenta da unicidade). Não entram
+          // no dedup por RA — só BXTR/N COM/ATIVO entre si são de fato o mesmo registro.
+          if (!e.ra || e.situacao === 'REMA' || e.situacao === 'TRAN') continue;
           // Alinha com aluno_ra_uniq: só exclui registos com aee=TRUE (coluna, não turmaId)
           if (e.aee === true) continue;
           const k = String(e.ra);
@@ -1921,7 +1943,9 @@ export default function Importar() {
         const grpNomePre = new Map<string, any[]>();
         for (const e of (existentes ?? [])) {
           if (idsRemovidosPreLimpeza.has(e.id)) continue;
-          if (e.situacao === 'REMA') continue;
+          // REMA e TRAN coexistem legitimamente com outra situação do mesmo aluno
+          // (espelho fiel do SED) — não entram nesta pré-limpeza por nome.
+          if (e.situacao === 'REMA' || e.situacao === 'TRAN') continue;
           if (e.aee === true) continue;
           if (e.turmaId && aeeturmaIds.has(e.turmaId)) continue;
           const nn = normalizeNome(e.nome);
