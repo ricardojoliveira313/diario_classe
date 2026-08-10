@@ -1327,12 +1327,11 @@ export default function Importar() {
           }
 
           // ─── Situações diferentes na mesma turma → merge em um único registro ──
-          // Regra de OURO: o número de chamada é do ALUNO, não da situação — uma vez
-          // estabelecido, NUNCA muda quando a situação muda (ex: aluno é nº5 desde o
-          // início do ano, é transferido → continua nº5, só a situação vira TRAN).
-          // A situação final é decidida pela Data de Movimentação mais recente entre
-          // os dois registros (o SED pode listar TRAN antes de um retorno como ATIVO,
-          // ou o inverso — quem tem a data mais nova é que reflete o estado atual real).
+          // O registro VIGENTE (o mais recente pela Data de Movimentação) é quem manda:
+          // fornece a situação E o número de chamada JUNTOS — o número impresso na linha
+          // do SED que está correta agora é o número certo, mesmo que a outra linha
+          // (desatualizada) tenha outro número. Só cai no número da linha antiga se a
+          // linha vigente não trouxer nenhum número (nunca fica sem numeração).
           if (!seriesDiferentes && existente.situacao !== a.situacao) {
             const isAtivoExistente = !existente.situacao || existente.situacao === 'ATIVO';
             const isAtivoNovo = !a.situacao || a.situacao === 'ATIVO';
@@ -1344,13 +1343,14 @@ export default function Importar() {
 
             if (novoEhMaisRecente) {
               existente.situacao = a.situacao;
+              existente.numero = a.numero > 0 ? a.numero : existente.numero;
               if (a.dataMovimentacao) existente.dataMovimentacao = a.dataMovimentacao;
               if (!existente.dataInicioMatricula && a.dataInicioMatricula)
                 existente.dataInicioMatricula = a.dataInicioMatricula;
               if (!existente.dataFimMatricula && a.dataFimMatricula)
                 existente.dataFimMatricula = a.dataFimMatricula;
             }
-            // Nº de chamada: NUNCA é sobrescrito por esta mesclagem — só entra se estava vazio.
+            // Fallback: se o registro vigente não trouxe número nenhum, usa o da outra linha.
             if (!existente.numero && a.numero) existente.numero = a.numero;
             existente.bolsaFamilia = existente.bolsaFamilia || a.bolsaFamilia;
             existente.nis = existente.nis || a.nis;
