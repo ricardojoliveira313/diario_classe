@@ -883,6 +883,13 @@ export default function Historico() {
         .notas-frente { padding: 0 1mm; }
         .notas-frente + .notas-frente, .notas-anexo + .notas-anexo { margin-top: 0; }
         .notas-frente + .notas-frente .tabela-notas, .notas-anexo + .notas-anexo .tabela-notas { border-top: none; }
+        .resultado-chips { display: flex; justify-content: center; gap: 1mm; margin-top: 1mm; flex-wrap: wrap; }
+        .resultado-chip { font-size: 6.6pt; font-weight: 700; padding: .4mm 1.4mm; border: 1px solid #999; border-radius: 1mm; background: #f5f5f5; color: #777; cursor: pointer; }
+        .resultado-chip.ativo { background: #1e3a6e; color: #fff; border-color: #1e3a6e; }
+        @media print {
+          .resultado-chip { display: none; }
+          .resultado-chip.ativo { display: inline-block; border: none; background: transparent; color: #111; font-size: 7.5pt; padding: 0; }
+        }
         .tabela-transferencia th { height: 8mm; }
         .tabela-transferencia td { height: 9mm; }
         input::placeholder { color: #888; opacity: 1; }
@@ -1109,28 +1116,32 @@ export default function Historico() {
                             <td className="col-ano-ciclo">
                               {ehRepeticao ? <em>{linha.label}</em> : linha.label}
                               {aceitaPermanente && (
-                                <select
-                                  aria-label={`Resultado do ${linha.label}`}
-                                  style={{ ...campoDocumento, fontSize: '7.5pt', marginTop: '1mm', display: 'block' }}
-                                  value={linha.resultado}
-                                  onChange={event => atualizarResultadoFinal(index, event.target.value)}
-                                >
-                                  <option value=""></option>
-                                  <option value="PERMANENTE">PERMANENTE</option>
-                                  <option value="TRANSFERE-SE">TRANSFERE-SE</option>
-                                </select>
+                                <div className="resultado-chips" role="group" aria-label={`Resultado do ${linha.label}`}>
+                                  {(['PERMANENTE', 'TRANSFERE-SE'] as const).map(opcao => (
+                                    <button
+                                      type="button"
+                                      key={opcao}
+                                      className={`resultado-chip ${linha.resultado === opcao ? 'ativo' : ''}`}
+                                      onClick={() => atualizarResultadoFinal(index, linha.resultado === opcao ? '' : opcao)}
+                                    >
+                                      {opcao}
+                                    </button>
+                                  ))}
+                                </div>
                               )}
                               {ehRepeticao && (
-                                <select
-                                  aria-label={`Resultado da repetição`}
-                                  style={{ ...campoDocumento, fontSize: '7.5pt', marginTop: '1mm', display: 'block', fontStyle: 'normal' }}
-                                  value={linha.resultado}
-                                  onChange={event => atualizarLinha(index, 'resultado', event.target.value)}
-                                >
-                                  <option value=""></option>
-                                  <option value="APROVADO">APROVADO</option>
-                                  <option value="TRANSFERE-SE">TRANSFERE-SE</option>
-                                </select>
+                                <div className="resultado-chips" role="group" aria-label="Resultado da repetição">
+                                  {(['APROVADO', 'TRANSFERE-SE'] as const).map(opcao => (
+                                    <button
+                                      type="button"
+                                      key={opcao}
+                                      className={`resultado-chip ${linha.resultado === opcao ? 'ativo' : ''}`}
+                                      onClick={() => atualizarLinha(index, 'resultado', linha.resultado === opcao ? '' : opcao)}
+                                    >
+                                      {opcao}
+                                    </button>
+                                  ))}
+                                </div>
                               )}
                             </td>
                             <td><input aria-label={`Ano letivo do ${linha.label}`} style={campoDocumento} value={linha.anoLetivo} onChange={event => atualizarLinha(index, 'anoLetivo', event.target.value)} /></td>
