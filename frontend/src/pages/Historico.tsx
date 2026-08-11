@@ -872,16 +872,17 @@ export default function Historico() {
         .campo-estabelecimento { display: flex; min-height: 8mm; flex-direction: column; justify-content: center; align-items: center; line-height: 1.1; }
         .campo-escola-documento { display: block; font-size: 8pt !important; min-height: 5mm; line-height: 1.2; overflow: visible; resize: none; word-break: break-word; white-space: pre-wrap; text-align: center; }
         .complemento-estabelecimento { font-size: 8pt; font-weight: 800; text-transform: uppercase; text-align: center; width: 100%; }
-        .resultados-frente { min-height: 48mm; }
+        .resultados-frente { min-height: 20mm; }
         .texto-equivalencia { font-size: 9pt; font-weight: 700; line-height: 1.2; padding: 3mm 2mm; text-align: center; }
-        .notas-identificacao { font-size: 8pt; font-weight: 700; margin: 1mm 0; text-align: left; display: flex; align-items: center; justify-content: space-between; gap: 2mm; flex-wrap: wrap; }
-        .notas-titulo-badge { font-size: 6.6pt; font-weight: 800; text-transform: uppercase; letter-spacing: .2px; color: #1e3a6e; background: #eef3fb; border: 0.3mm solid #b9c9e6; border-radius: 1mm; padding: .4mm 1.6mm; white-space: nowrap; }
-        .tabela-notas { font-size: 6.6pt; border: 0.3mm solid #555; }
-        .tabela-notas th, .tabela-notas td { border: 1px solid #555; padding: .7mm .4mm; text-align: center; vertical-align: middle; word-break: break-word; }
+        .notas-identificacao { font-size: 7.5pt; font-weight: 700; margin: .5mm 0; text-align: left; display: flex; align-items: center; justify-content: space-between; gap: 2mm; flex-wrap: wrap; }
+        .notas-titulo-badge { font-size: 6pt; font-weight: 800; text-transform: uppercase; letter-spacing: .2px; color: #1e3a6e; background: #eef3fb; border: 0.3mm solid #b9c9e6; border-radius: 1mm; padding: .3mm 1.3mm; white-space: nowrap; }
+        .tabela-notas { font-size: 6pt; line-height: 1.05; border: 0.3mm solid #555; }
+        .tabela-notas th, .tabela-notas td { border: 1px solid #555; padding: .35mm .3mm; text-align: center; vertical-align: middle; word-break: break-word; }
         .tabela-notas th { background: #f2f4f7; font-weight: 800; }
-        .tabela-notas th:first-child { width: 17mm; text-align: left; background: #e7ecf3; }
-        .notas-frente { padding: 0 1mm 1mm; }
-        .notas-frente + .notas-frente, .notas-anexo + .notas-anexo { margin-top: 3mm; }
+        .tabela-notas th:first-child { width: 13mm; text-align: left; background: #e7ecf3; }
+        .notas-frente { padding: 0 1mm; }
+        .notas-frente + .notas-frente, .notas-anexo + .notas-anexo { margin-top: 0; }
+        .notas-frente + .notas-frente .tabela-notas, .notas-anexo + .notas-anexo .tabela-notas { border-top: none; }
         .tabela-transferencia th { height: 8mm; }
         .tabela-transferencia td { height: 9mm; }
         input::placeholder { color: #888; opacity: 1; }
