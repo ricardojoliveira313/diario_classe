@@ -1115,34 +1115,6 @@ export default function Historico() {
                             {index === idxPrimeiro2Ciclo && idxPrimeiro2Ciclo !== -1 && <td className="col-ciclo" rowSpan={rowspan2Ciclo}>2º ciclo</td>}
                             <td className="col-ano-ciclo">
                               {ehRepeticao ? <em>{linha.label}</em> : linha.label}
-                              {aceitaPermanente && (
-                                <div className="resultado-chips" role="group" aria-label={`Resultado do ${linha.label}`}>
-                                  {(['PERMANENTE', 'TRANSFERE-SE'] as const).map(opcao => (
-                                    <button
-                                      type="button"
-                                      key={opcao}
-                                      className={`resultado-chip ${linha.resultado === opcao ? 'ativo' : ''}`}
-                                      onClick={() => atualizarResultadoFinal(index, linha.resultado === opcao ? '' : opcao)}
-                                    >
-                                      {opcao}
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                              {ehRepeticao && (
-                                <div className="resultado-chips" role="group" aria-label="Resultado da repetição">
-                                  {(['APROVADO', 'TRANSFERE-SE'] as const).map(opcao => (
-                                    <button
-                                      type="button"
-                                      key={opcao}
-                                      className={`resultado-chip ${linha.resultado === opcao ? 'ativo' : ''}`}
-                                      onClick={() => atualizarLinha(index, 'resultado', linha.resultado === opcao ? '' : opcao)}
-                                    >
-                                      {opcao}
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
                             </td>
                             <td><input aria-label={`Ano letivo do ${linha.label}`} style={campoDocumento} value={linha.anoLetivo} onChange={event => atualizarLinha(index, 'anoLetivo', event.target.value)} /></td>
                             <td><input aria-label={`Carga horária do ${linha.label}`} style={campoDocumento} value={linha.cargaHoraria} onChange={event => atualizarLinha(index, 'cargaHoraria', event.target.value)} /></td>
@@ -1150,6 +1122,34 @@ export default function Historico() {
                               <div className="campo-estabelecimento">
                                 <textarea aria-label={`Estabelecimento do ${linha.label}`} className="campo-escola-documento" rows={Math.max(2, Math.ceil(linha.escola.length / 22))} style={campoDocumento} value={linha.escola} onChange={event => atualizarLinha(index, 'escola', event.target.value)} />
                                 <input aria-label={`Complemento do estabelecimento do ${linha.label}`} list="complementos-estabelecimento" className="complemento-estabelecimento" style={campoDocumento} value={linha.complementoEstabelecimento} onChange={event => atualizarLinha(index, 'complementoEstabelecimento', event.target.value.toUpperCase())} />
+                                {aceitaPermanente && (
+                                  <div className="resultado-chips" role="group" aria-label={`Resultado do ${linha.label}`}>
+                                    {(['PERMANENTE', 'TRANSFERE-SE'] as const).map(opcao => (
+                                      <button
+                                        type="button"
+                                        key={opcao}
+                                        className={`resultado-chip ${linha.resultado === opcao ? 'ativo' : ''}`}
+                                        onClick={() => atualizarResultadoFinal(index, linha.resultado === opcao ? '' : opcao)}
+                                      >
+                                        {opcao}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                                {ehRepeticao && (
+                                  <div className="resultado-chips" role="group" aria-label="Resultado da repetição">
+                                    {(['APROVADO', 'TRANSFERE-SE'] as const).map(opcao => (
+                                      <button
+                                        type="button"
+                                        key={opcao}
+                                        className={`resultado-chip ${linha.resultado === opcao ? 'ativo' : ''}`}
+                                        onClick={() => atualizarLinha(index, 'resultado', linha.resultado === opcao ? '' : opcao)}
+                                      >
+                                        {opcao}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                             </td>
                             <td><input aria-label={`Município do ${linha.label}`} style={campoDocumento} value={linha.municipio} onChange={event => atualizarLinha(index, 'municipio', event.target.value)} /></td>
