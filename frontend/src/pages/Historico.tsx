@@ -916,7 +916,7 @@ export default function Historico() {
           #historico-doc { visibility: visible; position: static; width: 210mm; }
           #historico-doc, #historico-doc * { visibility: visible; }
           .nao-imprimir, .pagina-etiqueta { display: none !important; }
-          .historico-pagina { width: 210mm; height: 295mm; min-height: 295mm; margin: 0; padding: 9mm 8mm 10mm 9mm; box-shadow: none; break-after: page; page-break-after: always; }
+          .historico-pagina { width: 210mm; min-height: 295mm; height: auto; overflow: visible; margin: 0; padding: 9mm 8mm 10mm 9mm; box-shadow: none; break-after: page; page-break-after: always; }
           #historico-doc > div:last-child .historico-pagina { break-after: auto; page-break-after: auto; }
           .notas-frente, .notas-anexo, .tabela-notas, .tabela-notas tr { break-inside: avoid; page-break-inside: avoid; }
           input, textarea, select { border: none !important; outline: none !important; background: transparent !important; color: #111 !important; box-shadow: none !important; }
