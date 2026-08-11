@@ -879,7 +879,7 @@ export default function Historico() {
         .tabela-notas { font-size: 6pt; line-height: 1.05; border: 0.3mm solid #555; }
         .tabela-notas th, .tabela-notas td { border: 1px solid #555; padding: .35mm .3mm; text-align: center; vertical-align: middle; word-break: break-word; }
         .tabela-notas th { background: #f2f4f7; font-weight: 800; }
-        .tabela-notas th:first-child { width: 13mm; text-align: left; background: #e7ecf3; }
+        .tabela-notas th:first-child { width: 15mm; text-align: left; background: #e7ecf3; white-space: nowrap; }
         .notas-frente { padding: 0 1mm; }
         .notas-frente + .notas-frente, .notas-anexo + .notas-anexo { margin-top: 0; }
         .notas-frente + .notas-frente .tabela-notas, .notas-anexo + .notas-anexo .tabela-notas { border-top: none; }
