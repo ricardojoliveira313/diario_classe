@@ -839,17 +839,17 @@ export default function Historico() {
   return (
     <div style={{ marginTop: 16 }}>
       <style>{`
-        .historico-pagina { width: 210mm; min-height: 297mm; box-sizing: border-box; padding: 9mm 8mm 10mm 9mm; margin: 0 auto 20px; background: #fff; color: #111; font-family: Arial, sans-serif; font-size: 10.5pt; box-shadow: ${theme.shadow}; overflow: hidden; }
+        .historico-pagina { width: 210mm; min-height: 297mm; box-sizing: border-box; padding: 9mm 8mm 10mm 9mm; margin: 0 auto 20px; background: #fff; color: #111; font-family: Arial, sans-serif; font-size: 10pt; box-shadow: ${theme.shadow}; overflow: hidden; }
         .historico-pagina * { box-sizing: border-box; }
         .pagina-etiqueta { width: 210mm; margin: 0 auto 5px; font-weight: 800; color: ${theme.textSecondary}; }
         .quadro-oficial { border: 1.5px solid #111; margin-bottom: 5mm; }
         .titulo-quadro { border-bottom: 1px solid #111; font-size: 12pt; font-weight: 800; margin: 0; padding: 2mm 2mm; text-align: center; text-transform: uppercase; }
         .historico-frente .quadro-oficial { margin-bottom: 3mm; }
-        .cabecalho-wrapper { position: relative; border: 1.5px solid #111; margin-bottom: 3mm; }
-        .cabecalho-oficial { height: 32mm; display: grid; grid-template-columns: 46mm 1fr; align-items: center; padding: 2mm; }
-        .cabecalho-oficial img { width: 43mm; height: auto; }
-        .cabecalho-texto { text-align: center; font-weight: 800; font-size: 12.5pt; line-height: 1.3; }
-        .cabecalho-texto h2 { font-size: 15pt; margin: 5mm 0 0; }
+        .cabecalho-wrapper { position: relative; border: 1.5px solid #111; margin-bottom: 2mm; }
+        .cabecalho-oficial { height: 22mm; display: grid; grid-template-columns: 34mm 1fr; align-items: center; padding: 1.5mm; }
+        .cabecalho-oficial img { width: 31mm; height: auto; }
+        .cabecalho-texto { text-align: center; font-weight: 800; font-size: 11pt; line-height: 1.2; }
+        .cabecalho-texto h2 { font-size: 13pt; margin: 2.5mm 0 0; }
         .select-via { position: absolute; top: 2mm; right: 3mm; font-family: Arial, sans-serif; font-weight: 800; font-size: 9pt; border: 1px solid #555; background: transparent; color: #111; padding: 1px 4px; cursor: pointer; }
         .dados-escola { min-height: 32mm; padding: 2mm; font-size: 9.5pt; font-weight: 800; line-height: 1.28; }
         .tabela-oficial, .tabela-estudos, .tabela-transferencia, .tabela-notas { width: 100%; border-collapse: collapse; table-layout: fixed; }
@@ -873,7 +873,7 @@ export default function Historico() {
         .campo-escola-documento { display: block; font-size: 8pt !important; min-height: 5mm; line-height: 1.2; overflow: visible; resize: none; word-break: break-word; white-space: pre-wrap; text-align: center; }
         .complemento-estabelecimento { font-size: 8pt; font-weight: 800; text-transform: uppercase; text-align: center; width: 100%; }
         .resultados-frente { min-height: 20mm; }
-        .texto-equivalencia { font-size: 9pt; font-weight: 700; line-height: 1.2; padding: 3mm 2mm; text-align: center; }
+        .texto-equivalencia { font-size: 8.5pt; font-weight: 700; line-height: 1.15; padding: 2mm; text-align: center; }
         .notas-identificacao { font-size: 7.5pt; font-weight: 700; margin: .5mm 0; text-align: left; display: flex; align-items: center; justify-content: space-between; gap: 2mm; flex-wrap: wrap; }
         .notas-titulo-badge { font-size: 6pt; font-weight: 800; text-transform: uppercase; letter-spacing: .2px; color: #1e3a6e; background: #eef3fb; border: 0.3mm solid #b9c9e6; border-radius: 1mm; padding: .3mm 1.3mm; white-space: nowrap; }
         .tabela-notas { font-size: 6pt; line-height: 1.05; border: 0.3mm solid #555; }
