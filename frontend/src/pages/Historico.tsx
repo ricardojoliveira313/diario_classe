@@ -883,7 +883,7 @@ export default function Historico() {
         .notas-frente { padding: 0 1mm; }
         .notas-frente + .notas-frente, .notas-anexo + .notas-anexo { margin-top: 0; }
         .notas-frente + .notas-frente .tabela-notas, .notas-anexo + .notas-anexo .tabela-notas { border-top: none; }
-        .resultado-chips { display: flex; justify-content: center; gap: 1mm; margin-top: 1mm; flex-wrap: wrap; }
+        .resultado-chips { display: flex; justify-content: center; align-items: center; gap: 1mm; margin-top: 1mm; width: 100%; flex-wrap: nowrap; }
         .resultado-chip { font-size: 6.6pt; font-weight: 700; padding: .4mm 1.4mm; border: 1px solid #999; border-radius: 1mm; background: #f5f5f5; color: #777; cursor: pointer; }
         .resultado-chip.ativo { background: #1e3a6e; color: #fff; border-color: #1e3a6e; }
         @media print {
