@@ -250,17 +250,19 @@ function extrairAno(data: string | null): string {
   return valorBanco?.slice(0, 4) ?? '';
 }
 
-function TabelaNotas({ grupo, anexo = false }: { grupo: GrupoNotas; anexo?: boolean }) {
+function TabelaNotas({ grupo, anexo = false, repetirCabecalho = true }: { grupo: GrupoNotas; anexo?: boolean; repetirCabecalho?: boolean }) {
   return (
     <div className={anexo ? 'notas-anexo' : 'notas-frente'}>
-      <div className="notas-identificacao">
-        <span className="notas-identificacao-texto">
-          <strong>{grupo.label}</strong>
-          {grupo.anoLetivo && <> · {grupo.anoLetivo}</>}
-          {grupo.escola && <> · {grupo.escola}</>}
-        </span>
-        {grupo.titulo && <span className="notas-titulo-badge">{grupo.titulo}</span>}
-      </div>
+      {repetirCabecalho && (
+        <div className="notas-identificacao">
+          <span className="notas-identificacao-texto">
+            <strong>{grupo.label}</strong>
+            {grupo.anoLetivo && <> · {grupo.anoLetivo}</>}
+            {grupo.escola && <> · {grupo.escola}</>}
+          </span>
+          {grupo.titulo && <span className="notas-titulo-badge">{grupo.titulo}</span>}
+        </div>
+      )}
       <table className="tabela-notas">
         <tbody>
           <tr>
@@ -1152,7 +1154,13 @@ export default function Historico() {
                       O referido curso, criado pelo Decreto Municipal 14.146, de 27/04/98 e publicado em 29/04/98 no Diário do Grande ABC, equivale aos estudos das séries iniciais do Ensino Fundamental.<br />
                       {gruposFrente.length > 0 ? 'Notas e cargas horárias da outra rede registradas abaixo.' : 'Segue em anexo Instrumento de Registro Individual do(a) estudante.'}
                     </div>
-                    {gruposFrente.map((grupo, index) => <TabelaNotas key={`frente-${grupo.ciclo}-${index}`} grupo={grupo} />)}
+                    {gruposFrente.map((grupo, index) => (
+                      <TabelaNotas
+                        key={`frente-${grupo.ciclo}-${index}`}
+                        grupo={grupo}
+                        repetirCabecalho={index === 0 || grupo.titulo !== gruposFrente[index - 1].titulo}
+                      />
+                    ))}
                   </div>
                 </div>
               </section>
@@ -1265,7 +1273,12 @@ export default function Historico() {
                     </div>
                     <div className="quadro-oficial" style={{ padding: '3mm' }}>
                       {grupos.map((grupo, indexGrupo) => (
-                        <TabelaNotas key={`anexo-tabela-${grupo.ciclo}-${indexGrupo}`} grupo={grupo} anexo />
+                        <TabelaNotas
+                          key={`anexo-tabela-${grupo.ciclo}-${indexGrupo}`}
+                          grupo={grupo}
+                          anexo
+                          repetirCabecalho={indexGrupo === 0 || grupo.titulo !== grupos[indexGrupo - 1].titulo}
+                        />
                       ))}
                     </div>
                   </section>
