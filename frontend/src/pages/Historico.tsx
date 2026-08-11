@@ -1121,9 +1121,6 @@ export default function Historico() {
                             <td>
                               <div className="campo-estabelecimento">
                                 <textarea aria-label={`Estabelecimento do ${linha.label}`} className="campo-escola-documento" rows={Math.max(2, Math.ceil(linha.escola.length / 22))} style={campoDocumento} value={linha.escola} onChange={event => atualizarLinha(index, 'escola', event.target.value)} />
-                                {!aceitaPermanente && !ehRepeticao && (
-                                  <input aria-label={`Complemento do estabelecimento do ${linha.label}`} list="complementos-estabelecimento" className="complemento-estabelecimento" style={campoDocumento} value={linha.complementoEstabelecimento} onChange={event => atualizarLinha(index, 'complementoEstabelecimento', event.target.value.toUpperCase())} />
-                                )}
                                 {aceitaPermanente && (
                                   <div className="resultado-chips" role="group" aria-label={`Resultado do ${linha.label}`}>
                                     {(['PERMANENTE', 'TRANSFERE-SE'] as const).map(opcao => (
@@ -1161,7 +1158,6 @@ export default function Historico() {
                       })}
                     </tbody>
                   </table>
-                  <datalist id="complementos-estabelecimento"><option value="TRANSFERE-SE" /></datalist>
                   <div className="resultados-frente">
                     <h3 className="titulo-quadro">Resultados de estudos realizados no Ensino Fundamental</h3>
                     <div className="texto-equivalencia">
