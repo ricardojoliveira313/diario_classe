@@ -40,6 +40,7 @@ interface LinhaCiclo {
   resultado: string;
   notas: NotaDisciplina[];
   notasDiversificada: NotaDisciplina[];
+  cargaHorariaOutraRede: string;
 }
 
 interface HistoricoSalvo {
@@ -53,6 +54,7 @@ interface HistoricoSalvo {
   resultado: string | null;
   notas_disciplinas: unknown;
   notas_diversificada: unknown;
+  carga_horaria_outra_rede: string | null;
   cert_num: string | null;
   cert_folha: string | null;
   cert_livro: string | null;
@@ -162,6 +164,7 @@ function criarLinhasVazias(): LinhaCiclo[] {
     resultado: '',
     notas: [],
     notasDiversificada: [],
+    cargaHorariaOutraRede: '',
   }));
 }
 
@@ -493,6 +496,7 @@ export default function Historico() {
             resultado: salva.resultado ?? '',
             notas: normalizarNotas(salva.notas_disciplinas),
             notasDiversificada: normalizarNotas(salva.notas_diversificada),
+            cargaHorariaOutraRede: salva.carga_horaria_outra_rede ?? '',
           };
         }
         return {
@@ -507,6 +511,7 @@ export default function Historico() {
           resultado: '',
           notas: [],
           notasDiversificada: [],
+          cargaHorariaOutraRede: '',
         };
       };
 
@@ -605,6 +610,7 @@ export default function Historico() {
           resultado: '',
           notas: [],
           notasDiversificada: [],
+          cargaHorariaOutraRede: '',
         };
         return [...updated.slice(0, index + 1), novaLinha, ...updated.slice(index + 1)];
       }
@@ -749,6 +755,7 @@ export default function Historico() {
       notas_diversificada: linha.notasDiversificada.filter(nota => (
         nota.disciplina.trim() || nota.nota.trim() || nota.cargaHoraria.trim()
       )),
+      carga_horaria_outra_rede: linha.cargaHorariaOutraRede || null,
       ...camposComuns,
     }));
 
@@ -821,7 +828,7 @@ export default function Historico() {
     // Carga horária total do ano aparece só na ÚLTIMA tabela do ano (coluna extra
     // no final) — é o total anual (Base + Diversificada juntas), nunca por disciplina.
     const ultimoGrupo = gruposLinha[gruposLinha.length - 1];
-    if (ultimoGrupo && linha.cargaHoraria.trim()) ultimoGrupo.cargaHorariaTotal = linha.cargaHoraria;
+    if (ultimoGrupo && linha.cargaHorariaOutraRede.trim()) ultimoGrupo.cargaHorariaTotal = linha.cargaHorariaOutraRede;
     return gruposLinha;
   });
   const primeiroCicloComNotas = todasTabelasNotas[0]?.ciclo;
@@ -1011,6 +1018,10 @@ export default function Historico() {
               <div className="editor-notas" key={`editor-notas-${linha.ciclo}`}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                   <strong>{linha.label} {linha.anoLetivo && `— ${linha.anoLetivo}`}</strong>
+                  <label style={{ ...label, display: 'flex', alignItems: 'center', gap: 6, fontWeight: 400 }}>
+                    Carga horária total (outra rede)
+                    <input style={{ ...input, width: 90 }} placeholder="Ex: 1600" value={linha.cargaHorariaOutraRede} onChange={event => atualizarLinha(indexLinha, 'cargaHorariaOutraRede', event.target.value)} />
+                  </label>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     {linha.notas.length === 0 ? (
                       <button type="button" style={btn('sky', { outline: true })} onClick={() => iniciarNotas(indexLinha)}>➕ Adicionar notas por disciplina</button>
