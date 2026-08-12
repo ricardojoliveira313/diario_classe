@@ -831,17 +831,11 @@ export default function Historico() {
     if (ultimoGrupo && linha.cargaHorariaOutraRede.trim()) ultimoGrupo.cargaHorariaTotal = linha.cargaHorariaOutraRede;
     return gruposLinha;
   });
-  const primeiroCicloComNotas = todasTabelasNotas[0]?.ciclo;
-  const gruposFrente = todasTabelasNotas.filter(g => g.ciclo === primeiroCicloComNotas);
-  const gruposAnexoRestantes = todasTabelasNotas.filter(g => g.ciclo !== primeiroCicloComNotas);
-  // Agrupa os grupos restantes por ciclo — cada ciclo vira UMA página de anexo,
-  // com todas as suas tabelas (base + diversificada) juntas em sequência.
-  const paginasAnexo: (typeof todasTabelasNotas)[] = [];
-  for (const grupo of gruposAnexoRestantes) {
-    const ultimaPagina = paginasAnexo[paginasAnexo.length - 1];
-    if (ultimaPagina && ultimaPagina[0].ciclo === grupo.ciclo) ultimaPagina.push(grupo);
-    else paginasAnexo.push([grupo]);
-  }
+  // Todas as tabelas de todos os anos ficam juntas, em sequência, na mesma
+  // página da frente — nunca separadas numa página de anexo à parte. Se não
+  // couber tudo numa folha, o conteúdo flui naturalmente para a próxima
+  // (overflow:visible + height:auto no CSS de impressão cuidam disso).
+  const gruposFrente = todasTabelasNotas;
 
   const rowspan1Ciclo = linhas.filter(l => l.ciclo <= 3 || l.ciclo === 6).length;
   const rowspan2Ciclo = linhas.filter(l => (l.ciclo >= 4 && l.ciclo <= 5) || l.ciclo === 7).length;
@@ -1281,34 +1275,6 @@ export default function Historico() {
                 <div className="quadro-oficial aviso-final">ESTE DOCUMENTO NÃO CONTÉM EMENDA NEM RASURA</div>
               </section>
             </div>
-
-            {paginasAnexo.map((grupos, index) => (
-              <div key={`anexo-${grupos[0].ciclo}-${index}`}>
-                <div className="pagina-etiqueta nao-imprimir">Anexo de notas — página {index + 3}</div>
-                <div className="historico-rolagem">
-                  <section className="historico-pagina historico-anexo">
-                    <div className="quadro-oficial cabecalho-oficial">
-                      <img src="/brasao-santo-andre.png" alt="Prefeitura de Santo André" />
-                      <div className="cabecalho-texto"><div>SECRETARIA DE EDUCAÇÃO</div><div>DEPARTAMENTO DE EDUCAÇÃO E ENSINO FUNDAMENTAL</div><h2>ANEXO — RESULTADOS DE OUTRA REDE</h2></div>
-                    </div>
-                    <div className="quadro-oficial" style={{ padding: '4mm 3mm' }}>
-                      <div><strong>ALUNO:</strong> {aluno.nome}</div>
-                      <div><strong>R.A.:</strong> {raExibicao}</div>
-                    </div>
-                    <div className="quadro-oficial" style={{ padding: '3mm' }}>
-                      {grupos.map((grupo, indexGrupo) => (
-                        <TabelaNotas
-                          key={`anexo-tabela-${grupo.ciclo}-${indexGrupo}`}
-                          grupo={grupo}
-                          anexo
-                          repetirCabecalho={indexGrupo === 0 || grupo.titulo !== grupos[indexGrupo - 1].titulo}
-                        />
-                      ))}
-                    </div>
-                  </section>
-                </div>
-              </div>
-            ))}
           </div>
         </>
       )}
