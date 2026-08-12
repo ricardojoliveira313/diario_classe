@@ -273,10 +273,6 @@ function TabelaNotas({ grupo, anexo = false, repetirCabecalho = true }: { grupo:
             <th>Notas</th>
             {grupo.notas.map((nota, index) => <td key={`nota-${index}`}>{nota.nota}</td>)}
           </tr>
-          <tr>
-            <th>Carga horária</th>
-            {grupo.notas.map((nota, index) => <td key={`carga-${index}`}>{nota.cargaHoraria}</td>)}
-          </tr>
         </tbody>
       </table>
     </div>
@@ -911,7 +907,7 @@ export default function Historico() {
         .editor-card { background: ${theme.card}; border-radius: ${theme.radiusMd}; box-shadow: ${theme.shadow}; margin-bottom: 18px; padding: 18px; }
         .editor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
         .editor-notas { border: 1px solid ${theme.border}; border-radius: ${theme.radius}; margin-top: 12px; padding: 12px; }
-        .editor-nota-linha { display: grid; grid-template-columns: minmax(180px, 2fr) 1fr 1fr auto; gap: 8px; margin-top: 7px; align-items: end; }
+        .editor-nota-linha { display: grid; grid-template-columns: minmax(180px, 2fr) 1fr auto; gap: 8px; margin-top: 7px; align-items: end; }
         @media (max-width: 900px) {
           .historico-rolagem { overflow-x: auto; padding-bottom: 8px; }
           .editor-nota-linha { grid-template-columns: 1fr; }
@@ -1021,7 +1017,6 @@ export default function Historico() {
                   <div className="editor-nota-linha" key={`nota-${linha.ciclo}-${indexNota}`}>
                     <label style={label}>Disciplina<input style={input} value={nota.disciplina} onChange={event => atualizarNota(indexLinha, indexNota, 'disciplina', event.target.value)} /></label>
                     <label style={label}>Nota/conceito<input style={input} value={nota.nota} onChange={event => atualizarNota(indexLinha, indexNota, 'nota', event.target.value)} placeholder="7,0; A; MB" /></label>
-                    <label style={label}>Carga horária<input style={input} value={nota.cargaHoraria} onChange={event => atualizarNota(indexLinha, indexNota, 'cargaHoraria', event.target.value)} /></label>
                     <button type="button" aria-label={`Excluir ${nota.disciplina || 'disciplina'}`} style={btn('danger')} onClick={() => removerDisciplina(indexLinha, indexNota)}>Excluir</button>
                   </div>
                 ))}
@@ -1043,7 +1038,6 @@ export default function Historico() {
                   <div className="editor-nota-linha" key={`nota-div-${linha.ciclo}-${indexNota}`}>
                     <label style={label}>Disciplina<input style={input} value={nota.disciplina} onChange={event => atualizarNotaDiversificada(indexLinha, indexNota, 'disciplina', event.target.value)} /></label>
                     <label style={label}>Nota/conceito<input style={input} value={nota.nota} onChange={event => atualizarNotaDiversificada(indexLinha, indexNota, 'nota', event.target.value)} placeholder="7,0; A; MB; F/NF" /></label>
-                    <label style={label}>Carga horária<input style={input} value={nota.cargaHoraria} onChange={event => atualizarNotaDiversificada(indexLinha, indexNota, 'cargaHoraria', event.target.value)} /></label>
                     <button type="button" aria-label={`Excluir ${nota.disciplina || 'disciplina'}`} style={btn('danger')} onClick={() => removerDisciplinaDiversificada(indexLinha, indexNota)}>Excluir</button>
                   </div>
                 ))}
