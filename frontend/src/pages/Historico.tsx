@@ -84,6 +84,7 @@ interface GrupoNotas {
   escola: string;
   notas: NotaDisciplina[];
   titulo?: string;
+  cargaHorariaTotal?: string;
 }
 
 const CICLOS_LABELS = [
@@ -268,10 +269,12 @@ function TabelaNotas({ grupo, anexo = false, repetirCabecalho = true }: { grupo:
           <tr>
             <th>Disciplinas</th>
             {grupo.notas.map((nota, index) => <th key={`${nota.disciplina}-${index}`}>{nota.disciplina}</th>)}
+            {grupo.cargaHorariaTotal && <th className="col-carga-total">Carga Horária Total</th>}
           </tr>
           <tr>
             <th>Notas</th>
             {grupo.notas.map((nota, index) => <td key={`nota-${index}`}>{nota.nota}</td>)}
+            {grupo.cargaHorariaTotal && <td className="col-carga-total">{grupo.cargaHorariaTotal}</td>}
           </tr>
         </tbody>
       </table>
@@ -798,7 +801,7 @@ export default function Historico() {
       nota.disciplina.trim() || nota.nota.trim() || nota.cargaHoraria.trim()
     ));
     const temDiversificada = diversificadaPreenchida.length > 0;
-    const gruposBase = dividirEmGrupos(notasPreenchidas, 10).map(notas => ({
+    const gruposBase: GrupoNotas[] = dividirEmGrupos(notasPreenchidas, 10).map(notas => ({
       ciclo: linha.ciclo,
       label: linha.label,
       anoLetivo: linha.anoLetivo,
@@ -806,7 +809,7 @@ export default function Historico() {
       notas,
       titulo: temDiversificada ? 'Base Nacional Comum' : undefined,
     }));
-    const gruposDiversificada = dividirEmGrupos(diversificadaPreenchida, 10).map(notas => ({
+    const gruposDiversificada: GrupoNotas[] = dividirEmGrupos(diversificadaPreenchida, 10).map(notas => ({
       ciclo: linha.ciclo,
       label: linha.label,
       anoLetivo: linha.anoLetivo,
@@ -814,7 +817,12 @@ export default function Historico() {
       notas,
       titulo: 'Parte Diversificada',
     }));
-    return [...gruposBase, ...gruposDiversificada];
+    const gruposLinha: GrupoNotas[] = [...gruposBase, ...gruposDiversificada];
+    // Carga horária total do ano aparece só na ÚLTIMA tabela do ano (coluna extra
+    // no final) — é o total anual (Base + Diversificada juntas), nunca por disciplina.
+    const ultimoGrupo = gruposLinha[gruposLinha.length - 1];
+    if (ultimoGrupo && linha.cargaHoraria.trim()) ultimoGrupo.cargaHorariaTotal = linha.cargaHoraria;
+    return gruposLinha;
   });
   const primeiroCicloComNotas = todasTabelasNotas[0]?.ciclo;
   const gruposFrente = todasTabelasNotas.filter(g => g.ciclo === primeiroCicloComNotas);
@@ -876,6 +884,7 @@ export default function Historico() {
         .tabela-notas th, .tabela-notas td { border: 1px solid #555; padding: .35mm .3mm; text-align: center; vertical-align: middle; word-break: break-word; }
         .tabela-notas th { background: #f2f4f7; font-weight: 800; }
         .tabela-notas th:first-child { width: 15mm; text-align: left; background: #e7ecf3; white-space: nowrap; }
+        .tabela-notas .col-carga-total { width: 15mm; font-weight: 800; background: #e7ecf3; }
         .notas-frente { padding: 0 1mm; }
         .notas-frente + .notas-frente, .notas-anexo + .notas-anexo { margin-top: 0; }
         .notas-frente + .notas-frente .tabela-notas, .notas-anexo + .notas-anexo .tabela-notas { border-top: none; }
