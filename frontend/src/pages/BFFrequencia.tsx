@@ -253,6 +253,14 @@ export default function BFFrequencia() {
                       <td style={{ padding: '9px 12px', fontSize: 13.5, fontWeight: 600, color: theme.text }}>
                         {l.aluno.nome}
                         <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 700, color: theme.success }} title="Aluno confirmado com Bolsa Família no cadastro">💚 BF</span>
+                        {l.aluno.deficiencia && (
+                          <span
+                            style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 800, padding: '2px 6px', borderRadius: 5, background: 'rgba(124,58,237,0.15)', color: '#7c3aed' }}
+                            title={`Deficiência registrada: ${l.aluno.deficiencia}`}
+                          >
+                            ♿ NEE
+                          </span>
+                        )}
                       </td>
                       <td style={{ padding: '9px 12px', fontSize: 13, color: theme.textMuted }}>{l.turmaNome} {l.isInfantil ? '(Infantil)' : '(Fundamental)'}</td>
                       <td style={{ padding: '9px 12px', fontSize: 13, textAlign: 'center', color: theme.textMuted }}>{l.minimoExigido}%</td>
