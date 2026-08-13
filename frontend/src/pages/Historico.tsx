@@ -1176,7 +1176,11 @@ export default function Historico() {
                       <TabelaNotas
                         key={`frente-${grupo.ciclo}-${index}`}
                         grupo={grupo}
-                        repetirCabecalho={index === 0 || grupo.titulo !== gruposFrente[index - 1].titulo}
+                        repetirCabecalho={
+                          index === 0
+                          || grupo.ciclo !== gruposFrente[index - 1].ciclo
+                          || grupo.titulo !== gruposFrente[index - 1].titulo
+                        }
                       />
                     ))}
                   </div>
