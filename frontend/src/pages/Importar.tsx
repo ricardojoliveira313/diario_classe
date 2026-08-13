@@ -214,6 +214,13 @@ interface AlunoUnificado {
   faltas: Record<number, { faltas: number; frequencia: string }>;
 }
 
+interface BolsaFamiliaRegistro {
+  nome: string;
+  nasc: string;
+  nis: string;
+  responsavel: string;
+}
+
 const normalizeFileName = (s: string) => s.toUpperCase();
 
 export default function Importar() {
@@ -227,7 +234,7 @@ export default function Importar() {
   const [fixing, setFixing] = useState(false);
   const [importando, setImportando] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  const dadosRef = useRef<{ turmas: any[]; alunos: AlunoUnificado[]; faltasArr: any[]; educacenso?: any[]; bfNaoEncontrados?: { nome: string; nasc: string; nis: string }[]; bolsaMapSize?: number } | null>(null);
+  const dadosRef = useRef<{ turmas: any[]; alunos: AlunoUnificado[]; faltasArr: any[]; educacenso?: any[]; bfNaoEncontrados?: { nome: string; nasc: string; nis: string }[]; bolsaFamiliaRegistros?: BolsaFamiliaRegistro[]; bolsaMapSize?: number } | null>(null);
   // Snapshot para rollback em caso de falha na importação
   const rollbackRef = useRef<{ alunosInseridos: any[]; alunosDeletados: any[]; faltasInseridas: any[]; turmasCriadas: any[] } | null>(null);
 
@@ -922,15 +929,8 @@ export default function Importar() {
     const indexar = (nome: string, nasc: string, nis: string, responsavel: string) => {
       // Aceita NIS com ou sem espaços/hífens: normaliza para só dígitos
       const nisLimpo = nis.replace(/\D/g, '');
-      if (nome.length < 3 || !/^\d{11}$/.test(nisLimpo)) return;
+      if (nome.length < 3 || !nasc || !/^\d{11}$/.test(nisLimpo)) return;
       mapa.set(`${nome}|${nasc}`, { nis: nisLimpo, responsavel });
-      // Chave por NIS (match direto para alunos que já têm NIS no banco)
-      mapa.set(`NIS:${nisLimpo}`, { nis: nisLimpo, responsavel });
-      // Chave fuzzy: nome sem artigos + data (tolera variações de "DA"/"DE" entre sistemas)
-      const nomeSimp = nomeSignificativo(nome);
-      if (nomeSimp.length >= 3 && nasc) {
-        mapa.set(`~${nomeSimp}|${nasc}`, { nis: nisLimpo, responsavel });
-      }
     };
 
     for (const file of files) {
@@ -1001,13 +1001,8 @@ export default function Importar() {
 
     const indexar = (nome: string, nasc: string, nis: string, responsavel: string) => {
       const nisLimpo = nis.replace(/\D/g, '');
-      if (nome.length < 3 || !/^\d{11}$/.test(nisLimpo)) return;
+      if (nome.length < 3 || !nasc || !/^\d{11}$/.test(nisLimpo)) return;
       mapa.set(`${nome}|${nasc}`, { nis: nisLimpo, responsavel });
-      mapa.set(`NIS:${nisLimpo}`, { nis: nisLimpo, responsavel });
-      const nomeSimp = nomeSignificativo(nome);
-      if (nomeSimp.length >= 3 && nasc) {
-        mapa.set(`~${nomeSimp}|${nasc}`, { nis: nisLimpo, responsavel });
-      }
     };
 
     for (const file of files) {
@@ -1182,8 +1177,9 @@ export default function Importar() {
       try { cpfMap = await parseEducacensoCPF(xlsxFiles); } catch (e: any) { setErro('Erro no EDUCACENSO: ' + (e.message ?? e)); return; }
       // Merge: TXT tem prioridade (mais confiável), PDF completa o que faltar
       const bolsaMap = new Map([...bolsaMapPDF, ...bolsaMapTXT]);
-      // Contagem de entradas únicas no BF (exclui chaves NIS: e ~fuzzy para contar só alunos reais)
-      const bfTotalPDF = [...bolsaMap.keys()].filter(k => !k.startsWith('NIS:') && !k.startsWith('~')).length;
+      // O mapa usa somente nome normalizado + data de nascimento. Assim, arquivos
+      // repetidos no mesmo envio não duplicam beneficiários nem resultados.
+      const bfTotalPDF = bolsaMap.size;
 
       // ─── Cruzamento ───
       const todosAlunos = new Map<string, AlunoUnificado>();
@@ -1517,15 +1513,12 @@ export default function Importar() {
             // Não sobrescreve o nome da turma, só usa o período para enriquecer se necessário
           }
         }
-        // Cruzamento Bolsa Família: nome+data (exato) → fuzzy → NIS direto
-        const bfExato = bolsaMap.get(`${a.nomeNorm}|${a.nascimento}`);
+        // Bolsa Família exige identidade confirmada pelo par nome + nascimento.
+        // NIS isolado nunca é usado para decidir se o aluno pertence ao relatório.
+        const bf = bolsaMap.get(`${a.nomeNorm}|${a.nascimento}`);
         const nomeSimp = nomeSignificativo(a.nomeNorm);
-        const bfFuzzy = a.nascimento ? bolsaMap.get(`~${nomeSimp}|${a.nascimento}`) : undefined;
-        // Fallback: match por NIS se o aluno já tem NIS (de importação anterior)
-        const bfNIS = a.nis ? bolsaMap.get(`NIS:${a.nis}`) : undefined;
-        const bf = bfExato ?? bfFuzzy ?? bfNIS;
         if (bf) {
-          a.nis = a.nis || bf.nis;
+          a.nis = bf.nis;
           a.responsavel = a.responsavel || bf.responsavel;
           a.bolsaFamilia = true;
           // Marca a entrada do mapa como usada (para relatório de não encontrados)
@@ -1544,10 +1537,8 @@ export default function Importar() {
       }
 
       // ─── Relatório BF: entradas do PDF que não encontraram aluno no arquivo ───
-      // (só entradas com chave nome|data, excluindo NIS: e ~fuzzy)
       const bfNaoEncontrados: { nome: string; nasc: string; nis: string }[] = [];
       for (const [chave, val] of bolsaMap.entries()) {
-        if (chave.startsWith('NIS:') || chave.startsWith('~')) continue;
         if (!bfUsados.has(val.nis)) {
           const parts = chave.split('|');
           bfNaoEncontrados.push({ nome: parts[0] ?? '', nasc: parts[1] ?? '', nis: val.nis });
@@ -1628,7 +1619,11 @@ export default function Importar() {
       const educacensoArr = Array.from(cpfMap.entries())
         .filter(([chave]) => !chave.startsWith('CPF:') && !chave.startsWith('~'))
         .map(([chave, val]) => ({ chave, ...val }));
-      dadosRef.current = { turmas: Array.from(turmasUnicas.values()), alunos: alunosArr, faltasArr: [], educacenso: educacensoArr, bfNaoEncontrados, bolsaMapSize: bolsaMap.size };
+      const bolsaFamiliaRegistros = Array.from(bolsaMap.entries()).map(([chave, val]) => {
+        const [nome, nasc] = chave.split('|');
+        return { nome, nasc, nis: val.nis, responsavel: val.responsavel };
+      });
+      dadosRef.current = { turmas: Array.from(turmasUnicas.values()), alunos: alunosArr, faltasArr: [], educacenso: educacensoArr, bfNaoEncontrados, bolsaFamiliaRegistros, bolsaMapSize: bolsaMap.size };
       setStatus('');
     } catch (ex: any) {
       setErro('Erro na análise: ' + ex.message);
@@ -2343,64 +2338,55 @@ export default function Importar() {
         }
       }
 
-      // ─── BF extra: marca bolsa_família em alunos que estão no banco mas não vieram nos arquivos ───
-      // Caso típico: alunos atípicos (AEE) ou turmas não enviadas nesta importação
-      {
-        const bfPendentes = dadosRef.current?.bfNaoEncontrados ?? [];
-        if (bfPendentes.length > 0) {
-          // Índices para match rápido contra existentes (já têm data_nascimento agora)
-          const existentesPorNis = new Map<string, string>(); // nis → id
-          const existentesPorChave = new Map<string, string>(); // nome|data → id
-          const existentesPorFuzzy = new Map<string, string>(); // ~nomeSimp|data → id
-          for (const e of (existentes ?? [])) {
-            if (e.nis) existentesPorNis.set(e.nis.replace(/\D/g, ''), e.id);
-            if (e.nome) {
-              const enome = normalizeNome(e.nome);
-              // data_nascimento pode vir como YYYY-MM-DD (Supabase date) ou DD/MM/YYYY (texto legado)
-              const raw = (e.data_nascimento as string) || '';
-              const eNasc = raw.includes('-') ? raw.split('-').reverse().join('/') : raw;
-              if (eNasc) {
-                existentesPorChave.set(`${enome}|${eNasc}`, e.id);
-                const simp = nomeSignificativo(enome);
-                if (simp.length >= 6) existentesPorFuzzy.set(`~${simp}|${eNasc}`, e.id);
-              }
-            }
+      // ─── BF autoritativo: reconcilia TODO o cadastro pelo relatório deste envio ───
+      // Isso também limpa marcações antigas de alunos que não vieram nos arquivos SED.
+      // A identidade é sempre nome normalizado + data; o NIS apenas completa o cadastro
+      // depois que esse par foi confirmado.
+      if (bfConciliacaoNesteLote) {
+        setStatus('Conferindo Bolsa Família por nome e data de nascimento...');
+        const registrosBF = dadosRef.current?.bolsaFamiliaRegistros ?? [];
+        const bfPorChave = new Map(registrosBF.map(b => [`${b.nome}|${b.nasc}`, b]));
+        const alunosAtuais = await api.getAllAlunos();
+        const idsParaDesmarcar: string[] = [];
+        const paraMarcar: { id: string; nis: string; responsavel: string | null }[] = [];
+        const chavesEncontradas = new Set<string>();
+
+        for (const aluno of (alunosAtuais ?? [])) {
+          const raw = String(aluno.data_nascimento ?? '');
+          const nasc = raw.includes('-') ? raw.split('-').reverse().join('/') : fmtDate(raw);
+          const chave = `${normalizeNome(aluno.nome ?? '')}|${nasc}`;
+          const bf = bfPorChave.get(chave);
+          if (!bf) {
+            if (aluno.bolsa_familia) idsParaDesmarcar.push(aluno.id);
+            continue;
           }
 
-          const bfIdsParaAtualizar: string[] = [];
-          const bfNisEncontrados = new Set<string>();
-
-          for (const bf of bfPendentes) {
-            // 1º: NIS direto
-            let matchId = bf.nis ? existentesPorNis.get(bf.nis) : undefined;
-            // 2º: nome+data exato
-            if (!matchId) matchId = existentesPorChave.get(`${bf.nome}|${bf.nasc}`);
-            // 3º: fuzzy (sem artigos) + data
-            if (!matchId) {
-              const bfSimp = nomeSignificativo(bf.nome);
-              if (bfSimp.length >= 6) matchId = existentesPorFuzzy.get(`~${bfSimp}|${bf.nasc}`);
-            }
-
-            if (matchId) {
-              const existente = (existentes ?? []).find(e => e.id === matchId);
-              if (!existente?.bolsa_familia) bfIdsParaAtualizar.push(matchId);
-              bfNisEncontrados.add(bf.nis);
-            }
-          }
-
-          if (bfIdsParaAtualizar.length > 0) {
-            setStatus(`Marcando ${bfIdsParaAtualizar.length} alunos adicionais como Bolsa Família...`);
-            for (let i = 0; i < bfIdsParaAtualizar.length; i += 50) {
-              await supabase.from('Aluno').update({ bolsa_familia: true })
-                .in('id', bfIdsParaAtualizar.slice(i, i + 50));
-            }
-          }
-
-          // Atualiza o relatório removendo os que foram encontrados no banco
-          if (bfNisEncontrados.size > 0) {
-            dadosRef.current!.bfNaoEncontrados = bfPendentes.filter(b => !bfNisEncontrados.has(b.nis));
+          chavesEncontradas.add(chave);
+          const nisAtual = String(aluno.nis ?? '').replace(/\D/g, '');
+          if (!aluno.bolsa_familia || nisAtual !== bf.nis) {
+            paraMarcar.push({ id: aluno.id, nis: bf.nis, responsavel: bf.responsavel || aluno.responsavel || null });
           }
         }
+
+        for (let i = 0; i < idsParaDesmarcar.length; i += 50) {
+          const { error } = await supabase.from('Aluno').update({ bolsa_familia: false })
+            .in('id', idsParaDesmarcar.slice(i, i + 50));
+          if (error) throw error;
+        }
+        for (let i = 0; i < paraMarcar.length; i += 20) {
+          const lote = paraMarcar.slice(i, i + 20);
+          const resultados = await Promise.all(lote.map(a => supabase.from('Aluno').update({
+            bolsa_familia: true,
+            nis: a.nis,
+            responsavel: a.responsavel,
+          }).eq('id', a.id)));
+          const falha = resultados.find(r => r.error)?.error;
+          if (falha) throw falha;
+        }
+
+        dadosRef.current!.bfNaoEncontrados = registrosBF
+          .filter(b => !chavesEncontradas.has(`${b.nome}|${b.nasc}`))
+          .map(b => ({ nome: b.nome, nasc: b.nasc, nis: b.nis }));
       }
 
       // ─── PASSO 3: Re-ler IDs dos alunos ───
