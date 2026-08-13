@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import Alunos from './pages/Alunos';
 import Faltas from './pages/Faltas';
+import BFFrequencia from './pages/BFFrequencia';
 import Importar from './pages/Importar';
 import Turmas from './pages/Turmas';
 import Dashboard from './pages/Dashboard';
@@ -34,6 +35,7 @@ const NAV_ITEMS: { to: string; label: string; end?: boolean; badge?: boolean; ad
   { to: '/turmas',    label: '👩‍🏫 Turmas',                            pageKey: 'turmas' },
   { to: '/alunos',    label: '👥 Alunos',                             pageKey: 'alunos' },
   { to: '/faltas',    label: '📋 Faltas',                             pageKey: 'faltas' },
+  { to: '/bf-frequencia', label: '💚 BF - Frequência',                 pageKey: 'bffrequencia' },
   { to: '/ocorrencias', label: '📋 Ocorrências',                      pageKey: 'ocorrencias' },
   { to: '/distorcao', label: '📐 Distorção',                          pageKey: 'distorcao' },
   { to: '/pendentes', label: '📋 Ata',                badge: true,    pageKey: 'pendentes' },
@@ -281,6 +283,7 @@ function AppShell() {
             <Route path="/turmas" element={<ViewerRoute pageKey="turmas"><Turmas /></ViewerRoute>} />
             <Route path="/alunos" element={<ViewerRoute pageKey="alunos"><Alunos /></ViewerRoute>} />
             <Route path="/faltas" element={<ViewerRoute pageKey="faltas"><Faltas /></ViewerRoute>} />
+            <Route path="/bf-frequencia" element={<ViewerRoute pageKey="bffrequencia"><BFFrequencia /></ViewerRoute>} />
             <Route path="/distorcao" element={<ViewerRoute pageKey="distorcao"><Distorcao /></ViewerRoute>} />
             <Route path="/ocorrencias" element={<ViewerRoute pageKey="ocorrencias"><Ocorrencias /></ViewerRoute>} />
             <Route path="/pendentes" element={<ViewerRoute pageKey="pendentes"><Pendentes /></ViewerRoute>} />
