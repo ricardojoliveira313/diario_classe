@@ -3,6 +3,7 @@ import { api } from '../api';
 import { theme, btn, input, label, MESES, getDiasLetivos, isInfantilTurma, sortTurmasPedagogico } from '../styles';
 import { Loading, EmptyState, StatCard } from '../components';
 import { useAno } from '../AnoContext';
+import { useAuth } from '../AuthContext';
 
 type Status = 'P' | 'F' | 'J' | 'A';
 const CICLO: Status[] = ['P', 'F', 'J', 'A'];
@@ -36,17 +37,21 @@ interface LinhaBF {
 
 export default function BFFrequencia() {
   const { ano } = useAno();
+  const { username } = useAuth();
   const [turmas, setTurmas] = useState<any[]>([]);
   const [mesInicio, setMesInicio] = useState(new Date().getMonth() + 1);
   const [mesFim, setMesFim] = useState(new Date().getMonth() + 1);
   const [loading, setLoading] = useState(false);
   const [linhas, setLinhas] = useState<LinhaBF[] | null>(null);
+  const [salvando, setSalvando] = useState(false);
+  const [salvo, setSalvo] = useState(false);
 
   useEffect(() => { api.getTurmas().then(t => setTurmas(sortTurmasPedagogico(t ?? []))); }, []);
 
   const calcular = async () => {
     setLoading(true);
     setLinhas(null);
+    setSalvo(false);
     const turmaMap = new Map(turmas.map(t => [t.id, t]));
 
     const [todosAlunos, ...faltasPorMes] = await Promise.all([
@@ -89,6 +94,36 @@ export default function BFFrequencia() {
     resultado.sort((a, b) => a.mes - b.mes || a.aluno.nome.localeCompare(b.aluno.nome, 'pt-BR'));
     setLinhas(resultado);
     setLoading(false);
+  };
+
+  // Guarda permanentemente no banco os registros calculados — mantém o histórico
+  // mesmo que o cadastro do aluno mude depois (ex.: bolsa_familia corrigida).
+  const salvarRegistros = async () => {
+    if (!linhas || linhas.length === 0) return;
+    setSalvando(true);
+    try {
+      const registros = linhas.map(l => ({
+        aluno_id: l.aluno.id,
+        aluno_nome: l.aluno.nome,
+        ra: l.aluno.ra ?? null,
+        turma_nome: l.turmaNome,
+        mes: l.mes,
+        ano,
+        is_infantil: l.isInfantil,
+        dias_letivos: l.diasLetivos,
+        faltas: l.faltas,
+        justificadas: l.justificadas,
+        atestados: l.atestados,
+        freq_pct: l.freqPct,
+        minimo_exigido: l.minimoExigido,
+        registrado_em: new Date().toISOString(),
+        registrado_por: username ?? null,
+      }));
+      await api.salvarBFFrequenciaRegistros(registros);
+      setSalvo(true);
+    } finally {
+      setSalvando(false);
+    }
   };
 
   const nomeMesInicio = MESES[mesInicio - 1];
@@ -142,6 +177,17 @@ export default function BFFrequencia() {
           {linhas.length === 0 ? (
             <EmptyState icon="✅" message={`Nenhum aluno com Bolsa Família abaixo do mínimo de frequência em ${periodoLabel}.`} />
           ) : (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                <button style={btn('primary')} disabled={salvando} onClick={salvarRegistros}>
+                  {salvando ? 'Salvando...' : '💾 Salvar registros deste período'}
+                </button>
+                {salvo && (
+                  <span style={{ fontSize: 13, fontWeight: 700, color: theme.success }}>
+                    ✅ Registros salvos no banco — histórico preservado.
+                  </span>
+                )}
+              </div>
             <div style={{ background: theme.card, borderRadius: theme.radiusMd, boxShadow: theme.shadow, border: `1px solid ${theme.borderLight}`, overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
@@ -161,7 +207,10 @@ export default function BFFrequencia() {
                   {linhas.map((l, i) => (
                     <tr key={`${l.aluno.id}-${l.mes}`} style={{ background: i % 2 === 0 ? 'transparent' : 'rgba(128,128,128,0.06)' }}>
                       <td style={{ padding: '9px 12px', fontSize: 13, fontWeight: 700, color: theme.text }}>{MESES[l.mes - 1]}</td>
-                      <td style={{ padding: '9px 12px', fontSize: 13.5, fontWeight: 600, color: theme.text }}>{l.aluno.nome}</td>
+                      <td style={{ padding: '9px 12px', fontSize: 13.5, fontWeight: 600, color: theme.text }}>
+                        {l.aluno.nome}
+                        <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 700, color: theme.success }} title="Aluno confirmado com Bolsa Família no cadastro">💚 BF</span>
+                      </td>
                       <td style={{ padding: '9px 12px', fontSize: 13, color: theme.textMuted }}>{l.turmaNome} {l.isInfantil ? '(Infantil)' : '(Fundamental)'}</td>
                       <td style={{ padding: '9px 12px', fontSize: 13, textAlign: 'center', color: theme.textMuted }}>{l.minimoExigido}%</td>
                       <td style={{ padding: '9px 12px', fontSize: 13.5, textAlign: 'center', fontWeight: 800, color: theme.danger }}>{l.freqPct.toFixed(1)}%</td>
@@ -184,6 +233,7 @@ export default function BFFrequencia() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </>
       )}

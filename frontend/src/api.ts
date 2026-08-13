@@ -232,4 +232,21 @@ export const api = {
       if (error) throw error;
     }
   },
+
+  // --- BF FREQUÊNCIA (registro histórico permanente) ---
+  salvarBFFrequenciaRegistros: async (registros: any[]) => {
+    for (let i = 0; i < registros.length; i += CHUNK) {
+      const { error } = await supabase
+        .from('BFFrequenciaRegistro')
+        .upsert(registros.slice(i, i + CHUNK), { onConflict: 'aluno_id,mes,ano' });
+      if (error) throw error;
+    }
+  },
+  getBFFrequenciaRegistros: async (mesInicio: number, mesFim: number, ano: number) => {
+    return todasAsPaginas((inicio, fim) => supabase
+      .from('BFFrequenciaRegistro').select('*')
+      .gte('mes', mesInicio).lte('mes', mesFim).eq('ano', ano)
+      .order('mes').order('aluno_nome')
+      .range(inicio, fim));
+  },
 };

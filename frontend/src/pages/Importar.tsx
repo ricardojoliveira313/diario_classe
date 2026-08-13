@@ -227,7 +227,7 @@ export default function Importar() {
   const [fixing, setFixing] = useState(false);
   const [importando, setImportando] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  const dadosRef = useRef<{ turmas: any[]; alunos: AlunoUnificado[]; faltasArr: any[]; educacenso?: any[]; bfNaoEncontrados?: { nome: string; nasc: string; nis: string }[] } | null>(null);
+  const dadosRef = useRef<{ turmas: any[]; alunos: AlunoUnificado[]; faltasArr: any[]; educacenso?: any[]; bfNaoEncontrados?: { nome: string; nasc: string; nis: string }[]; bolsaMapSize?: number } | null>(null);
   // Snapshot para rollback em caso de falha na importação
   const rollbackRef = useRef<{ alunosInseridos: any[]; alunosDeletados: any[]; faltasInseridas: any[]; turmasCriadas: any[] } | null>(null);
 
@@ -1628,7 +1628,7 @@ export default function Importar() {
       const educacensoArr = Array.from(cpfMap.entries())
         .filter(([chave]) => !chave.startsWith('CPF:') && !chave.startsWith('~'))
         .map(([chave, val]) => ({ chave, ...val }));
-      dadosRef.current = { turmas: Array.from(turmasUnicas.values()), alunos: alunosArr, faltasArr: [], educacenso: educacensoArr, bfNaoEncontrados };
+      dadosRef.current = { turmas: Array.from(turmasUnicas.values()), alunos: alunosArr, faltasArr: [], educacenso: educacensoArr, bfNaoEncontrados, bolsaMapSize: bolsaMap.size };
       setStatus('');
     } catch (ex: any) {
       setErro('Erro na análise: ' + ex.message);
@@ -1640,7 +1640,13 @@ export default function Importar() {
   const importar = async () => {
     if (!dadosRef.current || importando) return;
     setImportando(true);
-    const { alunos, turmas } = dadosRef.current;
+    const { alunos, turmas, bolsaMapSize } = dadosRef.current;
+    // Se este lote de importação incluiu conciliação real de Bolsa Família (PDF/TXT
+    // do próprio Bolsa Família), o cruzamento feito na análise é a fonte de verdade:
+    // quem não bateu desta vez deixa de ser BF (evita "grudar" bolsa_familia=true
+    // para sempre em alunos que perderam o benefício ou foram marcados por engano).
+    // Sem esses arquivos no lote, mantemos o valor já salvo (import diário não mexe em BF).
+    const bfConciliacaoNesteLote = (bolsaMapSize ?? 0) > 0;
     setErro('');
     setSucesso(false);
     setTotal(alunos.length);
@@ -2200,7 +2206,7 @@ export default function Importar() {
           data_movimentacao: a.dataMovimentacao || existente?.data_movimentacao || null,
           deficiencia: a.deficiencia || '',
           situacao: a.situacao,
-          bolsa_familia: a.bolsaFamilia || existente?.bolsa_familia || false,
+          bolsa_familia: bfConciliacaoNesteLote ? (a.bolsaFamilia || false) : (a.bolsaFamilia || existente?.bolsa_familia || false),
           professora: a.professora || existente?.professora || '',
           nis: a.nis || existente?.nis || null,
           responsavel: a.responsavel || existente?.responsavel || null,
