@@ -22,6 +22,16 @@ function isAtivo(situacao: string | null | undefined): boolean {
   return !situacao || situacao === 'ATIVO';
 }
 
+function chaveNomeNascimento(aluno: any): string {
+  const nome = String(aluno.nome ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Z0-9]/gi, '')
+    .toUpperCase();
+  const nascimento = String(aluno.data_nascimento ?? '').trim();
+  return nascimento ? `${nome}|${nascimento}` : `${nome}|${aluno.ra ?? aluno.id}`;
+}
+
 interface LinhaBF {
   aluno: any;
   mes: number;
@@ -61,7 +71,23 @@ export default function BFFrequencia() {
       ...Array.from({ length: mesFim - mesInicio + 1 }, (_, i) => api.getFaltasMes(mesInicio + i, ano)),
     ]);
 
-    const bfAlunos = (todosAlunos ?? []).filter((a: any) => a.bolsa_familia && isAtivo(a.situacao));
+    // BF — Frequência considera somente a matrícula da sala regular.
+    // Se o aluno também frequenta o AEE, o registro complementar não pode
+    // gerar uma segunda linha no levantamento enviado ao Sistema Presença.
+    const alunosRegularesBF = (todosAlunos ?? []).filter((a: any) => {
+      const turma = turmaMap.get(a.turmaId);
+      const turmaNome = String(turma?.nome ?? '').trim().toUpperCase();
+      const turmaTipo = String(turma?.tipo ?? '').trim().toUpperCase();
+      const registroAEE = a.aee === true || turmaTipo === 'AEE' || turmaNome.startsWith('AEE');
+      return a.bolsa_familia && isAtivo(a.situacao) && !registroAEE;
+    });
+
+    const alunosUnicos = new Map<string, any>();
+    for (const aluno of alunosRegularesBF) {
+      const chave = chaveNomeNascimento(aluno);
+      if (!alunosUnicos.has(chave)) alunosUnicos.set(chave, aluno);
+    }
+    const bfAlunos = Array.from(alunosUnicos.values());
 
     // Cálculo MÊS A MÊS (independente) — o lançamento no Sistema Presença do Bolsa
     // Família é mensal, então um aluno abaixo do mínimo em junho mas OK em julho
