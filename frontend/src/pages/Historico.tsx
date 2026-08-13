@@ -493,7 +493,7 @@ export default function Historico() {
             complementoEstabelecimento: salva.complemento_estabelecimento ?? '',
             municipio: salva.municipio ?? '',
             uf: salva.uf ?? 'SP',
-            resultado: salva.resultado ?? '',
+            resultado: salva.resultado === 'PERMANENTE' ? 'PERMANECENTE' : (salva.resultado ?? ''),
             notas: normalizarNotas(salva.notas_disciplinas),
             notasDiversificada: normalizarNotas(salva.notas_diversificada),
             cargaHorariaOutraRede: salva.carga_horaria_outra_rede ?? '',
@@ -526,14 +526,14 @@ export default function Historico() {
       if (rep3) {
         const idx3 = novasLinhas.findIndex(l => l.ciclo === 3);
         if (idx3 !== -1) {
-          novasLinhas[idx3] = { ...novasLinhas[idx3], resultado: 'PERMANENTE' };
+          novasLinhas[idx3] = { ...novasLinhas[idx3], resultado: 'PERMANECENTE' };
           novasLinhas.splice(idx3 + 1, 0, construirLinha(6, '3º Ano / Final', rep3, false));
         }
       }
       if (rep5) {
         const idx5 = novasLinhas.findIndex(l => l.ciclo === 5);
         if (idx5 !== -1) {
-          novasLinhas[idx5] = { ...novasLinhas[idx5], resultado: 'PERMANENTE' };
+          novasLinhas[idx5] = { ...novasLinhas[idx5], resultado: 'PERMANECENTE' };
           novasLinhas.splice(idx5 + 1, 0, construirLinha(7, '5º Ano / Final', rep5, false));
         }
       }
@@ -588,7 +588,7 @@ export default function Historico() {
     } : atual);
   };
 
-  // Gerencia resultado "PERMANENTE" para 3º Ano (ciclo 3) e 5º Ano (ciclo 5),
+  // Gerencia resultado "PERMANECENTE" para 3º Ano (ciclo 3) e 5º Ano (ciclo 5),
   // inserindo ou removendo a linha de repetição (ciclos 6 e 7)
   const atualizarResultadoFinal = (index: number, valor: string) => {
     setAlteradoSemSalvar(true);
@@ -597,7 +597,7 @@ export default function Historico() {
       const cicloExtra = linha.ciclo === 3 ? 6 : 7;
       const updated = atuais.map((l, i) => i === index ? { ...l, resultado: valor } : l);
       const jaTemExtra = updated.some(l => l.ciclo === cicloExtra);
-      if (valor === 'PERMANENTE' && !jaTemExtra) {
+      if (valor === 'PERMANECENTE' && !jaTemExtra) {
         const novaLinha: LinhaCiclo = {
           ciclo: cicloExtra,
           label: linha.label,
@@ -614,7 +614,7 @@ export default function Historico() {
         };
         return [...updated.slice(0, index + 1), novaLinha, ...updated.slice(index + 1)];
       }
-      if (valor !== 'PERMANENTE' && jaTemExtra) {
+      if (valor !== 'PERMANECENTE' && jaTemExtra) {
         return updated.filter(l => l.ciclo !== cicloExtra);
       }
       return updated;
@@ -760,7 +760,7 @@ export default function Historico() {
     }));
 
     const { error } = await supabase.from('HistoricoAluno').upsert(registros, { onConflict: 'ra,ciclo' });
-    // Remove linhas de repetição do banco se o aluno não é mais PERMANENTE
+    // Remove linhas de repetição do banco se o aluno não é mais PERMANECENTE
     if (!registros.some(r => r.ciclo === 6)) {
       await supabase.from('HistoricoAluno').delete().eq('ra', aluno.ra).eq('ciclo', 6);
     }
@@ -1131,7 +1131,7 @@ export default function Historico() {
                                 <textarea aria-label={`Estabelecimento do ${linha.label}`} className="campo-escola-documento" rows={Math.max(2, Math.ceil(linha.escola.length / 22))} style={campoDocumento} value={linha.escola} onChange={event => atualizarLinha(index, 'escola', event.target.value)} />
                                 {aceitaPermanente && (
                                   <div className="resultado-chips" role="group" aria-label={`Resultado do ${linha.label}`}>
-                                    {(['PERMANENTE', 'TRANSFERE-SE'] as const).map(opcao => (
+                                    {(['PERMANECENTE', 'TRANSFERE-SE'] as const).map(opcao => (
                                       <button
                                         type="button"
                                         key={opcao}
