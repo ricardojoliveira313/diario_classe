@@ -43,6 +43,7 @@ export default function BFFrequencia() {
   const [mesFim, setMesFim] = useState(new Date().getMonth() + 1);
   const [loading, setLoading] = useState(false);
   const [linhas, setLinhas] = useState<LinhaBF[] | null>(null);
+  const [linhaSelecionada, setLinhaSelecionada] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false);
 
@@ -51,6 +52,7 @@ export default function BFFrequencia() {
   const calcular = async () => {
     setLoading(true);
     setLinhas(null);
+    setLinhaSelecionada(null);
     setSalvo(false);
     const turmaMap = new Map(turmas.map(t => [t.id, t]));
 
@@ -204,8 +206,23 @@ export default function BFFrequencia() {
                   </tr>
                 </thead>
                 <tbody>
-                  {linhas.map((l, i) => (
-                    <tr key={`${l.aluno.id}-${l.mes}`} style={{ background: i % 2 === 0 ? 'transparent' : 'rgba(128,128,128,0.06)' }}>
+                  {linhas.map((l, i) => {
+                    const linhaId = `${l.aluno.id}-${l.mes}`;
+                    const selecionada = linhaSelecionada === linhaId;
+                    return (
+                      <tr
+                        key={linhaId}
+                        onClick={() => setLinhaSelecionada(linhaId)}
+                        style={{
+                          background: selecionada
+                            ? 'rgba(250, 204, 21, 0.32)'
+                            : i % 2 === 0 ? 'transparent' : 'rgba(128,128,128,0.06)',
+                          boxShadow: selecionada ? 'inset 4px 0 0 #eab308' : 'none',
+                          cursor: 'pointer',
+                        }}
+                        aria-selected={selecionada}
+                        title="Clique para destacar este aluno"
+                      >
                       <td style={{ padding: '9px 12px', fontSize: 13, fontWeight: 700, color: theme.text }}>{MESES[l.mes - 1]}</td>
                       <td style={{ padding: '9px 12px', fontSize: 13.5, fontWeight: 600, color: theme.text }}>
                         {l.aluno.nome}
@@ -228,8 +245,9 @@ export default function BFFrequencia() {
                           </span>
                         )}
                       </td>
-                    </tr>
-                  ))}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
