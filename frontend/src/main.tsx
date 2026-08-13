@@ -157,6 +157,7 @@ function AppShell() {
     borderRadius: theme.radius, fontSize: 12, fontWeight: 500,
     transition: 'all 0.15s ease', whiteSpace: 'nowrap',
     userSelect: 'none', WebkitUserSelect: 'none',
+    flexShrink: 0,
   };
 
   const linkActive: React.CSSProperties = {
@@ -181,7 +182,7 @@ function AppShell() {
             </NavLink>
 
             {/* Desktop menu */}
-            <div className="nav-scroll" style={{ display: 'flex', gap: 1, flex: 1, minWidth: 0 }}>
+            <div className="nav-scroll" style={{ display: 'flex', gap: 1, flex: 1, minWidth: 0, overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'thin' }}>
               {navItems.filter(item => item.to !== '/usuarios').map(item => (
                 <NavLink
                   key={item.to} to={item.to} end={item.end}
