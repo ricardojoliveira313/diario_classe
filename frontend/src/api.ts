@@ -83,6 +83,11 @@ export const api = {
       .from('Falta').select('*').eq('alunoId', alunoId).eq('ano', ano)
       .order('mes').order('id').range(inicio, fim));
   },
+  getFaltasAlunoTodos: async (alunoId: string) => {
+    return todasAsPaginas((inicio, fim) => supabase
+      .from('Falta').select('*').eq('alunoId', alunoId)
+      .order('ano').order('mes').order('id').range(inicio, fim));
+  },
   getAllFaltas: async () => todasAsPaginas((inicio, fim) => supabase
     .from('Falta').select('*').order('id').range(inicio, fim)),
 

@@ -6,7 +6,7 @@ import { Loading, EmptyState, StatCard, Spinner } from '../components';
 import { useTheme } from '../ThemeContext';
 import { useAno } from '../AnoContext';
 import { useAuth } from '../AuthContext';
-import { MOTIVOS_BAIXA_FREQUENCIA } from '../motivosBaixaFrequencia';
+import { MOTIVOS_BAIXA_FREQUENCIA, MOTIVO_BF_POR_CODIGO } from '../motivosBaixaFrequencia';
 
 type Status = 'P' | 'F' | 'J' | 'A';
 const CICLO: Status[] = ['P', 'F', 'J', 'A'];
@@ -106,6 +106,14 @@ export default function Faltas() {
   const [bfAlunos, setBfAlunos] = useState<any[]>([]);
   const [bfLoading, setBfLoading] = useState(false);
   const [bfFiltroSit, setBfFiltroSit] = useState('');
+
+  // ── Consulta de Motivos — busca por aluno (nome/RA) e histórico de motivos ──
+  const [showMotivos, setShowMotivos] = useState(false);
+  const [todosAlunosMotivo, setTodosAlunosMotivo] = useState<any[]>([]);
+  const [buscaMotivoTexto, setBuscaMotivoTexto] = useState('');
+  const [alunoMotivoSel, setAlunoMotivoSel] = useState<any | null>(null);
+  const [motivoHistLoading, setMotivoHistLoading] = useState(false);
+  const [motivoHistorico, setMotivoHistorico] = useState<any[]>([]);
 
   const [paintStatus, setPaintStatus] = useState<Status | null>(null);
   const [modo, setModo] = useState<'grade' | 'rapido'>('rapido');
@@ -453,6 +461,50 @@ export default function Faltas() {
       .sort((a: any, b: any) => a.nome.localeCompare(b.nome, 'pt-BR'));
     setBfAlunos(bf);
     setBfLoading(false);
+  };
+
+  const abrirMotivos = async () => {
+    setShowMotivos(true);
+    setAlunoMotivoSel(null);
+    setMotivoHistorico([]);
+    setBuscaMotivoTexto('');
+    if (todosAlunosMotivo.length === 0) {
+      const todos = await api.getAllAlunos();
+      setTodosAlunosMotivo(todos);
+    }
+  };
+
+  const normalizarBusca = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+  const resultadosBuscaMotivo = useMemo(() => {
+    const termo = normalizarBusca(buscaMotivoTexto.trim());
+    if (!termo) return [];
+    return todosAlunosMotivo
+      .filter(a => normalizarBusca(a.nome ?? '').includes(termo) || String(a.ra ?? '').includes(termo))
+      .slice(0, 20);
+  }, [buscaMotivoTexto, todosAlunosMotivo]);
+
+  const selecionarAlunoMotivo = async (a: any) => {
+    setAlunoMotivoSel(a);
+    setMotivoHistLoading(true);
+    const faltas = await api.getFaltasAlunoTodos(a.id);
+    // Marca sequências de meses seguidos com o MESMO código de motivo — sinal de
+    // possível padrão (doença recorrente sem atestado, negligência etc.) a revisar.
+    const comMotivo = faltas.filter((f: any) => f.motivo_baixa_frequencia);
+    const ordenado = [...comMotivo].sort((x: any, y: any) => (x.ano - y.ano) || (x.mes - y.mes));
+    const historico = ordenado.map((f: any, i: any) => {
+      const anterior = ordenado[i - 1];
+      const seguido = !!anterior
+        && f.motivo_baixa_frequencia === anterior.motivo_baixa_frequencia
+        && ((f.ano === anterior.ano && f.mes === anterior.mes + 1) || (f.ano === anterior.ano + 1 && anterior.mes === 12 && f.mes === 1));
+      return { ...f, seguido };
+    });
+    // Propaga o alerta pro mês anterior também, pra marcar a sequência inteira
+    for (let i = 0; i < historico.length - 1; i++) {
+      if (historico[i + 1].seguido) historico[i].seguido = true;
+    }
+    setMotivoHistorico(historico);
+    setMotivoHistLoading(false);
   };
 
   const exportarBFExcel = () => {
@@ -976,6 +1028,7 @@ export default function Faltas() {
           <h1 style={{ fontSize: 26, fontWeight: 800, color: theme.text }}>📋 Lançamento de Faltas</h1>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
             <button onClick={abrirBolsaFamilia} style={btn('success', { small: true })} title="Ver todos os alunos com Bolsa Família de todas as turmas (qualquer situação)">💚 Bolsa Família</button>
+            <button onClick={abrirMotivos} style={btn('warning', { small: true })} title="Buscar um aluno por nome ou RA e ver o histórico de motivos de baixa frequência mês a mês">🔍 Consultar Motivos</button>
             {alunos.length > 0 && (
               <>
                 <button onClick={exportarFolhaOCR} style={btn('primary', { small: true, outline: true })} title="Folha simples (A4 retrato) para professor preencher número de faltas — fácil de fotografar">📋 Folha</button>
@@ -1244,6 +1297,132 @@ export default function Faltas() {
                 {bfFiltroSit && (
                   <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 8, textAlign: 'right' }}>
                     Mostrando {bfAlunos.filter(a => (a.situacao ?? 'ATIVO') === bfFiltroSit).length} de {bfAlunos.length} alunos
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal Consulta de Motivos ───────────────────────────────────── */}
+      {showMotivos && (
+        <div
+          onClick={() => setShowMotivos(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            background: 'rgba(0,0,0,0.55)', display: 'flex',
+            alignItems: 'flex-start', justifyContent: 'center',
+            padding: '40px 16px',
+            overflowY: 'auto',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: theme.card, borderRadius: theme.radiusMd,
+              boxShadow: '0 8px 40px rgba(0,0,0,0.4)',
+              border: `1px solid ${theme.borderLight}`,
+              width: '100%', maxWidth: 720,
+              padding: 24,
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14, gap: 10 }}>
+              <h2 style={{ fontSize: 20, fontWeight: 800, color: '#d97706', margin: 0 }}>
+                🔍 Consultar Motivos de Baixa Frequência
+              </h2>
+              <button onClick={() => setShowMotivos(false)} style={btn('danger', { small: true, outline: true })}>✕ Fechar</button>
+            </div>
+
+            <label style={label}>Buscar aluno por nome ou RA</label>
+            <input
+              style={input}
+              value={buscaMotivoTexto}
+              onChange={e => { setBuscaMotivoTexto(e.target.value); setAlunoMotivoSel(null); setMotivoHistorico([]); }}
+              placeholder="Digite o nome ou o RA do aluno..."
+              autoFocus
+            />
+
+            {!alunoMotivoSel && buscaMotivoTexto.trim() && (
+              resultadosBuscaMotivo.length === 0 ? (
+                <div style={{ marginTop: 12, fontSize: 13, color: theme.textMuted }}>Nenhum aluno encontrado.</div>
+              ) : (
+                <div style={{ marginTop: 10, maxHeight: 260, overflowY: 'auto', border: `1px solid ${theme.borderLight}`, borderRadius: theme.radius }}>
+                  {resultadosBuscaMotivo.map((a, i) => (
+                    <div
+                      key={a.id}
+                      onClick={() => selecionarAlunoMotivo(a)}
+                      style={{
+                        padding: '8px 12px', cursor: 'pointer', fontSize: 13,
+                        background: i % 2 === 0 ? 'var(--row-even)' : 'var(--row-odd)',
+                        borderBottom: `1px solid ${theme.borderLight}`,
+                        display: 'flex', justifyContent: 'space-between', gap: 10,
+                      }}
+                    >
+                      <span style={{ fontWeight: 600, color: theme.text }}>{a.nome}</span>
+                      <span style={{ color: theme.textMuted }}>RA {a.ra ?? '—'}</span>
+                    </div>
+                  ))}
+                </div>
+              )
+            )}
+
+            {alunoMotivoSel && (
+              <div style={{ marginTop: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 6 }}>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: 15, color: theme.text }}>{alunoMotivoSel.nome}</div>
+                    <div style={{ fontSize: 12, color: theme.textMuted }}>RA {alunoMotivoSel.ra ?? '—'}{alunoMotivoSel.deficiencia ? ` · ♿ ${alunoMotivoSel.deficiencia}` : ''}</div>
+                  </div>
+                  <button onClick={() => { setAlunoMotivoSel(null); setMotivoHistorico([]); }} style={btn('ghost', { small: true })}>← Nova busca</button>
+                </div>
+
+                {motivoHistLoading ? (
+                  <div style={{ textAlign: 'center', padding: 30, color: theme.textMuted }}>
+                    <Spinner size={28} /> <div style={{ marginTop: 10 }}>Carregando histórico...</div>
+                  </div>
+                ) : motivoHistorico.length === 0 ? (
+                  <EmptyState icon="📭" message="Nenhum motivo de baixa frequência lançado para este aluno." />
+                ) : (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12 }}>
+                      <thead>
+                        <tr style={{ background: '#d97706', color: '#fff' }}>
+                          <th style={{ padding: '6px 8px', textAlign: 'left' }}>Mês/Ano</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'center' }}>F</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'center' }}>J</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'center' }}>A</th>
+                          <th style={{ padding: '6px 8px', textAlign: 'left' }}>Motivo</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {motivoHistorico.map((f: any, i: number) => {
+                          const dias = f.frequencia?.startsWith('DIAS:') ? decodeDias(f.frequencia, 31) : null;
+                          const nF = dias ? ct(dias, 'F') : null;
+                          const nJ = dias ? ct(dias, 'J') : null;
+                          const nA = dias ? ct(dias, 'A') : null;
+                          return (
+                            <tr key={f.id} style={{ background: f.seguido ? (isDark ? 'rgba(220,38,38,0.12)' : '#fef2f2') : i % 2 === 0 ? 'var(--row-even)' : 'var(--row-odd)' }}>
+                              <td style={{ padding: '6px 8px', fontWeight: 600, color: theme.text }}>
+                                {f.seguido && <span title="Mesmo motivo repetido em meses seguidos — possível padrão a revisar" style={{ marginRight: 4 }}>⚠️</span>}
+                                {MESES[f.mes - 1]}/{f.ano}
+                              </td>
+                              <td style={{ padding: '6px 8px', textAlign: 'center', color: ST_COR.F }}>{nF ?? '—'}</td>
+                              <td style={{ padding: '6px 8px', textAlign: 'center', color: ST_COR.J }}>{nJ ?? '—'}</td>
+                              <td style={{ padding: '6px 8px', textAlign: 'center', color: ST_COR.A }}>{nA ?? '—'}</td>
+                              <td style={{ padding: '6px 8px', color: theme.textSecondary }}>
+                                <strong>{f.motivo_baixa_frequencia}</strong> — {MOTIVO_BF_POR_CODIGO[f.motivo_baixa_frequencia] ?? '—'}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    {motivoHistorico.some((f: any) => f.seguido) && (
+                      <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: theme.radius, background: isDark ? 'rgba(220,38,38,0.12)' : '#fef2f2', border: '1px solid #dc2626', fontSize: 12, color: '#dc2626', fontWeight: 600 }}>
+                        ⚠️ Este aluno teve o mesmo motivo lançado em meses seguidos — vale revisar se há um padrão (ex.: doença recorrente sem atestado, ou possível negligência).
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
