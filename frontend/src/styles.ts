@@ -228,6 +228,31 @@ export function getDiasLetivos(mes: number, ano: number): number {
 // Compatibilidade retroativa
 export const DIAS_LETIVOS: Record<number, number> = DIAS_LETIVOS_ANO[2026];
 
+// Conta dias letivos num período exato (ex.: "04/02/2026 a 14/08/2026" da
+// Transferência durante o período letivo do Histórico Escolar) — dia a dia,
+// usando o mesmo calendário (feriados, recessos, sábados letivos) da aba
+// Faltas. Datas em 'YYYY-MM-DD'. Retorna null se o intervalo for inválido.
+export function contarDiasLetivosPeriodo(inicioISO: string, fimISO: string): number | null {
+  const inicio = new Date(inicioISO + 'T00:00:00');
+  const fim = new Date(fimISO + 'T00:00:00');
+  if (isNaN(inicio.getTime()) || isNaN(fim.getTime()) || fim < inicio) return null;
+  let letivos = 0;
+  const cursor = new Date(inicio);
+  while (cursor <= fim) {
+    const ano = cursor.getFullYear();
+    const mes = cursor.getMonth() + 1;
+    const dia = cursor.getDate();
+    const dw = cursor.getDay();
+    const weekend = dw === 0 || dw === 6;
+    const sabLetivo = isSabadoLetivo(ano, mes, dia);
+    const feriado = getFeriado(ano, mes, dia);
+    const recesso = isRecesso(ano, mes, dia);
+    if (!feriado && !recesso && (!weekend || sabLetivo)) letivos++;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return letivos;
+}
+
 // ── Ordenação pedagógica das turmas ─────────────────────────────────────────
 // Ordem: 1ªEtapa → 2ªEtapa → 1ºAno → … → 5ºAno → EJA/Alfa → Pós-Alfa → AEE
 export function ordemTurma(nome: string): string {

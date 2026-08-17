@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { supabase } from '../api';
-import { btn, input, label, theme } from '../styles';
+import { btn, input, label, theme, contarDiasLetivosPeriodo } from '../styles';
 
 interface TurmaHistorico {
   nome: string;
@@ -308,6 +308,9 @@ export default function Historico() {
   const [transferenciaDiasLetivos, setTransferenciaDiasLetivos] = useState('');
   const [transferenciaPresencas, setTransferenciaPresencas] = useState('');
   const [transferenciaAusencias, setTransferenciaAusencias] = useState('');
+  const [transferenciaDataInicio, setTransferenciaDataInicio] = useState('');
+  const [transferenciaDataFim, setTransferenciaDataFim] = useState('');
+  const [erroCalculoDiasLetivos, setErroCalculoDiasLetivos] = useState<string | null>(null);
   const [prosseguimentoAno, setProsseguimentoAno] = useState('');
   const [certSerie, setCertSerie] = useState('5º Ano');
   const [via, setVia] = useState('1ª VIA');
@@ -361,6 +364,27 @@ export default function Historico() {
     setTransferenciaAusencias('');
     setProsseguimentoAno('');
     setDataEmissao(new Date().toLocaleDateString('pt-BR'));
+  };
+
+  // Calcula os dias letivos de um período exato (ex.: transferência no meio
+  // do ano) usando o mesmo calendário oficial da aba Faltas — feriados,
+  // recessos e sábados letivos — em vez de exigir contagem manual.
+  const calcularDiasLetivosPeriodo = () => {
+    setErroCalculoDiasLetivos(null);
+    if (!transferenciaDataInicio || !transferenciaDataFim) {
+      setErroCalculoDiasLetivos('Informe a data de início e a data de fim do período.');
+      return;
+    }
+    const total = contarDiasLetivosPeriodo(transferenciaDataInicio, transferenciaDataFim);
+    if (total === null) {
+      setErroCalculoDiasLetivos('Período inválido — confira se a data de fim é depois da data de início.');
+      return;
+    }
+    setAlteradoSemSalvar(true);
+    setTransferenciaDiasLetivos(String(total));
+    if (!transferenciaPeriodo.trim()) {
+      setTransferenciaPeriodo(`${formatarData(transferenciaDataInicio)} a ${formatarData(transferenciaDataFim)}`);
+    }
   };
 
   const buscarComRA = async (ra: number) => {
@@ -1191,6 +1215,25 @@ export default function Historico() {
             <div className="pagina-etiqueta nao-imprimir">Verso — página 2</div>
             <div className="historico-rolagem">
               <section className="historico-pagina historico-verso">
+                <div className="nao-imprimir" style={{ display: 'flex', alignItems: 'flex-end', gap: 10, flexWrap: 'wrap', marginBottom: 8, padding: '10px 12px', background: 'var(--ghost-bg)', borderRadius: theme.radius }}>
+                  <div>
+                    <label style={label} htmlFor="transf-data-inicio">Início do período</label>
+                    <input id="transf-data-inicio" type="date" style={input} value={transferenciaDataInicio} onChange={event => setTransferenciaDataInicio(event.target.value)} />
+                  </div>
+                  <div>
+                    <label style={label} htmlFor="transf-data-fim">Fim do período</label>
+                    <input id="transf-data-fim" type="date" style={input} value={transferenciaDataFim} onChange={event => setTransferenciaDataFim(event.target.value)} />
+                  </div>
+                  <button type="button" onClick={calcularDiasLetivosPeriodo} style={btn('primary', { small: true })}>
+                    📐 Calcular dias letivos
+                  </button>
+                  <span style={{ fontSize: 11, color: theme.textMuted }}>
+                    Preenche "Dias Letivos" (e "Período Letivo", se estiver vazio) usando o calendário oficial — feriados, recessos e sábados letivos.
+                  </span>
+                  {erroCalculoDiasLetivos && (
+                    <span style={{ fontSize: 12, color: theme.danger, fontWeight: 700 }}>{erroCalculoDiasLetivos}</span>
+                  )}
+                </div>
                 <div className="quadro-oficial">
                   <h3 className="titulo-quadro">Transferência durante o período letivo</h3>
                   <table className="tabela-transferencia">
