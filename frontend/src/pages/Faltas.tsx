@@ -98,6 +98,7 @@ export default function Faltas() {
   const [diasAluno, setDiasAluno] = useState<Record<string, Status[]>>({});
   const [statusTextos, setStatusTextos] = useState<Record<string, string>>({});
   const [motivos, setMotivos] = useState<Record<string, string>>({});
+  const [motivosMesAnterior, setMotivosMesAnterior] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [controleErro, setControleErro] = useState('');
@@ -170,7 +171,13 @@ export default function Faltas() {
   useEffect(() => {
     if (!turmaId) { setLoading(false); return; }
     setLoading(true);
-    Promise.all([api.getAlunos(turmaId), api.getFaltas(turmaId, mes, ano)]).then(([al, fa]) => {
+    const mesAnterior = mes === 1 ? 12 : mes - 1;
+    const anoAnterior = mes === 1 ? ano - 1 : ano;
+    Promise.all([
+      api.getAlunos(turmaId),
+      api.getFaltas(turmaId, mes, ano),
+      api.getFaltas(turmaId, mesAnterior, anoAnterior),
+    ]).then(([al, fa, faAnterior]) => {
       // Ordena pelo NR oficial do PDF (numero); empate: ATIVO antes de não-ATIVO
       const sorted = [...al].sort((a: any, b: any) => {
         const diff = (a.numero || 9999) - (b.numero || 9999);
@@ -201,9 +208,14 @@ export default function Faltas() {
       al.forEach((a: any) => {
         if (!mapDias[a.id] && !mapTextos[a.id]) mapDias[a.id] = initDias(numDias);
       });
+      const mapMotivosAnterior: Record<string, string> = {};
+      faAnterior.forEach((f: any) => {
+        if (f.motivo_baixa_frequencia) mapMotivosAnterior[f.alunoId] = f.motivo_baixa_frequencia;
+      });
       setDiasAluno(mapDias);
       setStatusTextos(mapTextos);
       setMotivos(mapMotivos);
+      setMotivosMesAnterior(mapMotivosAnterior);
       setSaved(false);
       setLoading(false);
     });
@@ -1569,6 +1581,7 @@ export default function Faltas() {
                   const rowBg = emAlerta ? 'var(--row-alerta)' : i % 2 === 0 ? 'var(--row-even)' : 'var(--row-odd)';
                   const linhaAtiva = cursor?.alunoId === a.id;
                   const rowBgFinal = linhaAtiva ? (isDark ? 'rgba(37,99,235,0.18)' : '#dbeafe') : rowBg;
+                  const motivoRepetido = !!motivos[a.id] && motivos[a.id] === motivosMesAnterior[a.id];
                   return (
                     <tr key={a.id} style={{ background: rowBgFinal, outline: linhaAtiva ? `2px solid ${isDark ? '#3b82f6' : '#93c5fd'}` : 'none', outlineOffset: '-1px' }}>
                       <td
@@ -1617,6 +1630,14 @@ export default function Faltas() {
                             {a.bolsa_familia && (
                               <span style={{ fontSize: 10, color: '#15803d', fontWeight: 600, display: 'block' }}>
                                 💚 Bolsa Família
+                              </span>
+                            )}
+                            {motivoRepetido && (
+                              <span
+                                title={`Mesmo motivo (${motivos[a.id]}) lançado no mês anterior — verifique se há um padrão`}
+                                style={{ fontSize: 10, color: '#db2777', fontWeight: 700, display: 'block' }}
+                              >
+                                🔁 Motivo repetido
                               </span>
                             )}
                           </div>
@@ -1731,7 +1752,7 @@ export default function Faltas() {
             <span style={{ color: ST_COR.J, fontWeight: 700 }}>🟠 J=Justificado</span>
             <span style={{ color: ST_COR.A, fontWeight: 700 }}>🟣 A=Atestado</span>
             <span style={{ fontSize: 11, color: theme.textMuted }}>
-              · 🎉 Feriado &nbsp; 🏖️ Recesso
+              · 🎉 Feriado &nbsp; 🏖️ Recesso &nbsp; ⚠️ Frequência abaixo do mínimo &nbsp; <span style={{ color: '#db2777', fontWeight: 700 }}>🔁 Motivo repetido do mês anterior</span>
             </span>
             {role === 'admin' && (
               <span style={{ fontSize: 11, color: '#f97316' }}>
@@ -1772,6 +1793,7 @@ export default function Faltas() {
                   const freq = numDias > 0 ? ((numDias - ausencias) / numDias * 100).toFixed(0) : '100';
                   const rowBg = emAlerta ? 'var(--row-alerta)' : i % 2 === 0 ? 'var(--row-even)' : 'var(--row-odd)';
                   const linhaAtiva = linhaFocusada === a.id;
+                  const motivoRepetido = !!motivos[a.id] && motivos[a.id] === motivosMesAnterior[a.id];
                   const campoNum = (tipo: 'F' | 'J' | 'A', valor: number, cor: string) => (
                     <td style={{ textAlign: 'center', padding: '4px 6px' }}>
                       <input
@@ -1803,6 +1825,14 @@ export default function Faltas() {
                         {a.situacao && a.situacao !== 'ATIVO' && (
                           <span style={{ marginLeft: 6, fontSize: 10, color: SITUACAO_COR[a.situacao] ?? theme.textSecondary, fontWeight: 700 }}>
                             {SITUACAO_LABEL[a.situacao] ?? a.situacao}
+                          </span>
+                        )}
+                        {motivoRepetido && (
+                          <span
+                            title={`Mesmo motivo (${motivos[a.id]}) lançado no mês anterior — verifique se há um padrão`}
+                            style={{ marginLeft: 6, fontSize: 10, color: '#db2777', fontWeight: 700 }}
+                          >
+                            🔁 Motivo repetido
                           </span>
                         )}
                       </td>
@@ -1849,6 +1879,9 @@ export default function Faltas() {
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 12, marginTop: 10, marginBottom: 12, alignItems: 'center' }}>
             <span style={{ fontSize: 11, color: theme.textMuted }}>
               ⌨️ Dica: clique no campo F do primeiro aluno e use <strong>Tab</strong> ou <strong>Enter</strong> para pular F → J → A → próximo aluno, sem tirar a mão do teclado.
+            </span>
+            <span style={{ fontSize: 11, color: theme.textMuted }}>
+              · ⚠️ Frequência abaixo do mínimo &nbsp; <span style={{ color: '#db2777', fontWeight: 700 }}>🔁 Motivo repetido do mês anterior</span>
             </span>
           </div>
           )}
