@@ -1153,14 +1153,16 @@ export default function Historico() {
                             <td>
                               <div className="campo-estabelecimento">
                                 <textarea aria-label={`Estabelecimento do ${linha.label}`} className="campo-escola-documento" rows={Math.max(2, Math.ceil(linha.escola.length / 22))} style={campoDocumento} value={linha.escola} onChange={event => atualizarLinha(index, 'escola', event.target.value)} />
-                                {aceitaPermanente && (
+                                {!ehRepeticao && (
                                   <div className="resultado-chips" role="group" aria-label={`Resultado do ${linha.label}`}>
-                                    {(['PERMANECENTE', 'TRANSFERE-SE'] as const).map(opcao => (
+                                    {(aceitaPermanente ? (['PERMANECENTE', 'TRANSFERE-SE'] as const) : (['TRANSFERE-SE'] as const)).map(opcao => (
                                       <button
                                         type="button"
                                         key={opcao}
                                         className={`resultado-chip ${linha.resultado === opcao ? 'ativo' : ''}`}
-                                        onClick={() => atualizarResultadoFinal(index, linha.resultado === opcao ? '' : opcao)}
+                                        onClick={() => aceitaPermanente
+                                          ? atualizarResultadoFinal(index, linha.resultado === opcao ? '' : opcao)
+                                          : atualizarLinha(index, 'resultado', linha.resultado === opcao ? '' : opcao)}
                                       >
                                         {opcao}
                                       </button>
