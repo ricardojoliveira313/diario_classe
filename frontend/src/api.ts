@@ -94,6 +94,12 @@ export const api = {
   getAllEducacenso: async (colunas = '*') => todasAsPaginas((inicio, fim) => supabase
     .from('Educacenso').select(colunas).order('id').range(inicio, fim)),
 
+  atualizarMotivoFalta: async (alunoId: string, mes: number, ano: number, motivo: string | null) => {
+    const { error } = await supabase.from('Falta')
+      .update({ motivo_baixa_frequencia: motivo })
+      .eq('alunoId', alunoId).eq('mes', mes).eq('ano', ano);
+    if (error) throw error;
+  },
   upsertFaltasBatch: async (registros: any[]) => {
     for (let i = 0; i < registros.length; i += CHUNK) {
       const { error } = await supabase

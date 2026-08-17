@@ -4,6 +4,7 @@ import { theme, btn, input, label, MESES, getDiasLetivos, isInfantilTurma, sortT
 import { Loading, EmptyState, StatCard } from '../components';
 import { useAno } from '../AnoContext';
 import { useAuth } from '../AuthContext';
+import { MOTIVOS_BAIXA_FREQUENCIA } from '../motivosBaixaFrequencia';
 
 type Status = 'P' | 'F' | 'J' | 'A';
 const CICLO: Status[] = ['P', 'F', 'J', 'A'];
@@ -43,6 +44,7 @@ interface LinhaBF {
   atestados: number;
   freqPct: number;
   minimoExigido: number;
+  motivoAtual: string | null;
 }
 
 export default function BFFrequencia() {
@@ -56,6 +58,8 @@ export default function BFFrequencia() {
   const [linhaSelecionada, setLinhaSelecionada] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false);
+  const [motivos, setMotivos] = useState<Record<string, string>>({});
+  const [salvandoMotivo, setSalvandoMotivo] = useState<Record<string, boolean>>({});
 
   useEffect(() => { api.getTurmas().then(t => setTurmas(sortTurmasPedagogico(t ?? []))); }, []);
 
@@ -115,13 +119,35 @@ export default function BFFrequencia() {
             aluno, mes, turmaNome, isInfantil: infantil,
             diasLetivos: diasLetivosMes, faltas, justificadas, atestados,
             freqPct, minimoExigido,
+            motivoAtual: registro?.motivo_baixa_frequencia ?? null,
           });
         }
       }
     }
     resultado.sort((a, b) => a.mes - b.mes || a.aluno.nome.localeCompare(b.aluno.nome, 'pt-BR'));
     setLinhas(resultado);
+    const mapMotivos: Record<string, string> = {};
+    resultado.forEach(l => {
+      if (l.motivoAtual) mapMotivos[`${l.aluno.id}-${l.mes}`] = l.motivoAtual;
+    });
+    setMotivos(mapMotivos);
     setLoading(false);
+  };
+
+  // Salva o motivo direto no registro de Falta (aluno/mês/ano) — o mesmo campo
+  // usado na aba Faltas, então as duas telas ficam sempre sincronizadas.
+  const setMotivoLinha = async (linhaId: string, alunoId: string, mes: number, codigo: string) => {
+    setMotivos(prev => {
+      const next = { ...prev };
+      if (codigo) next[linhaId] = codigo; else delete next[linhaId];
+      return next;
+    });
+    setSalvandoMotivo(prev => ({ ...prev, [linhaId]: true }));
+    try {
+      await api.atualizarMotivoFalta(alunoId, mes, ano, codigo || null);
+    } finally {
+      setSalvandoMotivo(prev => ({ ...prev, [linhaId]: false }));
+    }
   };
 
   // Guarda permanentemente no banco os registros calculados — mantém o histórico
@@ -229,6 +255,7 @@ export default function BFFrequencia() {
                     <th style={{ padding: '10px 12px', textAlign: 'center', color: '#fff', fontSize: 13 }}>J</th>
                     <th style={{ padding: '10px 12px', textAlign: 'center', color: '#fff', fontSize: 13 }}>A</th>
                     <th style={{ padding: '10px 12px', textAlign: 'center', color: '#fff', fontSize: 13 }}>Situação</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'center', color: '#fff', fontSize: 13, minWidth: 220 }} title="Código oficial do motivo de baixa frequência — o mesmo lançado no Sistema Presença do governo federal">Motivo da Baixa Frequência</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -278,6 +305,24 @@ export default function BFFrequencia() {
                             ⚠️ SEM JUSTIFICATIVA
                           </span>
                         )}
+                      </td>
+                      <td style={{ padding: '6px 8px' }} onClick={e => e.stopPropagation()}>
+                        <select
+                          value={motivos[linhaId] ?? ''}
+                          onChange={e => setMotivoLinha(linhaId, l.aluno.id, l.mes, e.target.value)}
+                          style={{ ...input, padding: '4px 6px', fontSize: 11, width: '100%' }}
+                          title="Código oficial do motivo de baixa frequência (Bolsa Família/MEC)"
+                        >
+                          <option value="">— selecionar motivo —</option>
+                          {MOTIVOS_BAIXA_FREQUENCIA.map(cat => (
+                            <optgroup key={cat.categoria} label={cat.categoria}>
+                              {cat.itens.map(m => (
+                                <option key={m.codigo} value={m.codigo}>{m.codigo} — {m.descricao}</option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                        {salvandoMotivo[linhaId] && <span style={{ fontSize: 10, color: theme.textMuted }}>Salvando...</span>}
                       </td>
                       </tr>
                     );
