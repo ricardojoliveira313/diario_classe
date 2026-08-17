@@ -6,6 +6,7 @@ import { Loading, EmptyState, StatCard, Spinner } from '../components';
 import { useTheme } from '../ThemeContext';
 import { useAno } from '../AnoContext';
 import { useAuth } from '../AuthContext';
+import { MOTIVOS_BAIXA_FREQUENCIA } from '../motivosBaixaFrequencia';
 
 type Status = 'P' | 'F' | 'J' | 'A';
 const CICLO: Status[] = ['P', 'F', 'J', 'A'];
@@ -96,6 +97,7 @@ export default function Faltas() {
   const [alunos, setAlunos] = useState<any[]>([]);
   const [diasAluno, setDiasAluno] = useState<Record<string, Status[]>>({});
   const [statusTextos, setStatusTextos] = useState<Record<string, string>>({});
+  const [motivos, setMotivos] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [controleErro, setControleErro] = useState('');
@@ -179,18 +181,21 @@ export default function Faltas() {
       }));
       const mapDias: Record<string, Status[]> = {};
       const mapTextos: Record<string, string> = {};
+      const mapMotivos: Record<string, string> = {};
       fa.forEach((f: any) => {
         if (f.frequencia?.startsWith('DIAS:')) {
           mapDias[f.alunoId] = decodeDias(f.frequencia, numDias);
         } else if (f.frequencia) {
           mapTextos[f.alunoId] = f.frequencia;
         }
+        if (f.motivo_baixa_frequencia) mapMotivos[f.alunoId] = f.motivo_baixa_frequencia;
       });
       al.forEach((a: any) => {
         if (!mapDias[a.id] && !mapTextos[a.id]) mapDias[a.id] = initDias(numDias);
       });
       setDiasAluno(mapDias);
       setStatusTextos(mapTextos);
+      setMotivos(mapMotivos);
       setSaved(false);
       setLoading(false);
     });
@@ -298,6 +303,15 @@ export default function Faltas() {
     setSaved(false);
   };
 
+  const setMotivo = (alunoId: string, codigo: string) => {
+    setMotivos(prev => {
+      const next = { ...prev };
+      if (codigo) next[alunoId] = codigo; else delete next[alunoId];
+      return next;
+    });
+    setSaved(false);
+  };
+
   const focusProximoCampo = (el: HTMLInputElement) => {
     const campos = Array.from(document.querySelectorAll<HTMLInputElement>('.quick-input'));
     const idx = campos.indexOf(el);
@@ -310,14 +324,16 @@ export default function Faltas() {
     setSaving(true);
     setControleErro('');
     const registros = alunos.map(a => {
+      const motivo = motivos[a.id] || null;
       if (statusTextos[a.id]) {
-        return { alunoId: a.id, turmaId, mes, ano, faltas: 0, frequencia: statusTextos[a.id] };
+        return { alunoId: a.id, turmaId, mes, ano, faltas: 0, frequencia: statusTextos[a.id], motivo_baixa_frequencia: motivo };
       }
       const dias = diasAluno[a.id] ?? initDias(numDias);
       return {
         alunoId: a.id, turmaId, mes, ano,
         faltas: ct(dias, 'F') + ct(dias, 'J') + ct(dias, 'A'),
         frequencia: encodeDias(dias),
+        motivo_baixa_frequencia: motivo,
       };
     });
     await api.upsertFaltasBatch(registros);
@@ -1359,6 +1375,7 @@ export default function Faltas() {
                   <th style={{ width: 30, textAlign: 'center', fontSize: 11, color: '#c4b5fd', padding: '8px 2px' }}>A</th>
                   <th style={{ width: 52, textAlign: 'center', fontSize: 11, padding: '8px 4px' }}>Freq.</th>
                   <th style={{ width: 58, textAlign: 'center', fontSize: 10, padding: '8px 4px', color: '#a5f3fc' }} title="Frequência considerando atestado como presença">Freq.<br/>c/At.</th>
+                  <th style={{ width: 210, textAlign: 'center', fontSize: 10, padding: '8px 4px' }} title="Código oficial do motivo de baixa frequência (Bolsa Família/MEC)">Motivo da Baixa Frequência</th>
                 </tr>
               </thead>
               <tbody>
@@ -1427,7 +1444,7 @@ export default function Faltas() {
                         </div>
                       </td>
                       {statusTxt ? (
-                        <td colSpan={calDays.length + 5} style={{ textAlign: 'center', color: '#7c3aed', fontStyle: 'italic', fontSize: 12, padding: 8 }}>
+                        <td colSpan={calDays.length + 6} style={{ textAlign: 'center', color: '#7c3aed', fontStyle: 'italic', fontSize: 12, padding: 8 }}>
                           {statusTxt}
                         </td>
                       ) : (
@@ -1478,6 +1495,26 @@ export default function Faltas() {
                           <td style={{ textAlign: 'center', fontWeight: 700, fontSize: 12, padding: '0 4px', color: Number(freqAt) >= 85 ? ST_COR.P : Number(freqAt) >= 75 ? '#ea580c' : ST_COR.F }} title="Frequência considerando atestado como presença">
                             {freqAt}%
                           </td>
+                          <td style={{ padding: '4px 6px' }}>
+                            {ausencias > 0 && (
+                              <select
+                                value={motivos[a.id] ?? ''}
+                                disabled={!podeEditar}
+                                onChange={e => setMotivo(a.id, e.target.value)}
+                                style={{ ...input, padding: '4px 6px', fontSize: 11, width: '100%' }}
+                                title="Código oficial do motivo de baixa frequência (Bolsa Família/MEC)"
+                              >
+                                <option value="">— selecionar motivo —</option>
+                                {MOTIVOS_BAIXA_FREQUENCIA.map(cat => (
+                                  <optgroup key={cat.categoria} label={cat.categoria}>
+                                    {cat.itens.map(m => (
+                                      <option key={m.codigo} value={m.codigo}>{m.codigo} — {m.descricao}</option>
+                                    ))}
+                                  </optgroup>
+                                ))}
+                              </select>
+                            )}
+                          </td>
                         </>
                       )}
                     </tr>
@@ -1501,6 +1538,7 @@ export default function Faltas() {
                   <td style={{ textAlign: 'center', color: totalA > 0 ? ST_COR.A : theme.textMuted, fontWeight: 700, fontSize: 13 }}>{totalA > 0 ? totalA : '—'}</td>
                   <td style={{ textAlign: 'center', fontWeight: 700, fontSize: 13, padding: '0 4px', color: Number(freqGeral) >= 85 ? ST_COR.P : theme.danger }}>{freqGeral}%</td>
                   <td style={{ textAlign: 'center', fontWeight: 700, fontSize: 12, padding: '0 4px', color: Number(freqGeralAt) >= 85 ? ST_COR.P : theme.danger }} title="Freq. geral c/ atestado como presença">{freqGeralAt}%</td>
+                  <td />
                 </tr>
               </tbody>
             </table>
@@ -1542,6 +1580,7 @@ export default function Faltas() {
                   <th style={{ width: 70, textAlign: 'center', fontSize: 12, padding: '8px 4px', color: '#c4b5fd' }}>A<br /><span style={{ fontSize: 9, fontWeight: 400 }}>Atestado</span></th>
                   <th style={{ width: 60, textAlign: 'center', fontSize: 11, padding: '8px 4px', color: '#bbf7d0' }}>P<br /><span style={{ fontSize: 9, fontWeight: 400 }}>calc.</span></th>
                   <th style={{ width: 60, textAlign: 'center', fontSize: 11, padding: '8px 4px' }}>Freq.</th>
+                  <th style={{ width: 210, textAlign: 'center', fontSize: 10, padding: '8px 4px' }} title="Código oficial do motivo de baixa frequência (Bolsa Família/MEC)">Motivo da Baixa Frequência</th>
                 </tr>
               </thead>
               <tbody>
@@ -1589,7 +1628,7 @@ export default function Faltas() {
                         )}
                       </td>
                       {statusTxt ? (
-                        <td colSpan={5} style={{ textAlign: 'center', color: '#7c3aed', fontStyle: 'italic', fontSize: 12, padding: 8 }}>{statusTxt}</td>
+                        <td colSpan={6} style={{ textAlign: 'center', color: '#7c3aed', fontStyle: 'italic', fontSize: 12, padding: 8 }}>{statusTxt}</td>
                       ) : (
                         <>
                           {campoNum('F', nF, ST_COR.F)}
@@ -1597,6 +1636,26 @@ export default function Faltas() {
                           {campoNum('A', nA, ST_COR.A)}
                           <td style={{ textAlign: 'center', fontWeight: 700, fontSize: 13, color: ST_COR.P }}>{nP}</td>
                           <td style={{ textAlign: 'center', fontWeight: 700, fontSize: 13, color: Number(freq) >= 85 ? ST_COR.P : Number(freq) >= 75 ? '#ea580c' : ST_COR.F }}>{freq}%</td>
+                          <td style={{ padding: '4px 6px' }}>
+                            {ausencias > 0 && (
+                              <select
+                                value={motivos[a.id] ?? ''}
+                                disabled={!podeEditar}
+                                onChange={e => setMotivo(a.id, e.target.value)}
+                                style={{ ...input, padding: '4px 6px', fontSize: 11, width: '100%' }}
+                                title="Código oficial do motivo de baixa frequência (Bolsa Família/MEC)"
+                              >
+                                <option value="">— selecionar motivo —</option>
+                                {MOTIVOS_BAIXA_FREQUENCIA.map(cat => (
+                                  <optgroup key={cat.categoria} label={cat.categoria}>
+                                    {cat.itens.map(m => (
+                                      <option key={m.codigo} value={m.codigo}>{m.codigo} — {m.descricao}</option>
+                                    ))}
+                                  </optgroup>
+                                ))}
+                              </select>
+                            )}
+                          </td>
                         </>
                       )}
                     </tr>
