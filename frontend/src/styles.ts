@@ -42,12 +42,12 @@ export type BtnVariant = 'primary' | 'success' | 'danger' | 'warning' | 'sky' | 
 
 export function btn(variant: BtnVariant = 'primary', opts: { small?: boolean; full?: boolean; outline?: boolean } = {}): React.CSSProperties {
   const colors = {
-    primary: { bg: theme.primary, hover: theme.primaryHover, text: '#fff' },
-    success: { bg: theme.success, hover: theme.successHover, text: '#fff' },
-    danger: { bg: theme.danger, hover: theme.dangerHover, text: '#fff' },
-    warning: { bg: theme.warning, hover: theme.warningHover, text: '#fff' },
-    sky: { bg: theme.sky, hover: theme.skyHover, text: '#fff' },
-    ghost: { bg: 'var(--ghost-bg)', hover: 'var(--ghost-hover)', text: theme.text },
+    primary: { bg: theme.primary, hover: theme.primaryHover, text: '#fff', outline: theme.primaryText },
+    success: { bg: theme.success, hover: theme.successHover, text: '#fff', outline: theme.success },
+    danger: { bg: theme.danger, hover: theme.dangerHover, text: '#fff', outline: theme.danger },
+    warning: { bg: theme.warning, hover: theme.warningHover, text: '#fff', outline: theme.warning },
+    sky: { bg: theme.sky, hover: theme.skyHover, text: '#fff', outline: theme.sky },
+    ghost: { bg: 'var(--ghost-bg)', hover: 'var(--ghost-hover)', text: theme.text, outline: theme.text },
   };
   const c = colors[variant];
   return {
@@ -55,7 +55,7 @@ export function btn(variant: BtnVariant = 'primary', opts: { small?: boolean; fu
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    border: opts.outline ? `1.5px solid ${c.bg}` : 'none',
+    border: opts.outline ? `1.5px solid ${c.outline}` : 'none',
     cursor: 'pointer',
     fontWeight: 600,
     borderRadius: theme.radius,
@@ -65,7 +65,7 @@ export function btn(variant: BtnVariant = 'primary', opts: { small?: boolean; fu
     ...(opts.small ? { padding: '8px 14px', fontSize: 13 } : { padding: '12px 20px', fontSize: 15 }),
     ...(opts.full ? { width: '100%' } : {}),
     background: opts.outline ? 'transparent' : c.bg,
-    color: opts.outline ? c.bg : c.text,
+    color: opts.outline ? c.outline : c.text,
   };
 }
 
