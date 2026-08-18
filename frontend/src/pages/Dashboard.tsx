@@ -59,6 +59,60 @@ function PrazoSistemaPresenca() {
   );
 }
 
+// ─── Card de prazos do Censo Escolar / Educacenso ──────────────────────────
+function PrazoEducacenso() {
+  const hoje = new Date();
+  const anoAtual = hoje.getFullYear();
+  const diaDoAno = (d: Date) => Math.floor((d.getTime() - new Date(d.getFullYear(), 0, 0).getTime()) / 86400000);
+
+  // Data-base oficial do Censo Escolar (última quarta-feira de maio) varia a cada
+  // ano — usamos 27/05 como referência 2026; ajuste aqui se o INEP mudar a data.
+  const dataBase = new Date(anoAtual, 4, 27);       // 27/05
+  const avisoIni = new Date(anoAtual, 4, 20);       // 20/05 — janela de aviso antes do corte
+  const coletaFim = new Date(anoAtual, 6, 31);      // 31/07 — fim da coleta/ajustes
+
+  let fase: 'aviso' | 'coleta' | 'fora' = 'fora';
+  let fimFase: Date | null = null;
+  if (hoje >= avisoIni && hoje < dataBase) { fase = 'aviso'; fimFase = dataBase; }
+  else if (hoje >= dataBase && hoje <= coletaFim) { fase = 'coleta'; fimFase = coletaFim; }
+
+  if (fase === 'fora') return null;
+
+  const diasRestantes = fimFase ? diaDoAno(fimFase) - diaDoAno(hoje) : 0;
+  const urgente = diasRestantes <= 3;
+
+  const textos = {
+    aviso: {
+      titulo: '🔗 Censo Escolar — data-base se aproxima (27/05)',
+      desc: 'Todo aluno matriculado e frequentando até a data-base fica vinculado a esta escola no Educacenso, mesmo que saia depois. Confira matrículas e frequência antes do corte.',
+    },
+    coleta: {
+      titulo: '🔗 Censo Escolar — período de ajustes (até 31/07)',
+      desc: 'Confira turmas, profissionais e a Relação de Alunos no Educacenso. Use a tela "Educacenso" para cruzar com o cadastro do app e resolver divergências antes do fechamento.',
+    },
+  } as const;
+
+  const t = textos[fase];
+  const cor = urgente ? theme.danger : theme.orange;
+
+  return (
+    <div style={{
+      background: urgente ? theme.dangerLight : `${theme.orange}18`,
+      border: `1px solid ${cor}`, borderRadius: theme.radiusMd,
+      padding: '12px 16px', marginBottom: 16,
+      display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8,
+    }}>
+      <div>
+        <div style={{ fontWeight: 700, fontSize: 14, color: cor }}>{t.titulo}</div>
+        <div style={{ fontSize: 12.5, color: theme.textSecondary, marginTop: 2 }}>{t.desc}</div>
+      </div>
+      <div style={{ fontWeight: 800, fontSize: 13, color: cor, whiteSpace: 'nowrap' }}>
+        {diasRestantes === 0 ? 'Último dia!' : `${diasRestantes} dia${diasRestantes !== 1 ? 's' : ''} restante${diasRestantes !== 1 ? 's' : ''}`}
+      </div>
+    </div>
+  );
+}
+
 // ─── Modal de detalhe (overlay fixo, sempre visível) ──────────────────────
 function ModalDetalhe({ titulo, cor, lista, colunas, onClose, nota }: {
   titulo: string; cor: string;
@@ -451,6 +505,7 @@ export default function Dashboard() {
       </div>
 
       <PrazoSistemaPresenca />
+      <PrazoEducacenso />
 
       {total === 0 ? (
         <EmptyState icon="📥" message="Nenhum dado importado ainda."
