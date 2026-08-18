@@ -32,6 +32,18 @@ const decodeDias = (freq: string, n: number): Status[] => {
 };
 const ct = (dias: Status[], tipo: Status) => dias.filter(d => d === tipo).length;
 
+// Maior sequência de faltas ('F') não justificadas seguidas — dias não letivos já ficam
+// fora do array `dias`, então a contagem naturalmente pula recesso/férias/fins de semana.
+const NCOM_LIMITE = 15;
+const maxFaltasConsecutivas = (dias: Status[]) => {
+  let max = 0, atual = 0;
+  for (const d of dias) {
+    atual = d === 'F' ? atual + 1 : 0;
+    if (atual > max) max = atual;
+  }
+  return max;
+};
+
 interface CalendarDay {
   dia: number;
   isWeekend: boolean;
@@ -1655,6 +1667,7 @@ export default function Faltas() {
                   const nP = ct(dias, 'P'), nF = ct(dias, 'F'), nJ = ct(dias, 'J'), nA = ct(dias, 'A');
                   const ausencias = nF + nJ + nA;
                   const emAlerta = !statusTxt && ausencias >= limiteAlerta;
+                  const ncomAlerta = !statusTxt && maxFaltasConsecutivas(dias) >= NCOM_LIMITE;
                   const freq = ((numDias - ausencias) / numDias * 100).toFixed(0);
                   const freqAt = ((numDias - (nF + nJ)) / numDias * 100).toFixed(0);
                   const rowBg = emAlerta ? 'var(--row-alerta)' : i % 2 === 0 ? 'var(--row-even)' : 'var(--row-odd)';
@@ -1696,6 +1709,14 @@ export default function Faltas() {
                               {emAlerta && <span title="Frequência abaixo de 75%">⚠️</span>}
                               {a.nome}
                             </div>
+                            {ncomAlerta && (
+                              <span
+                                title={`${maxFaltasConsecutivas(dias)} faltas consecutivas sem justificativa — regra da SED para caracterizar Não Comparecimento (NCOM) a partir de 15. Registre 3 tentativas de contato com a família antes de dar baixa no SED.`}
+                                style={{ fontSize: 10, color: '#b91c1c', fontWeight: 800, display: 'block' }}
+                              >
+                                🚨 Possível NCOM ({maxFaltasConsecutivas(dias)} faltas seguidas)
+                              </span>
+                            )}
                             {a.situacao && a.situacao !== 'ATIVO' && (
                               <span style={{ fontSize: 10, color: SITUACAO_COR[a.situacao] ?? theme.textSecondary, fontWeight: 700, display: 'block' }}>
                                 {SITUACAO_LABEL[a.situacao] ?? a.situacao}
@@ -1831,7 +1852,7 @@ export default function Faltas() {
             <span style={{ color: ST_COR.J, fontWeight: 700 }}>🟠 J=Justificado</span>
             <span style={{ color: ST_COR.A, fontWeight: 700 }}>🟣 A=Atestado</span>
             <span style={{ fontSize: 11, color: theme.textMuted }}>
-              · 🎉 Feriado &nbsp; 🏖️ Recesso &nbsp; ⚠️ Frequência abaixo do mínimo &nbsp; <span style={{ color: '#db2777', fontWeight: 700 }}>🔁 Motivo repetido do mês anterior</span>
+              · 🎉 Feriado &nbsp; 🏖️ Recesso &nbsp; ⚠️ Frequência abaixo do mínimo &nbsp; <span style={{ color: '#b91c1c', fontWeight: 700 }}>🚨 Possível NCOM (15+ faltas seguidas)</span> &nbsp; <span style={{ color: '#db2777', fontWeight: 700 }}>🔁 Motivo repetido do mês anterior</span>
             </span>
             {role === 'admin' && (
               <span style={{ fontSize: 11, color: '#f97316' }}>
@@ -1869,6 +1890,7 @@ export default function Faltas() {
                   const nF = ct(dias, 'F'), nJ = ct(dias, 'J'), nA = ct(dias, 'A'), nP = ct(dias, 'P');
                   const ausencias = nF + nJ + nA;
                   const emAlerta = !statusTxt && ausencias >= limiteAlerta;
+                  const ncomAlerta = !statusTxt && maxFaltasConsecutivas(dias) >= NCOM_LIMITE;
                   const freq = numDias > 0 ? ((numDias - ausencias) / numDias * 100).toFixed(0) : '100';
                   const rowBg = emAlerta ? 'var(--row-alerta)' : i % 2 === 0 ? 'var(--row-even)' : 'var(--row-odd)';
                   const linhaAtiva = linhaFocusada === a.id;
@@ -1899,6 +1921,11 @@ export default function Faltas() {
                         <span style={{ fontSize: 11, color: theme.textMuted, marginRight: 6 }}>{(a._nrDisplay === 0 ? '—' : a.numero) || '—'}</span>
                         <span style={{ fontSize: 13, fontWeight: linhaAtiva ? 800 : 600, color: linhaAtiva ? (isDark ? '#93c5fd' : '#1d4ed8') : theme.text }}>
                           {emAlerta && <span title="Frequência abaixo do limite">⚠️ </span>}
+                          {ncomAlerta && (
+                            <span
+                              title={`${maxFaltasConsecutivas(dias)} faltas consecutivas sem justificativa — regra da SED para caracterizar Não Comparecimento (NCOM) a partir de 15. Registre 3 tentativas de contato com a família antes de dar baixa no SED.`}
+                            >🚨 </span>
+                          )}
                           {a.nome}
                         </span>
                         {a.situacao && a.situacao !== 'ATIVO' && (
@@ -1960,7 +1987,7 @@ export default function Faltas() {
               ⌨️ Dica: clique no campo F do primeiro aluno e use <strong>Tab</strong> ou <strong>Enter</strong> para pular F → J → A → próximo aluno, sem tirar a mão do teclado.
             </span>
             <span style={{ fontSize: 11, color: theme.textMuted }}>
-              · ⚠️ Frequência abaixo do mínimo &nbsp; <span style={{ color: '#db2777', fontWeight: 700 }}>🔁 Motivo repetido do mês anterior</span>
+              · ⚠️ Frequência abaixo do mínimo &nbsp; <span style={{ color: '#b91c1c', fontWeight: 700 }}>🚨 Possível NCOM (15+ faltas seguidas)</span> &nbsp; <span style={{ color: '#db2777', fontWeight: 700 }}>🔁 Motivo repetido do mês anterior</span>
             </span>
           </div>
           )}
