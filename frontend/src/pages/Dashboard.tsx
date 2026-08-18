@@ -6,6 +6,59 @@ import { useAno } from '../AnoContext';
 
 type DetalheCard = 'bf' | 'defiRegular' | 'defiAEE' | null;
 
+// ─── Card de prazos do Sistema Presença (Bolsa Família) ───────────────────
+function PrazoSistemaPresenca() {
+  const hoje = new Date();
+  const anoAtual = hoje.getFullYear();
+  const diaDoAno = (d: Date) => Math.floor((d.getTime() - new Date(d.getFullYear(), 0, 0).getTime()) / 86400000);
+
+  const preparoIni = new Date(anoAtual, 6, 15);  // 15/07
+  const preparoFim = new Date(anoAtual, 6, 31);  // 31/07
+  const lancIni    = new Date(anoAtual, 7, 1);   // 01/08
+  const lancFim    = new Date(anoAtual, 7, 20);  // 20/08
+
+  let fase: 'preparo' | 'lancamento' | 'fora' = 'fora';
+  let fimFase: Date | null = null;
+  if (hoje >= preparoIni && hoje <= preparoFim) { fase = 'preparo'; fimFase = preparoFim; }
+  else if (hoje >= lancIni && hoje <= lancFim) { fase = 'lancamento'; fimFase = lancFim; }
+
+  if (fase === 'fora') return null;
+
+  const diasRestantes = fimFase ? diaDoAno(fimFase) - diaDoAno(hoje) : 0;
+  const urgente = diasRestantes <= 3;
+
+  const textos = {
+    preparo: {
+      titulo: '📋 Sistema Presença — período de preparação',
+      desc: 'Receber alunos transferidos, efetuar transferências enviadas e imprimir a Planilha de Frequência (Infantil <60% · Fundamental <75%).',
+    },
+    lancamento: {
+      titulo: '⏰ Sistema Presença — período de lançamento',
+      desc: 'Lançar 99% (Frequência Integral) para todos e, em seguida, a frequência real com o motivo da baixa frequência para quem estiver abaixo do mínimo.',
+    },
+  } as const;
+
+  const t = textos[fase as 'preparo' | 'lancamento'];
+  const cor = urgente ? theme.danger : theme.orange;
+
+  return (
+    <div style={{
+      background: urgente ? theme.dangerLight : `${theme.orange}18`,
+      border: `1px solid ${cor}`, borderRadius: theme.radiusMd,
+      padding: '12px 16px', marginBottom: 16,
+      display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8,
+    }}>
+      <div>
+        <div style={{ fontWeight: 700, fontSize: 14, color: cor }}>{t.titulo}</div>
+        <div style={{ fontSize: 12.5, color: theme.textSecondary, marginTop: 2 }}>{t.desc}</div>
+      </div>
+      <div style={{ fontWeight: 800, fontSize: 13, color: cor, whiteSpace: 'nowrap' }}>
+        {diasRestantes === 0 ? 'Último dia!' : `${diasRestantes} dia${diasRestantes !== 1 ? 's' : ''} restante${diasRestantes !== 1 ? 's' : ''}`}
+      </div>
+    </div>
+  );
+}
+
 // ─── Modal de detalhe (overlay fixo, sempre visível) ──────────────────────
 function ModalDetalhe({ titulo, cor, lista, colunas, onClose, nota }: {
   titulo: string; cor: string;
@@ -396,6 +449,8 @@ export default function Dashboard() {
           {MESES_ABR.map((m, i) => <option key={i + 1} value={i + 1}>{m} {ano}</option>)}
         </select>
       </div>
+
+      <PrazoSistemaPresenca />
 
       {total === 0 ? (
         <EmptyState icon="📥" message="Nenhum dado importado ainda."

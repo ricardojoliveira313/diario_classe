@@ -107,6 +107,9 @@ export default function Faltas() {
   const [bfAlunos, setBfAlunos] = useState<any[]>([]);
   const [bfLoading, setBfLoading] = useState(false);
   const [bfFiltroSit, setBfFiltroSit] = useState('');
+  const [showInep, setShowInep] = useState(false);
+  const [inepCodigo, setInepCodigo] = useState('');
+  const [arquivado, setArquivado] = useState(false);
 
   // ── Consulta de Motivos — busca por aluno (nome/RA) e histórico de motivos ──
   const [showMotivos, setShowMotivos] = useState(false);
@@ -383,6 +386,30 @@ export default function Faltas() {
 
   // Limpa seleção ao trocar turma ou mês
   useEffect(() => { setPaintStatus(null); setCursor(null); setNumBuffer(''); }, [turmaId, mes]);
+
+  // Checklist de arquivo do Relatório Registro de Frequência — persistido localmente por turma/mês/ano
+  useEffect(() => {
+    if (!turmaId) return;
+    setArquivado(localStorage.getItem(`arquivadoFreq_${ano}_${mes}_${turmaId}`) === '1');
+  }, [turmaId, mes, ano]);
+
+  const alternarArquivado = () => {
+    setArquivado(v => {
+      const novo = !v;
+      localStorage.setItem(`arquivadoFreq_${ano}_${mes}_${turmaId}`, novo ? '1' : '0');
+      return novo;
+    });
+  };
+
+  const converterInep = (sed: string): string => {
+    const digitos = sed.replace(/\D/g, '');
+    if (!digitos) return '';
+    if (digitos.length <= 4) return '35' + digitos.padStart(6, '0');
+    if (digitos.length === 5) return '35' + digitos.padStart(6, '0');
+    if (digitos.length === 6) return '35' + digitos;
+    if (digitos.length === 7) return '3' + digitos;
+    return digitos;
+  };
   // Sai do Modo Digitação Sequencial se trocar para o Modo Rápido
   useEffect(() => { if (modo !== 'grade') { setCursor(null); setNumBuffer(''); } }, [modo]);
 
@@ -1041,6 +1068,7 @@ export default function Faltas() {
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
             <button onClick={abrirBolsaFamilia} style={btn('success', { small: true })} title="Ver todos os alunos com Bolsa Família de todas as turmas (qualquer situação)">💚 Bolsa Família</button>
             <button onClick={abrirMotivos} style={btn('warning', { small: true })} title="Buscar um aluno por nome ou RA e ver o histórico de motivos de baixa frequência mês a mês">🔍 Consultar Motivos</button>
+            <button onClick={() => setShowInep(true)} style={btn('primary', { small: true, outline: true })} title="Converter código da escola do SED para o código INEP de 8 dígitos usado no Sistema Presença">🔢 Código INEP</button>
             {alunos.length > 0 && (
               <>
                 <button onClick={exportarFolhaOCR} style={btn('primary', { small: true, outline: true })} title="Folha simples (A4 retrato) para professor preencher número de faltas — fácil de fotografar">📋 Folha</button>
@@ -1052,6 +1080,12 @@ export default function Faltas() {
             )}
           </div>
         </div>
+        {turmaId && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: theme.textSecondary, marginBottom: 12, cursor: 'pointer', width: 'fit-content' }}>
+            <input type="checkbox" checked={arquivado} onChange={alternarArquivado} />
+            📁 Relatório Registro de Frequência impresso, assinado e arquivado (Sistema Presença)
+          </label>
+        )}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
           <div>
             <label style={label}>Turma</label>
@@ -1170,6 +1204,51 @@ export default function Faltas() {
       </div>
 
       {/* ── Modal Bolsa Família ─────────────────────────────────────────── */}
+      {showInep && (
+        <div
+          onClick={() => setShowInep(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            background: 'rgba(0,0,0,0.55)', display: 'flex',
+            alignItems: 'center', justifyContent: 'center',
+            padding: 16,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: theme.card, borderRadius: theme.radiusMd,
+              boxShadow: '0 8px 40px rgba(0,0,0,0.4)',
+              border: `1px solid ${theme.borderLight}`,
+              width: '100%', maxWidth: 420, padding: 24,
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 800, color: theme.text, margin: 0 }}>🔢 Conversor de Código INEP</h2>
+              <button onClick={() => setShowInep(false)} style={btn('danger', { small: true, outline: true })}>✕</button>
+            </div>
+            <p style={{ fontSize: 12.5, color: theme.textSecondary, marginBottom: 14 }}>
+              O código do SED (4 a 7 dígitos) precisa virar o código INEP de 8 dígitos usado no Sistema Presença.
+            </p>
+            <label style={label}>Código no SED</label>
+            <input
+              style={input} value={inepCodigo} placeholder="Ex.: 4539"
+              onChange={e => setInepCodigo(e.target.value.replace(/\D/g, '').slice(0, 7))}
+            />
+            {inepCodigo && (
+              <div style={{
+                marginTop: 14, padding: '12px 14px', borderRadius: theme.radius,
+                background: `${theme.success}18`, border: `1px solid ${theme.success}`,
+                textAlign: 'center',
+              }}>
+                <div style={{ fontSize: 11, color: theme.textMuted, fontWeight: 600 }}>CÓDIGO INEP (SISTEMA PRESENÇA)</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: theme.success, letterSpacing: 1 }}>{converterInep(inepCodigo)}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {showBF && (
         <div
           onClick={() => setShowBF(false)}
