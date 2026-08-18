@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import { theme, btn, input, label, MESES, getDiasLetivos, isInfantilTurma, sortTurmasPedagogico } from '../styles';
 import { Loading, EmptyState, StatCard } from '../components';
@@ -60,6 +60,30 @@ export default function BFFrequencia() {
   const [salvo, setSalvo] = useState(false);
   const [motivos, setMotivos] = useState<Record<string, string>>({});
   const [salvandoMotivo, setSalvandoMotivo] = useState<Record<string, boolean>>({});
+  type OrdemCampo = 'mes' | 'aluno' | 'turma' | 'minimo' | 'freq' | 'faltas' | 'justificadas' | 'atestados' | 'situacao';
+  const [ordemCampo, setOrdemCampo] = useState<OrdemCampo>('mes');
+  const [ordemDir, setOrdemDir] = useState<'asc' | 'desc'>('asc');
+
+  const alternarOrdem = (campo: OrdemCampo) => {
+    if (ordemCampo === campo) {
+      setOrdemDir(dir => (dir === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setOrdemCampo(campo);
+      setOrdemDir('asc');
+    }
+  };
+
+  const setaOrdem = (campo: OrdemCampo) => ordemCampo === campo ? (ordemDir === 'asc' ? ' ▲' : ' ▼') : '';
+
+  const thOrdenavel = (campo: OrdemCampo, texto: string, align: 'left' | 'center' = 'left') => (
+    <th
+      onClick={() => alternarOrdem(campo)}
+      title="Clique para ordenar"
+      style={{ padding: '10px 12px', textAlign: align, color: '#fff', fontSize: 13, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
+    >
+      {texto}{setaOrdem(campo)}
+    </th>
+  );
 
   useEffect(() => { api.getTurmas().then(t => setTurmas(sortTurmasPedagogico(t ?? []))); }, []);
 
@@ -187,6 +211,35 @@ export default function BFFrequencia() {
   const comAtestado = linhas?.filter(l => l.atestados > 0).length ?? 0;
   const semJustificativa = linhas?.filter(l => l.atestados === 0).length ?? 0;
 
+  const linhasOrdenadas = useMemo(() => {
+    if (!linhas) return null;
+    const mult = ordemDir === 'asc' ? 1 : -1;
+    const situacaoTxt = (l: LinhaBF) => l.atestados > 0 ? 'COM ATESTADO' : 'SEM JUSTIFICATIVA';
+    const valores: Record<OrdemCampo, (l: LinhaBF) => number | string> = {
+      mes: l => l.mes,
+      aluno: l => l.aluno.nome ?? '',
+      turma: l => l.turmaNome ?? '',
+      minimo: l => l.minimoExigido,
+      freq: l => l.freqPct,
+      faltas: l => l.faltas,
+      justificadas: l => l.justificadas,
+      atestados: l => l.atestados,
+      situacao: l => situacaoTxt(l),
+    };
+    const getValor = valores[ordemCampo];
+    return [...linhas].sort((a, b) => {
+      const va = getValor(a), vb = getValor(b);
+      let cmp: number;
+      if (typeof va === 'string' || typeof vb === 'string') {
+        cmp = String(va).localeCompare(String(vb), 'pt-BR', { sensitivity: 'base' });
+      } else {
+        cmp = (va as number) - (vb as number);
+      }
+      if (cmp === 0) cmp = a.aluno.nome.localeCompare(b.aluno.nome, 'pt-BR');
+      return cmp * mult;
+    });
+  }, [linhas, ordemCampo, ordemDir]);
+
   return (
     <div style={{ marginTop: 16, animation: 'fadeIn 0.25s ease both' }}>
       <div style={{ background: theme.card, borderRadius: theme.radiusMd, padding: 20, marginBottom: 16, boxShadow: theme.shadow, border: `1px solid ${theme.borderLight}` }}>
@@ -246,20 +299,20 @@ export default function BFFrequencia() {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: theme.primary }}>
-                    <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontSize: 13 }}>Mês</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontSize: 13 }}>Aluno</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontSize: 13 }}>Turma</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'center', color: '#fff', fontSize: 13 }}>Mínimo</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'center', color: '#fff', fontSize: 13 }}>Freq.</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'center', color: '#fff', fontSize: 13 }}>F</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'center', color: '#fff', fontSize: 13 }}>J</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'center', color: '#fff', fontSize: 13 }}>A</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'center', color: '#fff', fontSize: 13 }}>Situação</th>
+                    {thOrdenavel('mes', 'Mês')}
+                    {thOrdenavel('aluno', 'Aluno')}
+                    {thOrdenavel('turma', 'Turma')}
+                    {thOrdenavel('minimo', 'Mínimo', 'center')}
+                    {thOrdenavel('freq', 'Freq.', 'center')}
+                    {thOrdenavel('faltas', 'F', 'center')}
+                    {thOrdenavel('justificadas', 'J', 'center')}
+                    {thOrdenavel('atestados', 'A', 'center')}
+                    {thOrdenavel('situacao', 'Situação', 'center')}
                     <th style={{ padding: '10px 12px', textAlign: 'center', color: '#fff', fontSize: 13, minWidth: 220 }} title="Código oficial do motivo de baixa frequência — o mesmo lançado no Sistema Presença do governo federal">Motivo da Baixa Frequência</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {linhas.map((l, i) => {
+                  {(linhasOrdenadas ?? []).map((l, i) => {
                     const linhaId = `${l.aluno.id}-${l.mes}`;
                     const selecionada = linhaSelecionada === linhaId;
                     return (
