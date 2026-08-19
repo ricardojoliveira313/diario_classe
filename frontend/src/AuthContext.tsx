@@ -6,9 +6,8 @@
 //   Formato de cada entrada: usuario:senha:perfil
 //   Perfis disponíveis: admin (acesso total) | viewer (somente visualização)
 //
-// Padrões (se VITE_USERS não estiver definida):
-//   gestao:gestao2026:admin
-//   escola:escola2026:viewer
+// Se VITE_USERS não estiver definida, não há usuários de atalho — o login
+// usa exclusivamente a tabela Usuario no Supabase (cadastre por lá).
 //
 // A sessão persiste enquanto o browser estiver aberto (sessionStorage).
 //
@@ -73,9 +72,12 @@ interface AuthCtx {
 }
 
 // ─── Parse dos usuários da variável de ambiente ─────────────────────────────
-const DEFAULT_USERS = 'gestao:gestao2026:admin,escola:escola2026:viewer,ricojoliveira:rico900271:admin';
+// SEM fallback hardcoded: uma lista de usuário/senha fixa no código-fonte vai
+// para o bundle JS público, visível a qualquer visitante (achado crítico da
+// auditoria de ago/2026). Login sem VITE_USERS configurada cai direto na
+// tabela Usuario do Supabase via RPC verificar_login (senha nunca em claro).
 const VITE_USERS = (import.meta as any).env?.VITE_USERS || '';
-const USERS_RAW = VITE_USERS ? `${VITE_USERS},${DEFAULT_USERS}` : DEFAULT_USERS;
+const USERS_RAW = VITE_USERS;
 
 interface UserEntry { usuario: string; senha: string; role: Role; }
 

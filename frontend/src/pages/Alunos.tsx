@@ -197,9 +197,12 @@ export default function Alunos() {
   const isAtivo = (a: any) => !a.situacao || a.situacao === 'ATIVO';
   // Alunos de AEE têm 2 registros (turma regular + sala de recursos) — deduplica por RA
   // nos totais para bater com o Dashboard; a listagem/tabela abaixo mostra os 2 registros.
-  const alunosDedup = dedupeAlunosPorRA(alunos);
-  const totalDedup = alunosDedup.length;
-  const totalAtivos = alunosDedup.filter(isAtivo).length;
+  // IMPORTANTE: dedupeAlunosPorRA mantém o primeiro registro que encontrar por RA,
+  // não necessariamente o ativo — por isso filtra ativos ANTES de deduplicar
+  // (igual ao Dashboard), senão um RA cujo registro ativo apareça depois de um
+  // REMA/TRAN/AEE antigo no array é perdido da contagem de ativos.
+  const totalDedup = dedupeAlunosPorRA(alunos).length;
+  const totalAtivos = dedupeAlunosPorRA(alunos.filter(isAtivo)).length;
   const totalBolsa  = alunos.filter(a => a.bolsa_familia && isAtivo(a)).length;
 
   // Defi. Regular = total de alunos activos com deficiência (inclui os que também estão em AEE)
