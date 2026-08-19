@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { api, supabase } from '../api';
-import { theme, btn, input, label, SITUACAO_COR, SITUACAO_LABEL, SITUACOES, card as cardStyle, row, sortTurmasPedagogico, ordemTurma } from '../styles';
+import { theme, btn, input, label, SITUACAO_COR, SITUACAO_LABEL, SITUACOES, card as cardStyle, row, sortTurmasPedagogico, ordemTurma, dedupeAlunosPorRA } from '../styles';
 import { Loading, EmptyState, StatCard, Spinner } from '../components';
 import { useAuth } from '../AuthContext';
 
@@ -195,7 +195,11 @@ export default function Alunos() {
   }).sort(sortByNr);
 
   const isAtivo = (a: any) => !a.situacao || a.situacao === 'ATIVO';
-  const totalAtivos = alunos.filter(isAtivo).length;
+  // Alunos de AEE têm 2 registros (turma regular + sala de recursos) — deduplica por RA
+  // nos totais para bater com o Dashboard; a listagem/tabela abaixo mostra os 2 registros.
+  const alunosDedup = dedupeAlunosPorRA(alunos);
+  const totalDedup = alunosDedup.length;
+  const totalAtivos = alunosDedup.filter(isAtivo).length;
   const totalBolsa  = alunos.filter(a => a.bolsa_familia && isAtivo(a)).length;
 
   // Defi. Regular = total de alunos activos com deficiência (inclui os que também estão em AEE)
@@ -649,8 +653,8 @@ export default function Alunos() {
 
       {!modoCpfRapido && loading ? <Loading /> : !modoCpfRapido && alunos.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10, marginBottom: 14 }}>
-          <StatCard label="Total" val={alunos.length} color={theme.primary} />
-          <StatCard label="Ativos" val={totalAtivos} color={theme.success} sub={alunos.length > 0 ? `${((totalAtivos / alunos.length) * 100).toFixed(0)}%` : undefined} />
+          <StatCard label="Total" val={totalDedup} color={theme.primary} />
+          <StatCard label="Ativos" val={totalAtivos} color={theme.success} sub={totalDedup > 0 ? `${((totalAtivos / totalDedup) * 100).toFixed(0)}%` : undefined} />
           <StatCard label="Bolsa Família" val={totalBolsa} color={theme.orange} />
           <StatCard label="🏫 Defi. Regular" val={totalDefiRegular} color={theme.purple} sub="Ensino regular" />
           <StatCard label="🎯 Defi. AEE" val={totalDefiAEE} color="#8b5cf6" sub="Sala de recursos" />
