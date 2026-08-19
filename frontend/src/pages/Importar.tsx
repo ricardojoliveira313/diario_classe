@@ -193,6 +193,7 @@ interface AlunoUnificado {
   nome: string;
   nomeNorm: string;
   ra: number | null;
+  digRa: string;
   numero: number;
   nascimento: string;
   serie: string;
@@ -480,7 +481,7 @@ export default function Importar() {
         // Section boundaries: stop before next turma header or section break
         const sectionBreak = 'Ano\\s+Letivo|Diretoria:|Escola:|Tipo\\s+Ensino|Habilitação:|Sala:|Turma:';
         const afterMatch = after.match(
-          new RegExp(`^\\s*\\S+\\s+\\S{2}\\s+${pdfDate}\\s+(ATIVO|TRAN|REMA|ABAN|N\\s?COM|BXTR|NAO\\s?COMPARECEU)(?:\\s+${pdfDate})?\\s*(.*?)(?=\\s*\\d{1,2}\\s+\\d{1,3}\\s+[A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ]|\\s*0{3}\\d{9}|${sectionBreak}|$)`, 'i')
+          new RegExp(`^\\s*(\\S+)\\s+\\S{2}\\s+${pdfDate}\\s+(ATIVO|TRAN|REMA|ABAN|N\\s?COM|BXTR|NAO\\s?COMPARECEU)(?:\\s+${pdfDate})?\\s*(.*?)(?=\\s*\\d{1,2}\\s+\\d{1,3}\\s+[A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ]|\\s*0{3}\\d{9}|${sectionBreak}|$)`, 'i')
         );
         const { serie: serieAluno, professora: profAluno } = getSerie(raPos);
 
@@ -492,6 +493,7 @@ export default function Importar() {
           alunos.push({
             nome, nomeNorm: normalizeNome(nome),
             ra: parseInt(raStr) || null,
+            digRa: '',
             numero,
             nascimento: '',
             serie: serieAluno,
@@ -506,7 +508,9 @@ export default function Importar() {
           continue;
         }
 
-        const [, nascRaw, situacaoRaw, dataMovimRaw, defRaw] = afterMatch;
+        const [, digRaRaw, nascRaw, situacaoRaw, dataMovimRaw, defRaw] = afterMatch;
+        // Dígito verificador do RA: 0-9 ou X (dígito 10). Qualquer outra coisa é ruído do parser.
+        const digRa = /^[0-9X]$/i.test(digRaRaw?.trim() ?? '') ? digRaRaw.trim().toUpperCase() : '';
         // Remove espaços extras nas datas vindas do PDF: "26/ 09/ 2018" -> "26/09/2018"
         const nascimento = nascRaw.replace(/\s*\/\s*/g, '/');
         const dataMovim = dataMovimRaw ? dataMovimRaw.replace(/\s*\/\s*/g, '/') : undefined;
@@ -522,6 +526,7 @@ export default function Importar() {
         alunos.push({
           nome, nomeNorm: normalizeNome(nome),
           ra: parseInt(raStr) || null,
+          digRa,
           numero,
           nascimento,
           serie: serieAluno,
@@ -635,6 +640,8 @@ export default function Importar() {
               }
 
         const ra = parseInt(String(nr['RA'] ?? '')) || null;
+        const digRaRaw = String(nr['DIG RA'] ?? nr['DIGITO RA'] ?? nr['DIGRA'] ?? '').trim();
+        const digRa = /^[0-9X]$/i.test(digRaRaw) ? digRaRaw.toUpperCase() : '';
         const nasc = fmtDate(nr['DATA DE NASCIMENTO'] ?? nr['DATA NASCIMENTO']);
         const key = ra ? `RA:${ra}` : `${normalizeNome(nome)}|${nasc}`; // RA-first: alinha com mkKey do merge
         const mes = getMes(sheetName, nr);
@@ -705,10 +712,11 @@ export default function Importar() {
                     if (dataFimMatricula) e2.dataFimMatricula = dataFimMatricula;
                     if (dataMovimentacao) e2.dataMovimentacao = dataMovimentacao;
                     if (deficiencia) e2.deficiencia = deficiencia;
+                    if (digRa) e2.digRa = digRa;
                   } else {
                     alunosMap.set(sufKey, {
                       nome, nomeNorm: normalizeNome(nome),
-                      ra, numero,
+                      ra, digRa, numero,
                       nascimento: nasc,
                       serie, professora,
                       situacao, deficiencia,
@@ -729,13 +737,14 @@ export default function Importar() {
                   if (dataFimMatricula) e.dataFimMatricula = dataFimMatricula;
                   if (dataMovimentacao) e.dataMovimentacao = dataMovimentacao;
                   if (deficiencia) e.deficiencia = deficiencia;
+                  if (digRa) e.digRa = digRa;
                 }
                 continue;
               }
 
               alunosMap.set(key, {
                 nome, nomeNorm: normalizeNome(nome),
-                ra, numero,
+                ra, digRa, numero,
                 nascimento: nasc,
                 serie, professora,
                 situacao, deficiencia,
@@ -902,7 +911,7 @@ export default function Importar() {
               processados.add(key);
               alunos.push({
                 nome, nomeNorm: normalizeNome(nome),
-                ra, numero,
+                ra, digRa: '', numero,
                 nascimento: nasc, serie: rowSerie,
                 professora: '', situacao: situ, deficiencia: defi,
                 bolsaFamilia: false,
@@ -2193,6 +2202,7 @@ export default function Importar() {
           nome: a.nome,
           turmaId: targetTurmaId ?? existente?.turmaId ?? null,
           ra: a.ra,
+          dig_ra: a.digRa || existente?.dig_ra || null,
           // Nr da SED (PDF) sempre ganha; fallback DB aplicado após dedup sem conflito
           numero: a.numero > 0 ? a.numero : 0,
           data_nascimento: a.nascimento,
