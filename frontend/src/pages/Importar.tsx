@@ -480,8 +480,10 @@ export default function Importar() {
         const pdfDate = '(\\d{2}\\s*\\/\\s*\\d{2}\\s*\\/\\s*\\d{4})';
         // Section boundaries: stop before next turma header or section break
         const sectionBreak = 'Ano\\s+Letivo|Diretoria:|Escola:|Tipo\\s+Ensino|Habilitação:|Sala:|Turma:';
+        // Dig.RA é OPCIONAL — alunos de fora de SP às vezes não têm dígito verificador
+        // no PDF (célula fica vazia), fazendo a coluna UF vir logo após o RA.
         const afterMatch = after.match(
-          new RegExp(`^\\s*(\\S+)\\s+\\S{2}\\s+${pdfDate}\\s+(ATIVO|TRAN|REMA|ABAN|N\\s?COM|BXTR|NAO\\s?COMPARECEU)(?:\\s+${pdfDate})?\\s*(.*?)(?=\\s*\\d{1,2}\\s+\\d{1,3}\\s+[A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ]|\\s*0{3}\\d{9}|${sectionBreak}|$)`, 'i')
+          new RegExp(`^\\s*(?:(\\S+)\\s+)?[A-Z]{2}\\s+${pdfDate}\\s+(ATIVO|TRAN|REMA|ABAN|N\\s?COM|BXTR|NAO\\s?COMPARECEU)(?:\\s+${pdfDate})?\\s*(.*?)(?=\\s*\\d{1,2}\\s+\\d{1,3}\\s+[A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ]|\\s*0{3}\\d{9}|${sectionBreak}|$)`, 'i')
         );
         const { serie: serieAluno, professora: profAluno } = getSerie(raPos);
 

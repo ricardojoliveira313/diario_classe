@@ -47,6 +47,12 @@ interface LinhaBF {
   motivoAtual: string | null;
 }
 
+interface PendenteLancamento {
+  aluno: any;
+  mes: number;
+  turmaNome: string;
+}
+
 export default function BFFrequencia() {
   const { ano } = useAno();
   const { username } = useAuth();
@@ -55,6 +61,7 @@ export default function BFFrequencia() {
   const [mesFim, setMesFim] = useState(new Date().getMonth() + 1);
   const [loading, setLoading] = useState(false);
   const [linhas, setLinhas] = useState<LinhaBF[] | null>(null);
+  const [pendentes, setPendentes] = useState<PendenteLancamento[]>([]);
   const [linhaSelecionada, setLinhaSelecionada] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false);
@@ -121,6 +128,7 @@ export default function BFFrequencia() {
     // Família é mensal, então um aluno abaixo do mínimo em junho mas OK em julho
     // precisa aparecer só para junho, não numa média dos dois meses juntos.
     const resultado: LinhaBF[] = [];
+    const pendentesLancamento: PendenteLancamento[] = [];
     for (let i = 0; i < faltasPorMes.length; i++) {
       const mes = mesInicio + i;
       const registros = faltasPorMes[i] ?? [];
@@ -128,12 +136,18 @@ export default function BFFrequencia() {
       if (diasLetivosMes === 0) continue;
       for (const aluno of bfAlunos) {
         const registro = registros.find((r: any) => r.alunoId === aluno.id);
-        const dias = registro?.frequencia ? decodeDias(registro.frequencia, diasLetivosMes) : null;
-        const faltas = dias ? ct(dias, 'F') : 0;
-        const justificadas = dias ? ct(dias, 'J') : 0;
-        const atestados = dias ? ct(dias, 'A') : 0;
         const turma = turmaMap.get(aluno.turmaId);
         const turmaNome = turma?.nome ?? '—';
+        // Sem lançamento no mês = dado ausente, NÃO é o mesmo que 100% de frequência.
+        // Marca como pendência em vez de assumir presença — ver auditoria de ago/2026.
+        if (!registro?.frequencia) {
+          pendentesLancamento.push({ aluno, mes, turmaNome });
+          continue;
+        }
+        const dias = decodeDias(registro.frequencia, diasLetivosMes);
+        const faltas = ct(dias, 'F');
+        const justificadas = ct(dias, 'J');
+        const atestados = ct(dias, 'A');
         const infantil = isInfantilTurma(turmaNome);
         const minimoExigido = infantil ? 60 : 75;
         const totalAusencias = faltas + justificadas + atestados;
@@ -149,7 +163,9 @@ export default function BFFrequencia() {
       }
     }
     resultado.sort((a, b) => a.mes - b.mes || a.aluno.nome.localeCompare(b.aluno.nome, 'pt-BR'));
+    pendentesLancamento.sort((a, b) => a.mes - b.mes || a.aluno.nome.localeCompare(b.aluno.nome, 'pt-BR'));
     setLinhas(resultado);
+    setPendentes(pendentesLancamento);
     const mapMotivos: Record<string, string> = {};
     resultado.forEach(l => {
       if (l.motivoAtual) mapMotivos[`${l.aluno.id}-${l.mes}`] = l.motivoAtual;
@@ -280,6 +296,29 @@ export default function BFFrequencia() {
             <StatCard label="Com atestado médico" val={comAtestado} color="#7c3aed" sub="Falta justificada" />
             <StatCard label="Sem justificativa" val={semJustificativa} color={theme.danger} sub="Precisa contatar família" />
           </div>
+
+          {pendentes.length > 0 && (
+            <div style={{
+              background: '#fff7ed', border: '1px solid #f59e0b', borderRadius: theme.radius,
+              padding: '12px 16px', marginBottom: 16,
+            }}>
+              <div style={{ fontWeight: 700, color: '#b45309', fontSize: 13.5, marginBottom: 4 }}>
+                ⚠️ {pendentes.length} lançamento{pendentes.length !== 1 ? 's' : ''} de frequência ausente{pendentes.length !== 1 ? 's' : ''} no período — não entram nesta lista
+              </div>
+              <p style={{ fontSize: 12.5, color: '#92400e', margin: 0 }}>
+                Estes alunos com Bolsa Família ainda não têm o diário lançado no mês indicado. Frequência ausente
+                <strong> não</strong> é tratada como 100% — o aluno só aparece na lista acima depois que o diário for lançado.
+                Lance as faltas na tela <strong>Faltas</strong> para esses meses/turmas antes de fechar o Sistema Presença.
+              </p>
+              <div style={{ maxHeight: 200, overflowY: 'auto', marginTop: 8, borderTop: '1px solid #f59e0b33', paddingTop: 6 }}>
+                {pendentes.map((p, i) => (
+                  <div key={i} style={{ fontSize: 12.5, color: '#78350f', padding: '3px 0' }}>
+                    {MESES[p.mes - 1]} — {p.aluno.nome} ({p.turmaNome})
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {linhas.length === 0 ? (
             <EmptyState icon="✅" message={`Nenhum aluno com Bolsa Família abaixo do mínimo de frequência em ${periodoLabel}.`} />
