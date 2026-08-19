@@ -227,13 +227,18 @@ export default function BFFrequencia() {
   const nomeMesFim = MESES[mesFim - 1];
   const periodoLabel = mesInicio === mesFim ? `${nomeMesInicio}/${ano}` : `${nomeMesInicio} a ${nomeMesFim}/${ano}`;
 
+  // "Sem atestado" (A=0) não é o mesmo que "sem nenhuma justificativa" — o aluno
+  // pode ter falta justificada (J) sem atestado médico. Só falta contatar a
+  // família quando não há nem atestado nem justificativa nenhuma registrada.
   const comAtestado = linhas?.filter(l => l.atestados > 0).length ?? 0;
-  const semJustificativa = linhas?.filter(l => l.atestados === 0).length ?? 0;
+  const comJustificativaSemAtestado = linhas?.filter(l => l.atestados === 0 && l.justificadas > 0).length ?? 0;
+  const semJustificativa = linhas?.filter(l => l.atestados === 0 && l.justificadas === 0).length ?? 0;
 
   const linhasOrdenadas = useMemo(() => {
     if (!linhas) return null;
     const mult = ordemDir === 'asc' ? 1 : -1;
-    const situacaoTxt = (l: LinhaBF) => l.atestados > 0 ? 'COM ATESTADO' : 'SEM JUSTIFICATIVA';
+    const situacaoTxt = (l: LinhaBF) =>
+      l.atestados > 0 ? 'COM ATESTADO' : l.justificadas > 0 ? 'JUSTIFICADA SEM ATESTADO' : 'SEM JUSTIFICATIVA';
     const valores: Record<OrdemCampo, (l: LinhaBF) => number | string> = {
       mes: l => l.mes,
       aluno: l => l.aluno.nome ?? '',
@@ -297,6 +302,7 @@ export default function BFFrequencia() {
             <StatCard label="Período" val={periodoLabel} color={theme.primary} />
             <StatCard label="Abaixo do mínimo" val={linhas.length} color={theme.danger} />
             <StatCard label="Com atestado médico" val={comAtestado} color="#7c3aed" sub="Falta justificada" />
+            <StatCard label="Justificada sem atestado" val={comJustificativaSemAtestado} color="#d97706" sub="Tem motivo, sem atestado" />
             <StatCard label="Sem justificativa" val={semJustificativa} color={theme.danger} sub="Precisa contatar família" />
           </div>
 
@@ -395,8 +401,12 @@ export default function BFFrequencia() {
                           <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 6, background: 'rgba(124,58,237,0.15)', color: '#7c3aed' }} title="Aluno tem atestado médico registrado — falta justificada por doença">
                             🏥 COM ATESTADO
                           </span>
+                        ) : l.justificadas > 0 ? (
+                          <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 6, background: 'rgba(217,119,6,0.15)', color: '#d97706' }} title="Falta justificada, mas sem atestado médico registrado">
+                            📋 JUSTIFICADA SEM ATESTADO
+                          </span>
                         ) : (
-                          <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 6, background: 'rgba(220,38,38,0.12)', color: theme.danger }} title="Sem atestado médico registrado — recomenda-se contatar a família">
+                          <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 6, background: 'rgba(220,38,38,0.12)', color: theme.danger }} title="Sem atestado médico e sem justificativa registrada — recomenda-se contatar a família">
                             ⚠️ SEM JUSTIFICATIVA
                           </span>
                         )}
