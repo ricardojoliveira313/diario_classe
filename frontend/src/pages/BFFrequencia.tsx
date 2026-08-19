@@ -140,14 +140,17 @@ export default function BFFrequencia() {
         const turmaNome = turma?.nome ?? '—';
         // Sem lançamento no mês = dado ausente, NÃO é o mesmo que 100% de frequência.
         // Marca como pendência em vez de assumir presença — ver auditoria de ago/2026.
-        if (!registro?.frequencia) {
+        if (!registro) {
           pendentesLancamento.push({ aluno, mes, turmaNome });
           continue;
         }
-        const dias = decodeDias(registro.frequencia, diasLetivosMes);
-        const faltas = ct(dias, 'F');
-        const justificadas = ct(dias, 'J');
-        const atestados = ct(dias, 'A');
+        // Alguns fluxos antigos/alternativos salvam somente o total de faltas,
+        // com `frequencia` vazia. O registro existe e não pode ser confundido
+        // com mês sem lançamento.
+        const dias = registro.frequencia ? decodeDias(registro.frequencia, diasLetivosMes) : null;
+        const faltas = dias ? ct(dias, 'F') : Number(registro.faltas ?? 0);
+        const justificadas = dias ? ct(dias, 'J') : 0;
+        const atestados = dias ? ct(dias, 'A') : 0;
         const infantil = isInfantilTurma(turmaNome);
         const minimoExigido = infantil ? 60 : 75;
         const totalAusencias = faltas + justificadas + atestados;

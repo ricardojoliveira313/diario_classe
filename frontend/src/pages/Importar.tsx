@@ -8,7 +8,26 @@ import { FileRow, ProgressBar, ErrorBox, Spinner } from '../components';
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs`;
 
 // ─── Relatório de conciliação Bolsa Família ────────────────────────────────
-function BFConciliacaoPanel({ naoEncontrados }: { naoEncontrados: { nome: string; nasc: string; nis: string }[] }) {
+interface BFSugestao {
+  bfChave: string;
+  bfNome: string;
+  bfNasc: string;
+  nis: string;
+  alunoChave: string;
+  alunoNome: string;
+  alunoNasc: string;
+  alunoRa: number | null;
+  motivo: string;
+}
+
+function BFConciliacaoPanel({
+  naoEncontrados, sugestoes, confirmados, onConfirmar,
+}: {
+  naoEncontrados: { nome: string; nasc: string; nis: string }[];
+  sugestoes: BFSugestao[];
+  confirmados: Record<string, string>;
+  onConfirmar: (sugestao: BFSugestao, confirmar: boolean) => void;
+}) {
   const [aberto, setAberto] = useState(false);
   const [busca, setBusca] = useState('');
   const filtrado = busca.trim()
@@ -39,6 +58,35 @@ function BFConciliacaoPanel({ naoEncontrados }: { naoEncontrados: { nome: string
             Estes alunos estão no PDF do Bolsa Família mas <strong>não constam em nenhum arquivo de matrícula importado</strong>.
             Podem ter sido transferidos, desmatriculados, ou o nome/data pode diferir.
           </p>
+          {sugestoes.length > 0 && (
+            <div style={{ marginBottom: 12, padding: 10, borderRadius: 6, background: '#fffbeb', border: '1px solid #f59e0b55' }}>
+              <div style={{ fontWeight: 700, color: '#92400e', fontSize: 12.5, marginBottom: 6 }}>
+                Correspondências prováveis — confirme somente após conferir os documentos
+              </div>
+              {sugestoes.map(s => {
+                const marcado = confirmados[s.bfChave] === s.alunoChave;
+                return (
+                  <div key={s.bfChave} style={{ padding: '8px 0', borderTop: '1px solid #f59e0b22', fontSize: 12.5 }}>
+                    <div><strong>Bolsa Família:</strong> {s.bfNome} — {s.bfNasc}</div>
+                    <div><strong>SED:</strong> {s.alunoNome} — {s.alunoNasc}{s.alunoRa ? ` — RA ${s.alunoRa}` : ''}</div>
+                    <div style={{ color: '#92400e', margin: '3px 0 6px' }}>{s.motivo}</div>
+                    <button
+                      type="button"
+                      onClick={() => onConfirmar(s, !marcado)}
+                      style={{
+                        border: `1px solid ${marcado ? '#15803d' : '#d97706'}`,
+                        background: marcado ? '#dcfce7' : '#fff7ed',
+                        color: marcado ? '#166534' : '#9a3412',
+                        borderRadius: 6, padding: '5px 10px', cursor: 'pointer', fontWeight: 700, fontSize: 12,
+                      }}
+                    >
+                      {marcado ? '✓ Correspondência confirmada' : 'Confirmar correspondência'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
             <input
               value={busca} onChange={e => setBusca(e.target.value)}
@@ -175,6 +223,27 @@ function nomeSignificativo(nome: string): string {
   return nome.split(' ').filter(p => p.length >= 2 && !ARTIGOS.has(p)).join(' ');
 }
 
+function distanciaLevenshtein(a: string, b: string): number {
+  const anterior = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const atual = [i];
+    for (let j = 1; j <= b.length; j++) {
+      atual[j] = Math.min(
+        atual[j - 1] + 1,
+        anterior[j] + 1,
+        anterior[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    }
+    for (let j = 0; j <= b.length; j++) anterior[j] = atual[j];
+  }
+  return anterior[b.length];
+}
+
+function similaridadeNome(a: string, b: string): number {
+  const maior = Math.max(a.length, b.length);
+  return maior === 0 ? 1 : 1 - distanciaLevenshtein(a, b) / maior;
+}
+
 const SITUACAO_MAP: Record<string, string> = {
   ATIVO: 'ATIVO', REMA: 'REMA', REMANEJADO: 'REMA', 'REMANEJADA': 'REMA', 'REMANEJADO(A)': 'REMA', REMANEJAMENTO: 'REMA',
   BXTR: 'BXTR', 'BAIXA TRANSF.': 'BXTR', 'BAIXA TRANSFERENCIA': 'BXTR', 'BAIXA TRANSFER\u00caNCIA': 'BXTR',
@@ -234,8 +303,9 @@ export default function Importar() {
   const [sucesso, setSucesso] = useState(false);
   const [fixing, setFixing] = useState(false);
   const [importando, setImportando] = useState(false);
+  const [bfConfirmados, setBFConfirmados] = useState<Record<string, string>>({});
   const fileRef = useRef<HTMLInputElement>(null);
-  const dadosRef = useRef<{ turmas: any[]; alunos: AlunoUnificado[]; faltasArr: any[]; educacenso?: any[]; bfNaoEncontrados?: { nome: string; nasc: string; nis: string }[]; bolsaFamiliaRegistros?: BolsaFamiliaRegistro[]; bolsaMapSize?: number } | null>(null);
+  const dadosRef = useRef<{ turmas: any[]; alunos: AlunoUnificado[]; faltasArr: any[]; educacenso?: any[]; bfNaoEncontrados?: { nome: string; nasc: string; nis: string }[]; bfSugestoes?: BFSugestao[]; bfConfirmacoes?: Record<string, string>; bolsaFamiliaRegistros?: BolsaFamiliaRegistro[]; bolsaMapSize?: number } | null>(null);
   // Snapshot para rollback em caso de falha na importação
   const rollbackRef = useRef<{ alunosInseridos: any[]; alunosDeletados: any[]; faltasInseridas: any[]; turmasCriadas: any[] } | null>(null);
 
@@ -1153,12 +1223,14 @@ export default function Importar() {
     setErro('');
     setSucesso(false);
     setPreview(null);
+    setBFConfirmados({});
     dadosRef.current = null;
   };
 
   const removerArquivo = (idx: number) => {
     setFiles(prev => prev.filter((_, i) => i !== idx));
     setPreview(null);
+    setBFConfirmados({});
   };
 
   // ─── ANALISAR ───
@@ -1556,6 +1628,46 @@ export default function Importar() {
         }
       }
 
+      // Sugere apenas casos de alta confiança, sem marcar automaticamente:
+      // nome idêntico com nascimento divergente, ou nascimento idêntico com
+      // pequena variação de grafia no nome. A decisão final é sempre humana.
+      const alunosCandidatos = new Map<string, AlunoUnificado>();
+      for (const a of alunosArr) {
+        const chave = `${a.nomeNorm}|${a.nascimento}`;
+        if (!alunosCandidatos.has(chave)) alunosCandidatos.set(chave, a);
+      }
+      const bfSugestoes: BFSugestao[] = [];
+      for (const bf of bfNaoEncontrados) {
+        const candidatos = Array.from(alunosCandidatos.entries())
+          .map(([alunoChave, aluno]) => {
+            const nomeIgual = aluno.nomeNorm === bf.nome;
+            const nascIgual = Boolean(aluno.nascimento && aluno.nascimento === bf.nasc);
+            // A comparação aproximada só é necessária quando o nascimento já
+            // coincide; evita calcular distância textual contra todo o cadastro.
+            const similaridade = nomeIgual ? 1 : (nascIgual ? similaridadeNome(aluno.nomeNorm, bf.nome) : 0);
+            const elegivel = (nomeIgual && !nascIgual) || (nascIgual && similaridade >= 0.90);
+            const pontuacao = nomeIgual ? 2 + (nascIgual ? 1 : 0) : similaridade + (nascIgual ? 1 : 0);
+            return { alunoChave, aluno, nomeIgual, nascIgual, similaridade, elegivel, pontuacao };
+          })
+          .filter(c => c.elegivel)
+          .sort((a, b) => b.pontuacao - a.pontuacao);
+        const melhor = candidatos[0];
+        if (!melhor) continue;
+        bfSugestoes.push({
+          bfChave: `${bf.nome}|${bf.nasc}`,
+          bfNome: bf.nome,
+          bfNasc: bf.nasc,
+          nis: bf.nis,
+          alunoChave: melhor.alunoChave,
+          alunoNome: melhor.aluno.nome,
+          alunoNasc: melhor.aluno.nascimento,
+          alunoRa: melhor.aluno.ra,
+          motivo: melhor.nomeIgual
+            ? 'Nome idêntico, mas a data de nascimento é diferente.'
+            : 'Data de nascimento idêntica e pequena variação na grafia do nome.',
+        });
+      }
+
       // Turmas únicas — chaveadas por nome normalizado para evitar duplicatas
       // (ex: "EJA I - ALFABETIZAÇÃO A NOITE" e "EJA I ALFABETIZACAO" → mesma turma).
       // Alunos sem série (ex: AEE do Excel, serie='') são ignorados: o PDF fornece o nome correto.
@@ -1634,7 +1746,8 @@ export default function Importar() {
         const [nome, nasc] = chave.split('|');
         return { nome, nasc, nis: val.nis, responsavel: val.responsavel };
       });
-      dadosRef.current = { turmas: Array.from(turmasUnicas.values()), alunos: alunosArr, faltasArr: [], educacenso: educacensoArr, bfNaoEncontrados, bolsaFamiliaRegistros, bolsaMapSize: bolsaMap.size };
+      setBFConfirmados({});
+      dadosRef.current = { turmas: Array.from(turmasUnicas.values()), alunos: alunosArr, faltasArr: [], educacenso: educacensoArr, bfNaoEncontrados, bfSugestoes, bfConfirmacoes: {}, bolsaFamiliaRegistros, bolsaMapSize: bolsaMap.size };
       setStatus('');
     } catch (ex: any) {
       setErro('Erro na análise: ' + ex.message);
@@ -2358,6 +2471,9 @@ export default function Importar() {
         setStatus('Conferindo Bolsa Família por nome e data de nascimento...');
         const registrosBF = dadosRef.current?.bolsaFamiliaRegistros ?? [];
         const bfPorChave = new Map(registrosBF.map(b => [`${b.nome}|${b.nasc}`, b]));
+        const bfPorNis = new Map(registrosBF.filter(b => b.nis).map(b => [b.nis, b]));
+        const confirmacoes = dadosRef.current?.bfConfirmacoes ?? {};
+        const bfConfirmadoPorAluno = new Map(Object.entries(confirmacoes).map(([bfChave, alunoChave]) => [alunoChave, bfChave]));
         const alunosAtuais = await api.getAllAlunos();
         const idsParaDesmarcar: string[] = [];
         const paraMarcar: { id: string; nis: string; responsavel: string | null }[] = [];
@@ -2367,14 +2483,31 @@ export default function Importar() {
           const raw = String(aluno.data_nascimento ?? '');
           const nasc = raw.includes('-') ? raw.split('-').reverse().join('/') : fmtDate(raw);
           const chave = `${normalizeNome(aluno.nome ?? '')}|${nasc}`;
-          const bf = bfPorChave.get(chave);
+          let bfChaveEncontrada = chave;
+          let bf = bfPorChave.get(chave);
+          if (!bf) {
+            const chaveConfirmada = bfConfirmadoPorAluno.get(chave);
+            if (chaveConfirmada) {
+              bfChaveEncontrada = chaveConfirmada;
+              bf = bfPorChave.get(chaveConfirmada);
+            }
+          }
+          // Uma confirmação manual anterior fica persistida pelo NIS. O NIS só
+          // é reutilizado quando o aluno já estava marcado como beneficiário.
+          const nisAtual = String(aluno.nis ?? '').replace(/\D/g, '');
+          if (!bf && aluno.bolsa_familia && nisAtual) {
+            const bfPorNisConfirmado = bfPorNis.get(nisAtual);
+            if (bfPorNisConfirmado) {
+              bf = bfPorNisConfirmado;
+              bfChaveEncontrada = `${bf.nome}|${bf.nasc}`;
+            }
+          }
           if (!bf) {
             if (aluno.bolsa_familia) idsParaDesmarcar.push(aluno.id);
             continue;
           }
 
-          chavesEncontradas.add(chave);
-          const nisAtual = String(aluno.nis ?? '').replace(/\D/g, '');
+          chavesEncontradas.add(bfChaveEncontrada);
           if (!aluno.bolsa_familia || nisAtual !== bf.nis) {
             paraMarcar.push({ id: aluno.id, nis: bf.nis, responsavel: bf.responsavel || aluno.responsavel || null });
           }
@@ -2576,7 +2709,20 @@ export default function Importar() {
 
           {/* ─── Relatório de conciliação Bolsa Família ─────────────── */}
           {dadosRef.current?.bfNaoEncontrados?.length > 0 && (
-            <BFConciliacaoPanel naoEncontrados={dadosRef.current.bfNaoEncontrados} />
+            <BFConciliacaoPanel
+              naoEncontrados={dadosRef.current.bfNaoEncontrados}
+              sugestoes={dadosRef.current.bfSugestoes ?? []}
+              confirmados={bfConfirmados}
+              onConfirmar={(sugestao, confirmar) => {
+                setBFConfirmados(anterior => {
+                  const proximo = { ...anterior };
+                  if (confirmar) proximo[sugestao.bfChave] = sugestao.alunoChave;
+                  else delete proximo[sugestao.bfChave];
+                  if (dadosRef.current) dadosRef.current.bfConfirmacoes = proximo;
+                  return proximo;
+                });
+              }}
+            />
           )}
 
           <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
