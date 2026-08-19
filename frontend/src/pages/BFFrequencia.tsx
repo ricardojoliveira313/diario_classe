@@ -51,6 +51,7 @@ interface PendenteLancamento {
   aluno: any;
   mes: number;
   turmaNome: string;
+  diasLetivos: number;
 }
 
 export default function BFFrequencia() {
@@ -62,6 +63,10 @@ export default function BFFrequencia() {
   const [loading, setLoading] = useState(false);
   const [linhas, setLinhas] = useState<LinhaBF[] | null>(null);
   const [pendentes, setPendentes] = useState<PendenteLancamento[]>([]);
+  const [pendentesSelecionados, setPendentesSelecionados] = useState<Set<string>>(new Set());
+  const [confirmandoSemFaltas, setConfirmandoSemFaltas] = useState(false);
+  const [confirmeiConferencia, setConfirmeiConferencia] = useState(false);
+  const [salvandoSemFaltas, setSalvandoSemFaltas] = useState(false);
   const [linhaSelecionada, setLinhaSelecionada] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false);
@@ -141,7 +146,7 @@ export default function BFFrequencia() {
         // Sem lançamento no mês = dado ausente, NÃO é o mesmo que 100% de frequência.
         // Marca como pendência em vez de assumir presença — ver auditoria de ago/2026.
         if (!registro) {
-          pendentesLancamento.push({ aluno, mes, turmaNome });
+          pendentesLancamento.push({ aluno, mes, turmaNome, diasLetivos: diasLetivosMes });
           continue;
         }
         // Alguns fluxos antigos/alternativos salvam somente o total de faltas,
@@ -175,6 +180,51 @@ export default function BFFrequencia() {
     });
     setMotivos(mapMotivos);
     setLoading(false);
+  };
+
+  const chavePendente = (p: PendenteLancamento) => `${p.aluno.id}-${p.mes}`;
+
+  const alternarPendenteSelecionado = (p: PendenteLancamento) => {
+    setPendentesSelecionados(prev => {
+      const next = new Set(prev);
+      const chave = chavePendente(p);
+      if (next.has(chave)) next.delete(chave); else next.add(chave);
+      return next;
+    });
+  };
+
+  // Registra oficialmente "mês sem faltas" para os pendentes marcados — só depois
+  // que o usuário confirma explicitamente que conferiu o diário. Nunca é chamado
+  // automaticamente: pendência sem confirmação humana continua pendência.
+  const confirmarSemFaltas = async () => {
+    if (!confirmeiConferencia) return;
+    setSalvandoSemFaltas(true);
+    const selecionados = pendentes.filter(p => pendentesSelecionados.has(chavePendente(p)));
+    const agora = new Date().toISOString();
+    const registros = selecionados.map(p => ({
+      alunoId: p.aluno.id,
+      turmaId: p.aluno.turmaId,
+      mes: p.mes,
+      ano,
+      faltas: 0,
+      frequencia: 'DIAS:' + 'P'.repeat(p.diasLetivos),
+      conferido_sem_faltas: true,
+      confirmado_por: username,
+      confirmado_em: agora,
+    }));
+    try {
+      await api.upsertFaltasBatch(registros);
+      const chavesConfirmadas = new Set(selecionados.map(chavePendente));
+      setPendentes(prev => prev.filter(p => !chavesConfirmadas.has(chavePendente(p))));
+      setPendentesSelecionados(new Set());
+      setConfirmandoSemFaltas(false);
+      setConfirmeiConferencia(false);
+      // Recalcula a lista de abaixo do mínimo — meses recém-confirmados como
+      // "sem faltas" nunca entram nela, mas outros lançamentos podem ter mudado.
+      await calcular();
+    } finally {
+      setSalvandoSemFaltas(false);
+    }
   };
 
   // Salva o motivo direto no registro de Falta (aluno/mês/ano) — o mesmo campo
@@ -317,14 +367,62 @@ export default function BFFrequencia() {
               <p style={{ fontSize: 12.5, color: '#92400e', margin: 0 }}>
                 Estes alunos com Bolsa Família ainda não têm o diário lançado no mês indicado. Frequência ausente
                 <strong> não</strong> é tratada como 100% — o aluno só aparece na lista acima depois que o diário for lançado.
-                Lance as faltas na tela <strong>Faltas</strong> para esses meses/turmas antes de fechar o Sistema Presença.
+                Lance as faltas na tela <strong>Faltas</strong>, ou — se já conferiu o diário físico e não houve nenhuma falta —
+                marque abaixo e use "Registrar mês sem faltas".
               </p>
-              <div style={{ maxHeight: 200, overflowY: 'auto', marginTop: 8, borderTop: '1px solid #f59e0b33', paddingTop: 6 }}>
-                {pendentes.map((p, i) => (
-                  <div key={i} style={{ fontSize: 12.5, color: '#78350f', padding: '3px 0' }}>
-                    {MESES[p.mes - 1]} — {p.aluno.nome} ({p.turmaNome})
-                  </div>
-                ))}
+              <div style={{ maxHeight: 220, overflowY: 'auto', marginTop: 8, borderTop: '1px solid #f59e0b33', paddingTop: 6 }}>
+                {pendentes.map((p, i) => {
+                  const chave = chavePendente(p);
+                  const marcado = pendentesSelecionados.has(chave);
+                  return (
+                    <label key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#78350f', padding: '3px 0', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={marcado} onChange={() => alternarPendenteSelecionado(p)} />
+                      {MESES[p.mes - 1]} — {p.aluno.nome} ({p.turmaNome})
+                    </label>
+                  );
+                })}
+              </div>
+              <button
+                type="button"
+                disabled={pendentesSelecionados.size === 0}
+                onClick={() => setConfirmandoSemFaltas(true)}
+                style={{
+                  marginTop: 10, border: '1px solid #d97706', background: pendentesSelecionados.size === 0 ? '#f5f5f4' : '#fff7ed',
+                  color: pendentesSelecionados.size === 0 ? '#a8a29e' : '#9a3412', borderRadius: 6, padding: '6px 12px',
+                  cursor: pendentesSelecionados.size === 0 ? 'default' : 'pointer', fontWeight: 700, fontSize: 12.5,
+                }}
+              >
+                ✅ Registrar mês sem faltas {pendentesSelecionados.size > 0 ? `(${pendentesSelecionados.size})` : ''}
+              </button>
+            </div>
+          )}
+
+          {confirmandoSemFaltas && (
+            <div style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+            }}>
+              <div style={{ background: theme.card, borderRadius: theme.radius, padding: 20, maxWidth: 480, width: '100%' }}>
+                <h3 style={{ fontSize: 16, fontWeight: 800, color: theme.text, marginTop: 0 }}>✅ Registrar mês sem faltas</h3>
+                <p style={{ fontSize: 13, color: theme.textSecondary }}>
+                  Isso vai criar o lançamento oficial de frequência para {pendentesSelecionados.size} aluno(s)/mês(es) selecionado(s),
+                  marcando todos os dias letivos como presença (0 faltas). O registro fica identificado com seu usuário e a data de agora.
+                </p>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, fontWeight: 600, color: theme.text, cursor: 'pointer', margin: '14px 0' }}>
+                  <input type="checkbox" checked={confirmeiConferencia} onChange={e => setConfirmeiConferencia(e.target.checked)} style={{ marginTop: 3 }} />
+                  Confirmo que o diário destes alunos foi conferido e que eles não tiveram faltas no mês selecionado.
+                </label>
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                  <button type="button" onClick={() => { setConfirmandoSemFaltas(false); setConfirmeiConferencia(false); }} style={btn('ghost', { small: true })}>Cancelar</button>
+                  <button
+                    type="button"
+                    disabled={!confirmeiConferencia || salvandoSemFaltas}
+                    onClick={confirmarSemFaltas}
+                    style={btn('success', { small: true })}
+                  >
+                    {salvandoSemFaltas ? 'Salvando...' : 'Confirmar e registrar'}
+                  </button>
+                </div>
               </div>
             </div>
           )}
