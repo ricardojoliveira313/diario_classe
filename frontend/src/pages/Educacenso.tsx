@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { api } from '../api';
 import { theme, btn, input, label } from '../styles';
@@ -71,7 +71,10 @@ interface LinhaResultado {
 // Procura o índice da linha de cabeçalho (a planilha oficial do Educacenso tem
 // linhas em branco/título antes da linha com os nomes das colunas).
 function acharCabecalho(rows: any[][]): number {
-  for (let i = 0; i < Math.min(rows.length, 10); i++) {
+  // O export oficial "Relação de Alunos" do Educacenso tem o cabeçalho real
+  // por volta da linha 21 (metadados/título antes) — 10 linhas era pouco e
+  // recusava o arquivo oficial (achado da auditoria de ago/2026).
+  for (let i = 0; i < Math.min(rows.length, 40); i++) {
     const linha = (rows[i] ?? []).map(c => String(c ?? '').trim().toLowerCase());
     if (linha.includes('nome') && linha.some(c => c.startsWith('data de nascimento'))) return i;
   }
@@ -85,6 +88,10 @@ function achaColuna(cabecalho: string[], termos: string[]): number {
 export default function Educacenso() {
   const { ano } = useAno();
   const [dataCorte, setDataCorte] = useState(`${ano}-05-27`);
+  // Sincroniza a data-base com o ano letivo global — sem isso, trocar o ano
+  // no seletor do topo sem recarregar a página deixava a data-base "presa"
+  // no ano anterior (achado da auditoria de ago/2026).
+  useEffect(() => { setDataCorte(`${ano}-05-27`); }, [ano]);
   const [nomeArquivo, setNomeArquivo] = useState('');
   const [linhasEduc, setLinhasEduc] = useState<LinhaEduc[] | null>(null);
   const [carregando, setCarregando] = useState(false);
