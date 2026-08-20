@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import * as XLSX from 'xlsx';
+import { extrairLinhasEducacenso } from '../educacenso';
 import * as pdfjsLib from 'pdfjs-dist';
 import { api, supabase } from '../api';
 import { theme, btn, card as cardStyle } from '../styles';
@@ -1138,15 +1139,10 @@ export default function Importar() {
     return mapa;
   }
 
-  // ─── PARSE: EDUCACENSO xlsx (CPF + Deficiência) ───
-  function safeStr(v: any): string {
-    try { return String(v ?? ''); } catch { return ''; }
-  }
-  function safeNorm(v: any): string {
-    try { return normalizeStr(safeStr(v)); } catch { return ''; }
-  }
-  async function parseEducacensoCPF(files: File[]): Promise<Map<string, { cpf: string; deficiencia: string; corRaca: string }>> {
-    const mapa = new Map<string, { cpf: string; deficiencia: string; corRaca: string }>();
+  // ─── PARSE: EDUCACENSO xlsx (CPF + Deficiência + Cor/Raça + Sexo) ───
+  type DadosEducacenso = { cpf: string; deficiencia: string; corRaca: string; sexo: string };
+  async function parseEducacensoCPF(files: File[]): Promise<Map<string, DadosEducacenso>> {
+    const mapa = new Map<string, DadosEducacenso>();
 
     for (const file of files) {
       if (!file.name.toLowerCase().endsWith('.xlsx')) continue;
@@ -1158,68 +1154,27 @@ export default function Importar() {
       if (!ws) continue;
       const rows: any[][] = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1 }) ?? [];
 
-      // Busca cabeçalho — colunas conhecidas do Educacenso:
-      //   [3]=Nome  [6]=Data de nascimento  [8]=CPF  [11]=Cor/Raça  [14]=Deficiência
-      let headerIdx = -1, idxNome = -1, idxNasc = -1, idxCPF = -1, idxDef = -1, idxCor = -1;
-      for (let r = 0; r < rows.length; r++) {
-        const row = rows[r];
-        if (!Array.isArray(row)) continue;
-        // Verifica se a linha contém "Nome" e "CPF" nas posições esperadas
-        const temNome = row[3] && safeNorm(row[3]) === 'NOME';
-        const temCPF = row[8] && safeNorm(row[8]) === 'CPF';
-        if (temNome && temCPF) {
-          headerIdx = r;
-          idxNome = 3;
-          idxNasc = 6;
-          idxCPF = 8;
-          idxDef = 14;
-          idxCor = 11;
-          break;
-        }
-        // Fallback: busca por conteúdo (qualquer posição)
-        const vals = row.map((v: any) => safeNorm(v));
-        const achouNome = vals.some(v => v === 'NOME');
-        const achouCPF = vals.some(v => v === 'CPF');
-        if (achouNome && achouCPF) {
-          headerIdx = r;
-          idxNome = vals.indexOf('NOME');
-          idxNasc = vals.indexOf('DATA DE NASCIMENTO');
-          idxCPF = vals.indexOf('CPF');
-          idxDef = vals.findIndex(v => v?.startsWith('TIPO(S) DE DEFICIENCIA'));
-          idxCor = vals.indexOf('COR/RACA');
-          break;
-        }
-      }
-      if (idxCPF < 0) continue;
-
-      for (let r = headerIdx + 1; r < rows.length; r++) {
-        const row = rows[r] ?? [];
-        const nomeRaw = String(row[idxNome] ?? '').trim();
-        const cpfRaw = String(row[idxCPF] ?? '').replace(/\D/g, '');
-        if (!nomeRaw || nomeRaw === '--') continue;
-
-        const nomeNorm = normalizeNome(nomeRaw);
+      for (const linha of extrairLinhasEducacenso(rows)) {
+        const nomeNorm = normalizeNome(linha.nome);
         let nasc = '';
-        if (idxNasc >= 0) {
-          const nascRaw = row[idxNasc];
-          if (nascRaw instanceof Date) {
-            nasc = `${String(nascRaw.getDate()).padStart(2,'0')}/${String(nascRaw.getMonth()+1).padStart(2,'0')}/${nascRaw.getFullYear()}`;
-          } else {
-            const d = String(nascRaw ?? '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-            if (d) nasc = `${d[1].padStart(2,'0')}/${d[2].padStart(2,'0')}/${d[3]}`;
-          }
+        const nascRaw = linha.dataNascimento;
+        if (nascRaw instanceof Date) {
+          nasc = `${String(nascRaw.getDate()).padStart(2,'0')}/${String(nascRaw.getMonth()+1).padStart(2,'0')}/${nascRaw.getFullYear()}`;
+        } else {
+          const d = String(nascRaw ?? '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+          if (d) nasc = `${d[1].padStart(2,'0')}/${d[2].padStart(2,'0')}/${d[3]}`;
         }
-        const defRaw = idxDef >= 0 ? String(row[idxDef] ?? '').trim() : '';
-        const deficiencia = (!defRaw || defRaw === '--') ? '' : defRaw;
-        const cpf = cpfRaw.length === 11 ? cpfRaw : '';
-        const corRaw = idxCor >= 0 ? String(row[idxCor] ?? '').trim() : '';
-        const corRaca = (!corRaw || corRaw === '--') ? '' : corRaw;
-        const entry = { cpf, deficiencia, corRaca };
+        const entry: DadosEducacenso = {
+          cpf: linha.cpf,
+          deficiencia: linha.deficiencia,
+          corRaca: linha.corRaca,
+          sexo: linha.sexo,
+        };
 
         // Chave exata: nome|data
         mapa.set(`${nomeNorm}|${nasc}`, entry);
         // Chave por CPF (permite cruzar independente do nome)
-        if (cpf) mapa.set(`CPF:${cpf}`, entry);
+        if (linha.cpf) mapa.set(`CPF:${linha.cpf}`, entry);
         // Chave fuzzy: nome significativo|data (tolera artigos)
         if (nasc) {
           const simp = nomeSignificativo(nomeNorm);
@@ -1262,7 +1217,7 @@ export default function Importar() {
       let turmasMap = new Map<string, { professor: string; periodo: string }>();
       let bolsaMapPDF = new Map<string, { nis: string; responsavel: string }>();
       let bolsaMapTXT = new Map<string, { nis: string; responsavel: string }>();
-      let cpfMap = new Map<string, { cpf: string; deficiencia: string; corRaca: string }>();
+      let cpfMap = new Map<string, DadosEducacenso>();
       try { alunosPDF = await parsePDFs(pdfFiles); } catch (e: any) { setErro('Erro nos PDFs: ' + (e.message ?? e)); return; }
       try { alunosHTML = await parseHTMLSED(xlsFiles); } catch (e: any) { setErro('Erro nos HTML (xls): ' + (e.message ?? e)); return; }
       const excelDatesMap = new Map<string, { inicio: string; fim: string; sexo: string }>();
@@ -1624,7 +1579,7 @@ export default function Importar() {
           // Marca a entrada do mapa como usada (para relatório de não encontrados)
           bfUsados.add(bf.nis);
         }
-        // Cruzamento CPF + Deficiência + Cor/Raça (EDUCACENSO): CPF → nome+data → fuzzy
+        // Cruzamento oficial EDUCACENSO: CPF → nome+data → fuzzy
         const ecPorCPF = a.cpf ? cpfMap.get(`CPF:${a.cpf}`) : undefined;
         const ecExato = !ecPorCPF ? cpfMap.get(`${a.nomeNorm}|${a.nascimento}`) : undefined;
         const ecFuzzy = !ecPorCPF && a.nascimento ? cpfMap.get(`~${nomeSimp}|${a.nascimento}`) : undefined;
@@ -1633,6 +1588,10 @@ export default function Importar() {
           a.cpf = ec.cpf || a.cpf || '';
           // Deficiência NÃO é herdada do Educacenso (dados de outro ano) — somente o SED atual é autoritativo
           a.corRaca = a.corRaca || ec.corRaca || '';
+          // Sexo exige identidade forte: CPF ou nome completo + nascimento.
+          // A correspondência fuzzy permanece apenas para dados cadastrais não sensíveis.
+          const sexoOficial = (ecPorCPF ?? ecExato)?.sexo || '';
+          a.sexo = a.sexo || sexoOficial;
         }
       }
 
@@ -2564,10 +2523,66 @@ export default function Importar() {
         nomeToId.set(normalizeNome(a.nome), a.id);
       }
 
-      // ─── PASSO 4: EDUCACENSO — salva na tabela independente ───
-      // (dados primários já estão no Aluno — esta é uma cache auxiliar)
+      // ─── PASSO 4: EDUCACENSO — aplica sexo oficial e salva cache auxiliar ───
+      // Funciona mesmo quando o relatório Educacenso é importado sozinho:
+      // cruza CPF primeiro e usa nome+nascimento apenas quando não há ambiguidade.
       const { educacenso } = dadosRef.current;
       if (educacenso && educacenso.length > 0) {
+        const porCPF = new Map<string, any[]>();
+        const porNomeNascimento = new Map<string, any[]>();
+        const porRA = new Map<string, any[]>();
+        for (const aluno of (alunosDb ?? [])) {
+          const cpf = String(aluno.cpf ?? '').replace(/\D/g, '');
+          if (cpf.length === 11) {
+            const grupo = porCPF.get(cpf) ?? [];
+            grupo.push(aluno);
+            porCPF.set(cpf, grupo);
+          }
+          const chaveNome = `${normalizeNome(aluno.nome)}|${normalizarData(aluno.data_nascimento || '')}`;
+          const grupoNome = porNomeNascimento.get(chaveNome) ?? [];
+          grupoNome.push(aluno);
+          porNomeNascimento.set(chaveNome, grupoNome);
+          if (aluno.ra) {
+            const ra = String(aluno.ra);
+            const grupoRA = porRA.get(ra) ?? [];
+            grupoRA.push(aluno);
+            porRA.set(ra, grupoRA);
+          }
+        }
+
+        const idsMasculino = new Set<string>();
+        const idsFeminino = new Set<string>();
+        for (const registro of educacenso) {
+          if (registro.sexo !== 'M' && registro.sexo !== 'F') continue;
+          const [nome, nascimento = ''] = String(registro.chave ?? '').split('|');
+          let encontrados = registro.cpf ? (porCPF.get(registro.cpf) ?? []) : [];
+          if (encontrados.length === 0) {
+            const candidatos = porNomeNascimento.get(`${nome}|${normalizarData(nascimento)}`) ?? [];
+            const pessoasDistintas = new Set(candidatos.map(a => a.ra ? `RA:${a.ra}` : `ID:${a.id}`));
+            if (pessoasDistintas.size === 1) encontrados = candidatos;
+          }
+          if (encontrados.length === 0) continue;
+
+          const idsDestino = registro.sexo === 'M' ? idsMasculino : idsFeminino;
+          for (const encontrado of encontrados) {
+            const mesmoRA = encontrado.ra ? (porRA.get(String(encontrado.ra)) ?? [encontrado]) : [encontrado];
+            mesmoRA.forEach(a => idsDestino.add(String(a.id)));
+          }
+        }
+
+        const atualizarSexoOficial = async (ids: Set<string>, sexo: 'M' | 'F') => {
+          const lista = [...ids];
+          for (let i = 0; i < lista.length; i += 100) {
+            const { error } = await supabase.from('Aluno').update({ sexo }).in('id', lista.slice(i, i + 100));
+            if (error) throw error;
+          }
+        };
+        if (idsMasculino.size > 0 || idsFeminino.size > 0) {
+          setStatus(`Aplicando sexo oficial do EDUCACENSO em ${idsMasculino.size + idsFeminino.size} cadastro(s)...`);
+          await atualizarSexoOficial(idsMasculino, 'M');
+          await atualizarSexoOficial(idsFeminino, 'F');
+        }
+
         const records = educacenso
           .filter((e: any) => e.cpf && e.cpf.length === 11 && !e.chave.startsWith('CPF:') && !e.chave.startsWith('~'));
         if (records.length > 0) {

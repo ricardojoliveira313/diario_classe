@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import * as XLSX from 'xlsx';
 import { theme, MESES, input } from '../styles';
 import { calcularMatriculasMensais, ContagemSexo } from '../matriculasMensais';
 import { sugerirSexoPeloNome } from '../nomesGenero';
+import { extrairLinhasEducacenso } from '../educacenso';
+import { cruzarSEDComEducacenso, type ResultadoCruzamentoEducacenso } from '../cruzamentoEducacenso';
 
 type TipoEnsino = '' | 'INFANTIL' | 'FUNDAMENTAL' | 'EJA' | 'AEE';
 
@@ -86,6 +89,11 @@ export default function MatriculasMensais({
   const [mostrarConferenciaSexo, setMostrarConferenciaSexo] = useState(false);
   const [salvandoSexo, setSalvandoSexo] = useState('');
   const [erroSexo, setErroSexo] = useState('');
+  const [resultadoEducacenso, setResultadoEducacenso] = useState<ResultadoCruzamentoEducacenso | null>(null);
+  const [arquivoEducacenso, setArquivoEducacenso] = useState('');
+  const [analisandoEducacenso, setAnalisandoEducacenso] = useState(false);
+  const [aplicandoEducacenso, setAplicandoEducacenso] = useState(false);
+  const [mensagemEducacenso, setMensagemEducacenso] = useState('');
 
   useEffect(() => {
     setMesInicio(1);
@@ -226,6 +234,49 @@ export default function MatriculasMensais({
     }
   };
 
+  const analisarArquivoEducacenso = async (arquivo: File | undefined) => {
+    if (!arquivo) return;
+    setAnalisandoEducacenso(true);
+    setMensagemEducacenso('');
+    setResultadoEducacenso(null);
+    setArquivoEducacenso(arquivo.name);
+    try {
+      const wb = XLSX.read(await arquivo.arrayBuffer(), { type: 'array', cellDates: true });
+      const linhas = wb.SheetNames.flatMap(nomeAba => {
+        const ws = wb.Sheets[nomeAba];
+        const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1 }) as unknown[][];
+        return extrairLinhasEducacenso(rows);
+      });
+      if (linhas.length === 0) throw new Error('Não foi encontrado o cabeçalho oficial com Nome, CPF e Sexo.');
+      const comSexo = linhas.filter(linha => linha.sexo === 'M' || linha.sexo === 'F');
+      if (comSexo.length === 0) throw new Error('O relatório foi reconhecido, mas a coluna Sexo está vazia.');
+      const resultado = cruzarSEDComEducacenso(alunos, turmas, linhas);
+      setResultadoEducacenso(resultado);
+      setMensagemEducacenso(`Arquivo reconhecido: ${linhas.length} registro(s) oficiais analisados.`);
+    } catch (erro: any) {
+      setMensagemEducacenso(`Erro na análise: ${erro?.message ?? erro}`);
+    } finally {
+      setAnalisandoEducacenso(false);
+    }
+  };
+
+  const aplicarSexoEducacenso = async () => {
+    if (!resultadoEducacenso) return;
+    setAplicandoEducacenso(true);
+    setMensagemEducacenso('');
+    try {
+      const idsM = resultadoEducacenso.encontrados.filter(item => item.sexo === 'M').map(item => item.id);
+      const idsF = resultadoEducacenso.encontrados.filter(item => item.sexo === 'F').map(item => item.id);
+      if (idsM.length > 0) await onAtualizarSexo(idsM, 'M');
+      if (idsF.length > 0) await onAtualizarSexo(idsF, 'F');
+      setMensagemEducacenso(`Sexo oficial aplicado em ${idsM.length + idsF.length} aluno(s) encontrado(s). Divergências permanecem separadas para conferência.`);
+    } catch (erro: any) {
+      setMensagemEducacenso(`Não foi possível aplicar os dados: ${erro?.message ?? erro}`);
+    } finally {
+      setAplicandoEducacenso(false);
+    }
+  };
+
   const nomeTipoSelecionado = tipoEnsino ? TIPO_LABEL[tipoEnsino] : 'Todos — matrícula regular';
   const nomeTurmaSelecionada = turmaId
     ? String(turmas.find(turma => turma.id === turmaId)?.nome ?? 'Turma não encontrada')
@@ -257,6 +308,10 @@ export default function MatriculasMensais({
     const aviso = pendencias.length > 0
       ? `<div class="aviso"><strong>CONFERÊNCIA NECESSÁRIA NA SED:</strong> ${escaparHtml(pendencias.join('; '))}.</div>`
       : '<div class="ok">Conferência completa: nenhum dado obrigatório pendente neste período.</div>';
+    const auditoriaEducacenso = resultadoEducacenso ? `
+      <h2>Cruzamento SED x Educacenso</h2>
+      <table><thead><tr><th>Ativos SED/app</th><th>Educacenso</th><th>Encontrados</th><th>Somente SED</th><th>Somente Educacenso</th><th>Ambíguos</th></tr></thead>
+      <tbody><tr><td>${resultadoEducacenso.totalSED}</td><td>${resultadoEducacenso.totalEducacenso}</td><td>${resultadoEducacenso.encontrados.length}</td><td>${resultadoEducacenso.somenteSED.length}</td><td>${resultadoEducacenso.somenteEducacenso.length}</td><td>${resultadoEducacenso.ambiguos.length}</td></tr></tbody></table>` : '';
 
     return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Relatório de matrículas — ${ano}</title>
       <style>
@@ -282,6 +337,7 @@ export default function MatriculasMensais({
         <div class="card">Total único<strong>${resumo.totalPeriodo.total}</strong></div>
       </div>
       ${aviso}
+      ${auditoriaEducacenso}
       <h2>Consolidado por ensino e ciclo/ano</h2>
       <table><thead><tr><th class="esquerda">Ensino / ciclo / ano</th><th>Meninos</th><th>Meninas</th><th>N/I</th><th>Total</th></tr></thead>
         <tbody>${consolidado}</tbody><tfoot><tr><td>TOTAL ÚNICO CONSOLIDADO</td>${celulasRelatorio(resumo.totalPeriodo)}</tr></tfoot></table>
@@ -309,16 +365,85 @@ export default function MatriculasMensais({
     janela.setTimeout(() => janela.print(), 350);
   };
 
-  const exportarWord = () => {
-    const blob = new Blob(['\ufeff', montarRelatorioHtml()], { type: 'application/msword;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${nomeArquivo}.doc`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const exportarExcel = () => {
+    const resumoExcel: Array<Array<string | number>> = [
+      ['RELATÓRIO DE MATRÍCULAS ATIVAS POR SEXO E PERÍODO', '', '', '', ''],
+      ['Escola', 'EMEIEF Luiz Gonzaga', '', '', ''],
+      ['Período', periodoDescricao, '', '', ''],
+      ['Tipo de ensino', nomeTipoSelecionado, '', '', ''],
+      ['Série/ciclo', serie || 'Todas as séries', '', '', ''],
+      ['Turma', nomeTurmaSelecionada, '', '', ''],
+      ['Gerado em', new Date().toLocaleString('pt-BR'), '', '', ''],
+      [],
+      ['Ensino / ciclo / ano', 'Meninos', 'Meninas', 'N/I', 'Total'],
+      ...linhasConsolidadas.map(linha => [
+        `${linha.nivel === 'serie' ? '   ↳ ' : ''}${linha.label}`,
+        linha.contagem.masculino,
+        linha.contagem.feminino,
+        linha.contagem.naoInformado,
+        linha.contagem.total,
+      ]),
+      ['TOTAL ÚNICO CONSOLIDADO', resumo.totalPeriodo.masculino, resumo.totalPeriodo.feminino, resumo.totalPeriodo.naoInformado, resumo.totalPeriodo.total],
+    ];
+    if (resumo.semSexo > 0) {
+      resumoExcel.push([], ['CONFERÊNCIA NECESSÁRIA NA SED', `${resumo.semSexo} estudante(s) com sexo não informado`, '', '', '']);
+    }
+
+    const mensalExcel: Array<Array<string | number>> = [
+      ['Mês',
+        'Matrículas — Meninos', 'Matrículas — Meninas', 'Matrículas — N/I', 'Matrículas — Total',
+        'Entradas — Meninos', 'Entradas — Meninas', 'Entradas — N/I', 'Entradas — Total',
+        'Saídas — Meninos', 'Saídas — Meninas', 'Saídas — N/I', 'Saídas — Total'],
+      ...resumo.meses.map(linha => [
+        MESES[linha.mes - 1],
+        linha.matriculados.masculino, linha.matriculados.feminino, linha.matriculados.naoInformado, linha.matriculados.total,
+        linha.entradas.masculino, linha.entradas.feminino, linha.entradas.naoInformado, linha.entradas.total,
+        linha.saidas.masculino, linha.saidas.feminino, linha.saidas.naoInformado, linha.saidas.total,
+      ]),
+      ['TOTAL DO PERÍODO',
+        resumo.totalPeriodo.masculino, resumo.totalPeriodo.feminino, resumo.totalPeriodo.naoInformado, resumo.totalPeriodo.total,
+        resumo.totalEntradas.masculino, resumo.totalEntradas.feminino, resumo.totalEntradas.naoInformado, resumo.totalEntradas.total,
+        resumo.totalSaidas.masculino, resumo.totalSaidas.feminino, resumo.totalSaidas.naoInformado, resumo.totalSaidas.total],
+    ];
+
+    const wb = XLSX.utils.book_new();
+    const wsResumo = XLSX.utils.aoa_to_sheet(resumoExcel);
+    wsResumo['!cols'] = [{ wch: 48 }, { wch: 22 }, { wch: 15 }, { wch: 15 }, { wch: 15 }];
+    wsResumo['!merges'] = [XLSX.utils.decode_range('A1:E1')];
+    const wsMensal = XLSX.utils.aoa_to_sheet(mensalExcel);
+    wsMensal['!cols'] = [{ wch: 18 }, ...Array.from({ length: 12 }, () => ({ wch: 20 }))];
+    wsMensal['!autofilter'] = { ref: `A1:M${mensalExcel.length}` };
+    XLSX.utils.book_append_sheet(wb, wsResumo, 'Resumo consolidado');
+    XLSX.utils.book_append_sheet(wb, wsMensal, 'Movimentação mensal');
+    if (resultadoEducacenso) {
+      const resumoCruzamento = [
+        ['CRUZAMENTO SED × EDUCACENSO', 'Quantidade'],
+        ['Alunos ativos na SED/app', resultadoEducacenso.totalSED],
+        ['Registros no Educacenso', resultadoEducacenso.totalEducacenso],
+        ['Correspondências confirmadas', resultadoEducacenso.encontrados.length],
+        ['Meninos oficiais encontrados', resultadoEducacenso.masculino],
+        ['Meninas oficiais encontradas', resultadoEducacenso.feminino],
+        ['Somente na SED/app', resultadoEducacenso.somenteSED.length],
+        ['Somente no Educacenso', resultadoEducacenso.somenteEducacenso.length],
+        ['Correspondências ambíguas', resultadoEducacenso.ambiguos.length],
+      ];
+      const wsCruzamento = XLSX.utils.aoa_to_sheet(resumoCruzamento);
+      wsCruzamento['!cols'] = [{ wch: 38 }, { wch: 16 }];
+      XLSX.utils.book_append_sheet(wb, wsCruzamento, 'Cruzamento');
+
+      const divergencias = [
+        ...resultadoEducacenso.somenteSED.map(item => ({ Origem: 'Somente SED/app', Nome: item.nome, Turma: item.turma })),
+        ...resultadoEducacenso.somenteEducacenso.map(item => ({ Origem: 'Somente Educacenso', Nome: item.nome, Turma: item.turma })),
+        ...resultadoEducacenso.ambiguos.map(item => ({ Origem: `Ambíguo — ${item.origem}`, Nome: item.nome, Turma: '' })),
+      ];
+      if (divergencias.length > 0) {
+        const wsDivergencias = XLSX.utils.json_to_sheet(divergencias);
+        wsDivergencias['!cols'] = [{ wch: 24 }, { wch: 44 }, { wch: 28 }];
+        wsDivergencias['!autofilter'] = { ref: `A1:C${divergencias.length + 1}` };
+        XLSX.utils.book_append_sheet(wb, wsDivergencias, 'Divergências');
+      }
+    }
+    XLSX.writeFile(wb, `${nomeArquivo}.xlsx`);
   };
 
   return (
@@ -340,15 +465,64 @@ export default function MatriculasMensais({
               style={{ border: `1px solid ${theme.danger}`, borderRadius: theme.radius, padding: '7px 10px', background: `${theme.danger}12`, color: theme.danger, cursor: 'pointer', fontWeight: 800 }}>
               📄 Baixar PDF
             </button>
-            <button type="button" onClick={exportarWord}
-              style={{ border: '1px solid #2563eb', borderRadius: theme.radius, padding: '7px 10px', background: '#2563eb12', color: '#3b82f6', cursor: 'pointer', fontWeight: 800 }}>
-              📝 Baixar Word
+            <button type="button" onClick={exportarExcel}
+              style={{ border: '1px solid #16a34a', borderRadius: theme.radius, padding: '7px 10px', background: '#16a34a12', color: '#16a34a', cursor: 'pointer', fontWeight: 800 }}>
+              📊 Baixar Excel
             </button>
           </div>
         </div>
         <p style={{ margin: '5px 0 0', color: theme.textSecondary, fontSize: 12.5 }}>
           Somente matrículas ativas. Cada pessoa é contada uma única vez por RA; remanejamentos e AEE não duplicam o total.
         </p>
+        <div style={{ marginTop: 12, border: `1px solid ${theme.primary}55`, borderRadius: theme.radius, background: `${theme.primary}08`, padding: 11 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ color: theme.text, fontWeight: 850, fontSize: 14 }}>🔎 Cruzamento SED × Educacenso</div>
+              <div style={{ color: theme.textSecondary, fontSize: 12, marginTop: 2 }}>
+                A base SED é o cadastro atual do aplicativo. Envie a Relação de Alunos por Escola do Educacenso para conferir CPF, nome, nascimento e sexo oficial.
+              </div>
+            </div>
+            <label style={{ border: `1px solid ${theme.primary}`, borderRadius: theme.radius, padding: '7px 10px', color: theme.primary, cursor: analisandoEducacenso ? 'wait' : 'pointer', fontWeight: 800, fontSize: 12.5 }}>
+              {analisandoEducacenso ? 'Analisando…' : '📥 Selecionar Educacenso'}
+              <input type="file" accept=".xlsx,.xls" disabled={analisandoEducacenso}
+                onChange={evento => analisarArquivoEducacenso(evento.target.files?.[0])} style={{ display: 'none' }} />
+            </label>
+          </div>
+          {arquivoEducacenso && <div style={{ color: theme.textMuted, fontSize: 11.5, marginTop: 7 }}>Arquivo: {arquivoEducacenso}</div>}
+          {mensagemEducacenso && <div style={{ color: mensagemEducacenso.startsWith('Erro') || mensagemEducacenso.startsWith('Não') ? theme.danger : theme.success, fontSize: 12, fontWeight: 700, marginTop: 7 }}>{mensagemEducacenso}</div>}
+
+          {resultadoEducacenso && (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(125px, 1fr))', gap: 7 }}>
+                <Resumo label="Ativos na SED/app" valor={resultadoEducacenso.totalSED} cor={theme.primary} />
+                <Resumo label="No Educacenso" valor={resultadoEducacenso.totalEducacenso} cor="#7c3aed" />
+                <Resumo label="Encontrados" valor={resultadoEducacenso.encontrados.length} cor={theme.success} />
+                <Resumo label="Meninos oficiais" valor={resultadoEducacenso.masculino} cor="#2563eb" />
+                <Resumo label="Meninas oficiais" valor={resultadoEducacenso.feminino} cor="#db2777" />
+                <Resumo label="Ainda não definidos" valor={resultadoEducacenso.naoInformado} cor={theme.orange} />
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 9, alignItems: 'center' }}>
+                <button type="button" onClick={aplicarSexoEducacenso} disabled={aplicandoEducacenso || resultadoEducacenso.encontrados.length === 0}
+                  style={{ border: `1px solid ${theme.success}`, borderRadius: theme.radius, padding: '7px 11px', background: `${theme.success}16`, color: theme.success, cursor: aplicandoEducacenso ? 'wait' : 'pointer', fontWeight: 850 }}>
+                  {aplicandoEducacenso ? 'Aplicando…' : `✅ Aplicar sexo oficial (${resultadoEducacenso.masculino + resultadoEducacenso.feminino})`}
+                </button>
+                <span style={{ color: theme.textSecondary, fontSize: 12 }}>
+                  Somente SED: {resultadoEducacenso.somenteSED.length} · Somente Educacenso: {resultadoEducacenso.somenteEducacenso.length} · Ambíguos: {resultadoEducacenso.ambiguos.length}
+                </span>
+              </div>
+              {(resultadoEducacenso.somenteSED.length > 0 || resultadoEducacenso.somenteEducacenso.length > 0 || resultadoEducacenso.ambiguos.length > 0) && (
+                <details style={{ marginTop: 9, color: theme.textSecondary, fontSize: 12 }}>
+                  <summary style={{ cursor: 'pointer', fontWeight: 800, color: theme.orange }}>⚠️ Ver divergências antes de concluir</summary>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8, marginTop: 8, maxHeight: 260, overflowY: 'auto' }}>
+                    <ListaDivergencia titulo="Somente na SED/app" itens={resultadoEducacenso.somenteSED} />
+                    <ListaDivergencia titulo="Somente no Educacenso" itens={resultadoEducacenso.somenteEducacenso} />
+                    <ListaDivergencia titulo="Correspondência ambígua" itens={resultadoEducacenso.ambiguos.map(item => ({ nome: item.nome, turma: item.origem }))} />
+                  </div>
+                </details>
+              )}
+            </div>
+          )}
+        </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginTop: 12 }}>
           <label style={{ fontSize: 12, color: theme.textSecondary }}>
             Ano letivo
@@ -596,6 +770,22 @@ function Resumo({ label, valor, cor }: { label: string; valor: number; cor: stri
     <div style={{ border: `1px solid ${cor}44`, borderRadius: theme.radius, padding: '9px 12px', background: `${cor}0d` }}>
       <div style={{ fontSize: 11.5, color: theme.textSecondary }}>{label}</div>
       <div style={{ fontSize: 22, fontWeight: 800, color: cor }}>{valor}</div>
+    </div>
+  );
+}
+
+function ListaDivergencia({ titulo, itens }: { titulo: string; itens: Array<{ nome: string; turma: string }> }) {
+  return (
+    <div style={{ border: `1px solid ${theme.borderLight}`, borderRadius: theme.radius, background: theme.card, padding: 8 }}>
+      <div style={{ color: theme.text, fontWeight: 850, marginBottom: 5 }}>{titulo} ({itens.length})</div>
+      {itens.length === 0
+        ? <div style={{ color: theme.textMuted }}>Nenhuma divergência.</div>
+        : itens.map((item, indice) => (
+          <div key={`${item.nome}-${item.turma}-${indice}`} style={{ padding: '4px 0', borderBottom: indice < itens.length - 1 ? `1px solid ${theme.borderLight}` : undefined }}>
+            <div style={{ color: theme.text, fontWeight: 650 }}>{item.nome}</div>
+            {item.turma && <div style={{ color: theme.textMuted, fontSize: 11 }}>{item.turma}</div>}
+          </div>
+        ))}
     </div>
   );
 }
