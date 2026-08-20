@@ -109,6 +109,8 @@ export default function Faltas() {
   const [alunos, setAlunos] = useState<any[]>([]);
   const [diasAluno, setDiasAluno] = useState<Record<string, Status[]>>({});
   const [statusTextos, setStatusTextos] = useState<Record<string, string>>({});
+  const [semFaltas, setSemFaltas] = useState<Record<string, boolean>>({});
+  const [confirmacoesSemFaltas, setConfirmacoesSemFaltas] = useState<Record<string, { por: string | null; em: string | null }>>({});
   const [motivos, setMotivos] = useState<Record<string, string>>({});
   const [motivosMesAnterior, setMotivosMesAnterior] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState(false);
@@ -212,6 +214,8 @@ export default function Faltas() {
       const mapDias: Record<string, Status[]> = {};
       const mapTextos: Record<string, string> = {};
       const mapMotivos: Record<string, string> = {};
+      const mapSemFaltas: Record<string, boolean> = {};
+      const mapConfirmacoesSemFaltas: Record<string, { por: string | null; em: string | null }> = {};
       fa.forEach((f: any) => {
         if (f.frequencia?.startsWith('DIAS:')) {
           mapDias[f.alunoId] = decodeDias(f.frequencia, numDias);
@@ -219,6 +223,13 @@ export default function Faltas() {
           mapTextos[f.alunoId] = f.frequencia;
         }
         if (f.motivo_baixa_frequencia) mapMotivos[f.alunoId] = f.motivo_baixa_frequencia;
+        if (f.conferido_sem_faltas === true) {
+          mapSemFaltas[f.alunoId] = true;
+          mapConfirmacoesSemFaltas[f.alunoId] = {
+            por: f.confirmado_por ?? null,
+            em: f.confirmado_em ?? null,
+          };
+        }
       });
       al.forEach((a: any) => {
         if (!mapDias[a.id] && !mapTextos[a.id]) mapDias[a.id] = initDias(numDias);
@@ -229,15 +240,31 @@ export default function Faltas() {
       });
       setDiasAluno(mapDias);
       setStatusTextos(mapTextos);
+      setSemFaltas(mapSemFaltas);
+      setConfirmacoesSemFaltas(mapConfirmacoesSemFaltas);
       setMotivos(mapMotivos);
       setMotivosMesAnterior(mapMotivosAnterior);
       setSaved(false);
       setLoading(false);
     });
-  }, [turmaId, mes]);
+  }, [turmaId, mes, ano, numDias]);
+
+  const limparConfirmacaoSemFaltas = (alunoIds: string[]) => {
+    setSemFaltas(prev => {
+      const next = { ...prev };
+      alunoIds.forEach(id => { delete next[id]; });
+      return next;
+    });
+    setConfirmacoesSemFaltas(prev => {
+      const next = { ...prev };
+      alunoIds.forEach(id => { delete next[id]; });
+      return next;
+    });
+  };
 
   const toggleDia = (alunoId: string, diaIdx: number) => {
     if (!podeEditar) return;
+    limparConfirmacaoSemFaltas([alunoId]);
     setDiasAluno(prev => {
       const dias = [...(prev[alunoId] ?? initDias(numDias))];
       const idx = CICLO.indexOf(dias[diaIdx]);
@@ -253,6 +280,7 @@ export default function Faltas() {
   };
 
   const pintarDia = (alunoId: string, schoolIdx: number, status: Status) => {
+    limparConfirmacaoSemFaltas([alunoId]);
     setDiasAluno(prev => {
       const dias = [...(prev[alunoId] ?? initDias(numDias))];
       dias[schoolIdx] = status;
@@ -262,6 +290,7 @@ export default function Faltas() {
   };
 
   const pintarLinha = (alunoId: string, status: Status) => {
+    limparConfirmacaoSemFaltas([alunoId]);
     const letivoIdxs = calDays.filter(cd => cd.isLetivo).map(cd => cd.schoolIdx);
     setDiasAluno(prev => {
       const dias = [...(prev[alunoId] ?? initDias(numDias))];
@@ -273,6 +302,7 @@ export default function Faltas() {
 
   const pintarColuna = (schoolIdx: number, status: Status) => {
     const idsElegiveis = alunos.filter(a => !statusTextos[a.id]).map(a => a.id);
+    limparConfirmacaoSemFaltas(idsElegiveis);
     setDiasAluno(prev => {
       const next = { ...prev };
       idsElegiveis.forEach(id => {
@@ -305,6 +335,7 @@ export default function Faltas() {
     if (!cur) return;
     const qtd = Math.max(1, Math.min(parseInt(numBufferRef.current || '1', 10) || 1, numDiasRef.current));
     const fim = Math.min(cur.day + qtd, numDiasRef.current);
+    limparConfirmacaoSemFaltas([cur.alunoId]);
     setDiasAluno(prev => {
       const dias = [...(prev[cur.alunoId] ?? initDias(numDiasRef.current))];
       for (let d = cur.day; d < fim; d++) dias[d] = status;
@@ -328,6 +359,7 @@ export default function Faltas() {
   };
 
   const setContagem = (alunoId: string, tipo: 'F' | 'J' | 'A', valor: number) => {
+    if (valor > 0) limparConfirmacaoSemFaltas([alunoId]);
     setDiasAluno(prev => {
       const dias = prev[alunoId] ?? initDias(numDias);
       const atual = { F: ct(dias, 'F'), J: ct(dias, 'J'), A: ct(dias, 'A') };
@@ -335,6 +367,26 @@ export default function Faltas() {
       atual[tipo] = Math.max(0, Math.min(valor || 0, numDias - outrosDois));
       return { ...prev, [alunoId]: diasFromCounts(atual.F, atual.J, atual.A, numDias) };
     });
+    setSaved(false);
+  };
+
+  const toggleSemFaltas = (alunoId: string) => {
+    if (!podeEditar) return;
+    if (semFaltas[alunoId]) {
+      limparConfirmacaoSemFaltas([alunoId]);
+      setSaved(false);
+      return;
+    }
+    const dias = diasAluno[alunoId] ?? initDias(numDias);
+    const ausencias = ct(dias, 'F') + ct(dias, 'J') + ct(dias, 'A');
+    if (ausencias > 0) return;
+    const agora = new Date().toISOString();
+    setDiasAluno(prev => ({ ...prev, [alunoId]: initDias(numDias) }));
+    setSemFaltas(prev => ({ ...prev, [alunoId]: true }));
+    setConfirmacoesSemFaltas(prev => ({
+      ...prev,
+      [alunoId]: { por: username ?? 'desconhecido', em: agora },
+    }));
     setSaved(false);
   };
 
@@ -364,11 +416,16 @@ export default function Faltas() {
         return { alunoId: a.id, turmaId, mes, ano, faltas: 0, frequencia: statusTextos[a.id], motivo_baixa_frequencia: motivo };
       }
       const dias = diasAluno[a.id] ?? initDias(numDias);
+      const sfConfirmado = semFaltas[a.id] === true;
+      const confirmacaoSF = confirmacoesSemFaltas[a.id];
       return {
         alunoId: a.id, turmaId, mes, ano,
         faltas: ct(dias, 'F') + ct(dias, 'J') + ct(dias, 'A'),
         frequencia: encodeDias(dias),
         motivo_baixa_frequencia: motivo,
+        conferido_sem_faltas: sfConfirmado,
+        confirmado_por: sfConfirmado ? (confirmacaoSF?.por ?? username ?? 'desconhecido') : null,
+        confirmado_em: sfConfirmado ? (confirmacaoSF?.em ?? new Date().toISOString()) : null,
       };
     });
     await api.upsertFaltasBatch(registros);
@@ -485,6 +542,7 @@ export default function Faltas() {
   const totalF = alunos.reduce((s, a) => s + ct(diasAluno[a.id] ?? [], 'F'), 0);
   const totalJ = alunos.reduce((s, a) => s + ct(diasAluno[a.id] ?? [], 'J'), 0);
   const totalA = alunos.reduce((s, a) => s + ct(diasAluno[a.id] ?? [], 'A'), 0);
+  const totalSF = alunos.filter(a => semFaltas[a.id] === true).length;
   const totalP = alunos.reduce((s, a) => s + ct(diasAluno[a.id] ?? [], 'P'), 0);
   const totalAusencias = totalF + totalJ + totalA;
   const turma = turmas.find(t => t.id === turmaId);
@@ -1546,6 +1604,7 @@ export default function Faltas() {
             <StatCard label="Faltas (F)" val={totalF} color={ST_COR.F} />
             <StatCard label="Justif. (J)" val={totalJ} color={ST_COR.J} />
             <StatCard label="Atestados (A)" val={totalA} color={ST_COR.A} />
+            {modo === 'rapido' && <StatCard label="Sem faltas (SF)" val={totalSF} color={theme.success} />}
             <StatCard label="Freq. Geral" val={`${freqGeral}%`} color={Number(freqGeral) >= 85 ? theme.success : theme.danger} />
             <StatCard label="⚠️ Alertas" val={alertas.length} color={alertas.length > 0 ? theme.danger : theme.textMuted} />
           </div>
@@ -1878,6 +1937,7 @@ export default function Faltas() {
                   <th style={{ width: 70, textAlign: 'center', fontSize: 12, padding: '8px 4px', color: '#fca5a5' }}>F<br /><span style={{ fontSize: 9, fontWeight: 400 }}>Faltas</span></th>
                   <th style={{ width: 70, textAlign: 'center', fontSize: 12, padding: '8px 4px', color: '#fdba74' }}>J<br /><span style={{ fontSize: 9, fontWeight: 400 }}>Justif.</span></th>
                   <th style={{ width: 70, textAlign: 'center', fontSize: 12, padding: '8px 4px', color: '#c4b5fd' }}>A<br /><span style={{ fontSize: 9, fontWeight: 400 }}>Atestado</span></th>
+                  <th style={{ width: 76, textAlign: 'center', fontSize: 12, padding: '8px 4px', color: '#bbf7d0' }} title="SF = diário conferido e aluno sem nenhuma falta no mês">SF<br /><span style={{ fontSize: 9, fontWeight: 400 }}>Sem faltas</span></th>
                   <th style={{ width: 60, textAlign: 'center', fontSize: 11, padding: '8px 4px', color: '#bbf7d0' }}>P<br /><span style={{ fontSize: 9, fontWeight: 400 }}>calc.</span></th>
                   <th style={{ width: 60, textAlign: 'center', fontSize: 11, padding: '8px 4px' }}>Freq.</th>
                   <th style={{ width: 210, textAlign: 'center', fontSize: 10, padding: '8px 4px' }} title="Código oficial do motivo de baixa frequência (Bolsa Família/MEC)">Motivo da Baixa Frequência</th>
@@ -1889,10 +1949,11 @@ export default function Faltas() {
                   const dias = diasAluno[a.id] ?? initDias(numDias);
                   const nF = ct(dias, 'F'), nJ = ct(dias, 'J'), nA = ct(dias, 'A'), nP = ct(dias, 'P');
                   const ausencias = nF + nJ + nA;
+                  const sfConfirmado = semFaltas[a.id] === true;
                   const emAlerta = !statusTxt && ausencias >= limiteAlerta;
                   const ncomAlerta = !statusTxt && maxFaltasConsecutivas(dias) >= NCOM_LIMITE;
                   const freq = numDias > 0 ? ((numDias - ausencias) / numDias * 100).toFixed(0) : '100';
-                  const rowBg = emAlerta ? 'var(--row-alerta)' : i % 2 === 0 ? 'var(--row-even)' : 'var(--row-odd)';
+                  const rowBg = emAlerta ? 'var(--row-alerta)' : sfConfirmado ? (isDark ? 'rgba(22,163,74,0.12)' : '#f0fdf4') : i % 2 === 0 ? 'var(--row-even)' : 'var(--row-odd)';
                   const linhaAtiva = linhaFocusada === a.id;
                   const motivoRepetido = !!motivos[a.id] && motivos[a.id] === motivosMesAnterior[a.id];
                   const campoNum = (tipo: 'F' | 'J' | 'A', valor: number, cor: string) => (
@@ -1901,7 +1962,7 @@ export default function Faltas() {
                         className="quick-input"
                         type="number" min={0} max={numDias}
                         value={valor}
-                        disabled={!podeEditar}
+                        disabled={!podeEditar || sfConfirmado}
                         onFocus={e => { e.target.select(); setLinhaFocusada(a.id); }}
                         onBlur={() => setLinhaFocusada(null)}
                         onChange={e => setContagem(a.id, tipo, parseInt(e.target.value) || 0)}
@@ -1928,6 +1989,14 @@ export default function Faltas() {
                           )}
                           {a.nome}
                         </span>
+                        {sfConfirmado && (
+                          <span
+                            title={`Sem faltas confirmado${confirmacoesSemFaltas[a.id]?.por ? ` por ${confirmacoesSemFaltas[a.id].por}` : ''}${confirmacoesSemFaltas[a.id]?.em ? ` em ${new Date(confirmacoesSemFaltas[a.id].em!).toLocaleString('pt-BR')}` : ''}`}
+                            style={{ marginLeft: 6, fontSize: 10, color: '#15803d', fontWeight: 800 }}
+                          >
+                            ✅ SF
+                          </span>
+                        )}
                         {a.situacao && a.situacao !== 'ATIVO' && (
                           <span style={{ marginLeft: 6, fontSize: 10, color: SITUACAO_COR[a.situacao] ?? theme.textSecondary, fontWeight: 700 }}>
                             {SITUACAO_LABEL[a.situacao] ?? a.situacao}
@@ -1943,12 +2012,23 @@ export default function Faltas() {
                         )}
                       </td>
                       {statusTxt ? (
-                        <td colSpan={6} style={{ textAlign: 'center', color: '#7c3aed', fontStyle: 'italic', fontSize: 12, padding: 8 }}>{statusTxt}</td>
+                        <td colSpan={7} style={{ textAlign: 'center', color: '#7c3aed', fontStyle: 'italic', fontSize: 12, padding: 8 }}>{statusTxt}</td>
                       ) : (
                         <>
                           {campoNum('F', nF, ST_COR.F)}
                           {campoNum('J', nJ, ST_COR.J)}
                           {campoNum('A', nA, ST_COR.A)}
+                          <td style={{ textAlign: 'center', padding: '4px 6px' }}>
+                            <input
+                              type="checkbox"
+                              checked={sfConfirmado}
+                              disabled={!podeEditar || ausencias > 0}
+                              onChange={() => toggleSemFaltas(a.id)}
+                              aria-label={`Sem faltas no mês — ${a.nome}`}
+                              title={ausencias > 0 ? 'Zere F, J e A antes de confirmar SF' : 'Confirmar que o aluno não teve faltas no mês'}
+                              style={{ width: 20, height: 20, accentColor: '#16a34a', cursor: podeEditar && ausencias === 0 ? 'pointer' : 'not-allowed' }}
+                            />
+                          </td>
                           <td style={{ textAlign: 'center', fontWeight: 700, fontSize: 13, color: ST_COR.P }}>{nP}</td>
                           <td style={{ textAlign: 'center', fontWeight: 700, fontSize: 13, color: Number(freq) >= 85 ? ST_COR.P : Number(freq) >= 75 ? '#ea580c' : ST_COR.F }}>{freq}%</td>
                           <td style={{ padding: '4px 6px' }}>
@@ -1985,6 +2065,9 @@ export default function Faltas() {
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 12, marginTop: 10, marginBottom: 12, alignItems: 'center' }}>
             <span style={{ fontSize: 11, color: theme.textMuted }}>
               ⌨️ Dica: clique no campo F do primeiro aluno e use <strong>Tab</strong> ou <strong>Enter</strong> para pular F → J → A → próximo aluno, sem tirar a mão do teclado.
+            </span>
+            <span style={{ fontSize: 11, color: '#15803d', fontWeight: 700 }}>
+              · SF = diário conferido e aluno sem nenhuma falta no mês. Zero sem SF continua pendente.
             </span>
             <span style={{ fontSize: 11, color: theme.textMuted }}>
               · ⚠️ Frequência abaixo do mínimo &nbsp; <span style={{ color: '#b91c1c', fontWeight: 700 }}>🚨 Possível NCOM (15+ faltas seguidas)</span> &nbsp; <span style={{ color: '#db2777', fontWeight: 700 }}>🔁 Motivo repetido do mês anterior</span>
