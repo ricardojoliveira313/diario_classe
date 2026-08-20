@@ -23,7 +23,7 @@ import { theme } from './styles';
 import { ThemeProvider, useTheme } from './ThemeContext';
 import { AnoProvider, useAno } from './AnoContext';
 import { AuthProvider, useAuth } from './AuthContext';
-import type { Role, PageKey, PermKey } from './AuthContext';
+import type { Role, PageKey, PermKey, CapabilityKey } from './AuthContext';
 import { ErrorBoundary } from './components';
 
 // ─── Itens de navegação ────────────────────────────────────────────────────
@@ -31,12 +31,12 @@ import { ErrorBoundary } from './components';
 // pageKey          → chave usada no painel de permissões (viewers)
 //                    se pageKey estiver definida, viewer só vê se permissoes===null
 //                    ou se permissoes.includes(pageKey)
-const NAV_ITEMS: { to: string; label: string; end?: boolean; badge?: boolean; adminOnly?: boolean; pageKey?: PageKey }[] = [
+const NAV_ITEMS: { to: string; label: string; end?: boolean; badge?: boolean; adminOnly?: boolean; pageKey?: PageKey; capabilityKey?: CapabilityKey }[] = [
   { to: '/',          label: '📊 Dashboard', end: true,              pageKey: 'dashboard' },
   { to: '/importar',  label: '📥 Importar',  adminOnly: true },
   { to: '/turmas',    label: '👩‍🏫 Turmas',                            pageKey: 'turmas' },
   { to: '/alunos',    label: '👥 Alunos',                             pageKey: 'alunos' },
-  { to: '/genero',    label: '👫 Gênero',                             adminOnly: true },
+  { to: '/genero',    label: '👫 Gênero',                             capabilityKey: 'acessar_genero' },
   { to: '/faltas',    label: '📋 Faltas',                             pageKey: 'faltas' },
   { to: '/bf-frequencia', label: '💚 BF - Frequência',                 pageKey: 'bffrequencia' },
   { to: '/ocorrencias', label: '📋 Ocorrências',                      pageKey: 'ocorrencias' },
@@ -61,8 +61,8 @@ const labelDesktop = (label: string) => label.replace(/^\S+\s+/, '');
 // trava numa tela em branco se "Dashboard" não estiver entre as liberadas.
 function primeiraPaginaPermitida(permissoes: PermKey[] | null): string | null {
   for (const item of NAV_ITEMS) {
-    if (!item.pageKey) continue;
-    if (permissoes === null || permissoes.includes(item.pageKey)) return item.to;
+    if (item.pageKey && (permissoes === null || permissoes.includes(item.pageKey))) return item.to;
+    if (item.capabilityKey && permissoes?.includes(item.capabilityKey)) return item.to;
   }
   return null;
 }
@@ -90,6 +90,15 @@ function ViewerRoute({ children, pageKey }: { children: React.ReactNode; pageKey
   if (role === 'admin') return <>{children}</>;          // admin: acesso total
   if (permissoes === null) return <>{children}</>;       // null = todas liberadas
   if (permissoes.includes(pageKey)) return <>{children}</>;
+  const destino = primeiraPaginaPermitida(permissoes);
+  return destino ? <Navigate to={destino} replace /> : <SemAcesso />;
+}
+
+// ─── Guarda de rota: capacidades sensíveis nunca são liberadas pelo "todas as abas" ─
+function CapabilityRoute({ children, capabilityKey }: { children: React.ReactNode; capabilityKey: CapabilityKey }) {
+  const { role, permissoes } = useAuth();
+  if (role === 'admin') return <>{children}</>;
+  if (permissoes?.includes(capabilityKey)) return <>{children}</>;
   const destino = primeiraPaginaPermitida(permissoes);
   return destino ? <Navigate to={destino} replace /> : <SemAcesso />;
 }
@@ -138,6 +147,7 @@ function AppShell() {
   const navItems = NAV_ITEMS.filter(item => {
     if (role === 'admin') return true;                    // admin vê tudo
     if (item.adminOnly) return false;                     // viewer nunca vê adminOnly
+    if (item.capabilityKey) return !!permissoes?.includes(item.capabilityKey);
     if (!item.pageKey) return true;                       // sem pageKey → sempre visível
     if (permissoes === null) return true;                 // null = todas liberadas
     return permissoes.includes(item.pageKey);             // verifica whitelist
@@ -287,7 +297,7 @@ function AppShell() {
             <Route path="/importar" element={<AdminRoute><Importar /></AdminRoute>} />
             <Route path="/turmas" element={<ViewerRoute pageKey="turmas"><Turmas /></ViewerRoute>} />
             <Route path="/alunos" element={<ViewerRoute pageKey="alunos"><Alunos /></ViewerRoute>} />
-            <Route path="/genero" element={<AdminRoute><Genero /></AdminRoute>} />
+            <Route path="/genero" element={<CapabilityRoute capabilityKey="acessar_genero"><Genero /></CapabilityRoute>} />
             <Route path="/faltas" element={<ViewerRoute pageKey="faltas"><Faltas /></ViewerRoute>} />
             <Route path="/bf-frequencia" element={<ViewerRoute pageKey="bffrequencia"><BFFrequencia /></ViewerRoute>} />
             <Route path="/distorcao" element={<ViewerRoute pageKey="distorcao"><Distorcao /></ViewerRoute>} />

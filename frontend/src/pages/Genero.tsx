@@ -4,8 +4,10 @@ import { Loading } from '../components';
 import MatriculasMensais from '../components/MatriculasMensais';
 import { useAno } from '../AnoContext';
 import { sortTurmasPedagogico, theme } from '../styles';
+import { useAuth } from '../AuthContext';
 
 export default function Genero() {
+  const { role } = useAuth();
   const { ano, setAno } = useAno();
   const [turmas, setTurmas] = useState<any[]>([]);
   const [alunos, setAlunos] = useState<any[]>([]);
@@ -48,8 +50,12 @@ export default function Genero() {
           Cruzamento criterioso entre a base SED do aplicativo e o relatório oficial do Educacenso, com totais de meninos e meninas e divergências separadas para conferência.
         </p>
         <div style={{ marginTop: 9, padding: '9px 11px', border: `1px solid ${theme.borderLight}`, borderRadius: theme.radius, background: theme.card, color: theme.textSecondary, fontSize: 12.5 }}>
-          <strong>Ordem correta:</strong> 1) envie os PDFs/Excel mais recentes da SED na aba{' '}
-          <a href="/importar" style={{ color: theme.primary, fontWeight: 800 }}>Importar</a>; 2) volte aqui e selecione o relatório Educacenso. Assim o cruzamento compara duas bases atualizadas da mesma data de referência.
+          {role === 'admin' ? <>
+            <strong>Ordem correta:</strong> 1) envie os PDFs/Excel mais recentes da SED na aba{' '}
+            <a href="/importar" style={{ color: theme.primaryText, fontWeight: 800, textDecoration: 'underline' }}>Importar</a>; 2) volte aqui e selecione o relatório Educacenso. Assim o cruzamento compara duas bases atualizadas da mesma data de referência.
+          </> : <>
+            <strong>Base de referência:</strong> os dados da SED são atualizados pela administração. Selecione abaixo o relatório do Educacenso para realizar o cruzamento autorizado.
+          </>}
         </div>
       </div>
       <MatriculasMensais

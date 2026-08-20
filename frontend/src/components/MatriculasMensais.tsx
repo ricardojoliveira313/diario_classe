@@ -461,12 +461,10 @@ export default function MatriculasMensais({
             📅 Matrículas por mês — {ano}
           </h2>
           <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-            <button type="button" onClick={exportarPDF}
-              style={{ border: `1px solid ${theme.danger}`, borderRadius: theme.radius, padding: '7px 10px', background: `${theme.danger}12`, color: theme.danger, cursor: 'pointer', fontWeight: 800 }}>
+            <button type="button" onClick={exportarPDF} className="report-action report-action-danger">
               📄 Baixar PDF
             </button>
-            <button type="button" onClick={exportarExcel}
-              style={{ border: '1px solid #16a34a', borderRadius: theme.radius, padding: '7px 10px', background: '#16a34a12', color: '#16a34a', cursor: 'pointer', fontWeight: 800 }}>
+            <button type="button" onClick={exportarExcel} className="report-action report-action-success">
               📊 Baixar Excel
             </button>
           </div>
@@ -482,28 +480,29 @@ export default function MatriculasMensais({
                 A base SED é o cadastro atual do aplicativo. Envie a Relação de Alunos por Escola do Educacenso para conferir CPF, nome, nascimento e sexo oficial.
               </div>
             </div>
-            <label style={{ border: `1px solid ${theme.primary}`, borderRadius: theme.radius, padding: '7px 10px', color: theme.primary, cursor: analisandoEducacenso ? 'wait' : 'pointer', fontWeight: 800, fontSize: 12.5 }}>
+            <input id="arquivo-educacenso-genero" className="report-file-input" type="file" accept=".xlsx,.xls"
+              disabled={analisandoEducacenso} onChange={evento => analisarArquivoEducacenso(evento.target.files?.[0])} />
+            <label htmlFor="arquivo-educacenso-genero" className="report-action report-action-primary"
+              aria-disabled={analisandoEducacenso} aria-busy={analisandoEducacenso}>
               {analisandoEducacenso ? 'Analisando…' : '📥 Selecionar Educacenso'}
-              <input type="file" accept=".xlsx,.xls" disabled={analisandoEducacenso}
-                onChange={evento => analisarArquivoEducacenso(evento.target.files?.[0])} style={{ display: 'none' }} />
             </label>
           </div>
-          {arquivoEducacenso && <div style={{ color: theme.textMuted, fontSize: 11.5, marginTop: 7 }}>Arquivo: {arquivoEducacenso}</div>}
-          {mensagemEducacenso && <div style={{ color: mensagemEducacenso.startsWith('Erro') || mensagemEducacenso.startsWith('Não') ? theme.danger : theme.success, fontSize: 12, fontWeight: 700, marginTop: 7 }}>{mensagemEducacenso}</div>}
+          {arquivoEducacenso && <div style={{ color: theme.textSecondary, fontSize: 11.5, marginTop: 7 }}>Arquivo: {arquivoEducacenso}</div>}
+          {mensagemEducacenso && <div style={{ color: mensagemEducacenso.startsWith('Erro') || mensagemEducacenso.startsWith('Não') ? 'var(--report-danger)' : 'var(--report-green)', fontSize: 12, fontWeight: 700, marginTop: 7 }}>{mensagemEducacenso}</div>}
 
           {resultadoEducacenso && (
             <div style={{ marginTop: 10 }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(125px, 1fr))', gap: 7 }}>
-                <Resumo label="Ativos na SED/app" valor={resultadoEducacenso.totalSED} cor={theme.primary} />
-                <Resumo label="No Educacenso" valor={resultadoEducacenso.totalEducacenso} cor="#7c3aed" />
-                <Resumo label="Encontrados" valor={resultadoEducacenso.encontrados.length} cor={theme.success} />
-                <Resumo label="Meninos oficiais" valor={resultadoEducacenso.masculino} cor="#2563eb" />
-                <Resumo label="Meninas oficiais" valor={resultadoEducacenso.feminino} cor="#db2777" />
-                <Resumo label="Ainda não definidos" valor={resultadoEducacenso.naoInformado} cor={theme.orange} />
+                <Resumo label="Ativos na SED/app" valor={resultadoEducacenso.totalSED} cor="var(--report-blue)" />
+                <Resumo label="No Educacenso" valor={resultadoEducacenso.totalEducacenso} cor="var(--report-purple)" />
+                <Resumo label="Encontrados" valor={resultadoEducacenso.encontrados.length} cor="var(--report-green)" />
+                <Resumo label="Meninos oficiais" valor={resultadoEducacenso.masculino} cor="var(--report-blue)" />
+                <Resumo label="Meninas oficiais" valor={resultadoEducacenso.feminino} cor="var(--report-pink)" />
+                <Resumo label="Ainda não definidos" valor={resultadoEducacenso.naoInformado} cor="var(--report-orange)" />
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 9, alignItems: 'center' }}>
                 <button type="button" onClick={aplicarSexoEducacenso} disabled={aplicandoEducacenso || resultadoEducacenso.encontrados.length === 0}
-                  style={{ border: `1px solid ${theme.success}`, borderRadius: theme.radius, padding: '7px 11px', background: `${theme.success}16`, color: theme.success, cursor: aplicandoEducacenso ? 'wait' : 'pointer', fontWeight: 850 }}>
+                  className="report-action report-action-success" aria-busy={aplicandoEducacenso}>
                   {aplicandoEducacenso ? 'Aplicando…' : `✅ Aplicar sexo oficial (${resultadoEducacenso.masculino + resultadoEducacenso.feminino})`}
                 </button>
                 <span style={{ color: theme.textSecondary, fontSize: 12 }}>
@@ -512,7 +511,7 @@ export default function MatriculasMensais({
               </div>
               {(resultadoEducacenso.somenteSED.length > 0 || resultadoEducacenso.somenteEducacenso.length > 0 || resultadoEducacenso.ambiguos.length > 0) && (
                 <details style={{ marginTop: 9, color: theme.textSecondary, fontSize: 12 }}>
-                  <summary style={{ cursor: 'pointer', fontWeight: 800, color: theme.orange }}>⚠️ Ver divergências antes de concluir</summary>
+                  <summary style={{ cursor: 'pointer', fontWeight: 800, color: 'var(--report-orange)' }}>⚠️ Ver divergências antes de concluir</summary>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8, marginTop: 8, maxHeight: 260, overflowY: 'auto' }}>
                     <ListaDivergencia titulo="Somente na SED/app" itens={resultadoEducacenso.somenteSED} />
                     <ListaDivergencia titulo="Somente no Educacenso" itens={resultadoEducacenso.somenteEducacenso} />
@@ -586,17 +585,17 @@ export default function MatriculasMensais({
             </select>
           </label>
           <button type="button" onClick={() => { setTipoEnsino(''); setSerie(''); setTurmaId(''); setMesInicio(1); setMesFim(ultimoMesDisponivel); }}
-            style={{ alignSelf: 'end', ...input, cursor: 'pointer', fontWeight: 700, color: theme.primary }}>
+            className="report-action report-action-neutral" style={{ alignSelf: 'end', width: '100%' }}>
             🧹 Limpar filtros
           </button>
         </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, padding: '12px 16px' }}>
-        <Resumo label="Alunos no período" valor={resumo.totalPeriodo.masculino} cor="#2563eb" />
-        <Resumo label="Alunas no período" valor={resumo.totalPeriodo.feminino} cor="#db2777" />
-        <Resumo label="Sexo não informado" valor={resumo.totalPeriodo.naoInformado} cor={theme.orange} />
-        <Resumo label="Total único do período" valor={resumo.totalPeriodo.total} cor={theme.primary} />
+        <Resumo label="Alunos no período" valor={resumo.totalPeriodo.masculino} cor="var(--report-blue)" />
+        <Resumo label="Alunas no período" valor={resumo.totalPeriodo.feminino} cor="var(--report-pink)" />
+        <Resumo label="Sexo não informado" valor={resumo.totalPeriodo.naoInformado} cor="var(--report-orange)" />
+        <Resumo label="Total único do período" valor={resumo.totalPeriodo.total} cor="var(--report-blue)" />
       </div>
 
       {(resumo.semSexo > 0 || resumo.semDataInicio > 0 || resumo.semDataSaida > 0) && (
@@ -607,7 +606,7 @@ export default function MatriculasMensais({
           {resumo.semDataSaida > 0 ? ` ${resumo.semDataSaida} aluno(s) com situação de saída, mas sem data de saída; contabilizado(s) apenas no mês de início até conferência.` : ''}
           {resumo.semSexo > 0 && (
             <button type="button" onClick={() => setMostrarConferenciaSexo(valor => !valor)}
-              style={{ marginLeft: 10, border: `1px solid ${theme.orange}`, borderRadius: theme.radius, padding: '5px 9px', background: 'transparent', color: theme.orange, cursor: 'pointer', fontWeight: 800 }}>
+              className="report-action report-action-warning" style={{ marginLeft: 10 }}>
               {mostrarConferenciaSexo ? 'Fechar conferência' : `Conferir ${resumo.semSexo} agora`}
             </button>
           )}
@@ -624,11 +623,11 @@ export default function MatriculasMensais({
             </div>
             {totalComSugestao > 0 && (
               <button type="button" disabled={!!salvandoSexo} onClick={confirmarSugestoesEmLote}
-                style={{ marginTop: 8, border: `1px solid ${theme.primary}`, borderRadius: theme.radius, padding: '6px 11px', background: `${theme.primary}18`, color: theme.primary, cursor: salvandoSexo ? 'wait' : 'pointer', fontWeight: 800, fontSize: 12.5 }}>
+                className="report-action report-action-primary" style={{ marginTop: 8 }}>
                 {salvandoSexo === '__lote__' ? 'Salvando sugestões…' : `💡 Confirmar todas as sugestões (${totalComSugestao})`}
               </button>
             )}
-            {erroSexo && <div style={{ marginTop: 6, color: theme.danger, fontWeight: 700 }}>{erroSexo}</div>}
+            {erroSexo && <div style={{ marginTop: 6, color: 'var(--report-danger)', fontWeight: 700 }}>{erroSexo}</div>}
           </div>
           <div style={{ maxHeight: 430, overflowY: 'auto' }}>
             {pendentesSexoOrdenados.map((pendente, indice) => (
@@ -647,22 +646,18 @@ export default function MatriculasMensais({
                       </span>
                     )}
                   </div>
-                  <div style={{ color: theme.textMuted, fontSize: 11.5 }}>RA: {pendente.ra || 'não informado'}</div>
+                  <div style={{ color: theme.textSecondary, fontSize: 11.5 }}>RA: {pendente.ra || 'não informado'}</div>
                 </div>
                 <div style={{ color: theme.textSecondary, fontSize: 12, fontWeight: 600 }}>{pendente.turma}</div>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button type="button" disabled={!!salvandoSexo} onClick={() => confirmarSexo(pendente.chave, pendente.ids, 'M')}
-                    style={{
-                      border: `${pendente.sugestao === 'M' ? 2 : 1}px solid #2563eb`, borderRadius: theme.radius, padding: '6px 9px',
-                      background: '#2563eb18', color: '#3b82f6', cursor: salvandoSexo ? 'wait' : 'pointer', fontWeight: 800,
-                    }}>
+                    className="report-action report-action-primary"
+                    style={{ boxShadow: pendente.sugestao === 'M' ? '0 0 0 2px #fbbf24' : undefined }}>
                     {salvandoSexo === pendente.chave ? 'Salvando…' : 'Menino'}
                   </button>
                   <button type="button" disabled={!!salvandoSexo} onClick={() => confirmarSexo(pendente.chave, pendente.ids, 'F')}
-                    style={{
-                      border: `${pendente.sugestao === 'F' ? 2 : 1}px solid #db2777`, borderRadius: theme.radius, padding: '6px 9px',
-                      background: '#db277718', color: '#ec4899', cursor: salvandoSexo ? 'wait' : 'pointer', fontWeight: 800,
-                    }}>
+                    className="report-action report-action-pink"
+                    style={{ boxShadow: pendente.sugestao === 'F' ? '0 0 0 2px #fbbf24' : undefined }}>
                     {salvandoSexo === pendente.chave ? 'Salvando…' : 'Menina'}
                   </button>
                 </div>
@@ -703,9 +698,9 @@ export default function MatriculasMensais({
                   }}>
                     {linha.nivel === 'serie' ? '↳ ' : ''}{linha.label}
                   </td>
-                  <td style={numero('#2563eb')}>{linha.contagem.masculino}</td>
-                  <td style={numero('#db2777')}>{linha.contagem.feminino}</td>
-                  <td style={numero(linha.contagem.naoInformado > 0 ? theme.orange : theme.textMuted)}>{linha.contagem.naoInformado}</td>
+                  <td style={numero('var(--report-blue)')}>{linha.contagem.masculino}</td>
+                  <td style={numero('var(--report-pink)')}>{linha.contagem.feminino}</td>
+                  <td style={numero(linha.contagem.naoInformado > 0 ? 'var(--report-orange)' : theme.textSecondary)}>{linha.contagem.naoInformado}</td>
                   <td style={{ ...numero(theme.text), fontWeight: 800 }}>{linha.contagem.total}</td>
                 </tr>
               ))}
@@ -713,9 +708,9 @@ export default function MatriculasMensais({
             <tfoot>
               <tr style={{ background: 'var(--footer-row)', borderTop: `2px solid ${theme.primary}55` }}>
                 <td style={{ padding: '9px 12px', color: theme.text, fontWeight: 900 }}>TOTAL ÚNICO CONSOLIDADO</td>
-                <td style={numero('#2563eb')}>{resumo.totalPeriodo.masculino}</td>
-                <td style={numero('#db2777')}>{resumo.totalPeriodo.feminino}</td>
-                <td style={numero(resumo.totalPeriodo.naoInformado > 0 ? theme.orange : theme.textMuted)}>{resumo.totalPeriodo.naoInformado}</td>
+                <td style={numero('var(--report-blue)')}>{resumo.totalPeriodo.masculino}</td>
+                <td style={numero('var(--report-pink)')}>{resumo.totalPeriodo.feminino}</td>
+                <td style={numero(resumo.totalPeriodo.naoInformado > 0 ? 'var(--report-orange)' : theme.textSecondary)}>{resumo.totalPeriodo.naoInformado}</td>
                 <td style={{ ...numero(theme.text), fontWeight: 900 }}>{resumo.totalPeriodo.total}</td>
               </tr>
             </tfoot>
@@ -758,7 +753,7 @@ export default function MatriculasMensais({
           </tfoot>
         </table>
       </div>
-      <div style={{ padding: '8px 16px 12px', color: theme.textMuted, fontSize: 11.5 }}>
+      <div style={{ padding: '8px 16px 12px', color: theme.textSecondary, fontSize: 11.5 }}>
         * Em “Matrículas existentes”, o total representa pessoas únicas no período selecionado — não é a soma dos meses.
       </div>
     </section>
@@ -779,11 +774,11 @@ function ListaDivergencia({ titulo, itens }: { titulo: string; itens: Array<{ no
     <div style={{ border: `1px solid ${theme.borderLight}`, borderRadius: theme.radius, background: theme.card, padding: 8 }}>
       <div style={{ color: theme.text, fontWeight: 850, marginBottom: 5 }}>{titulo} ({itens.length})</div>
       {itens.length === 0
-        ? <div style={{ color: theme.textMuted }}>Nenhuma divergência.</div>
+        ? <div style={{ color: theme.textSecondary }}>Nenhuma divergência.</div>
         : itens.map((item, indice) => (
           <div key={`${item.nome}-${item.turma}-${indice}`} style={{ padding: '4px 0', borderBottom: indice < itens.length - 1 ? `1px solid ${theme.borderLight}` : undefined }}>
             <div style={{ color: theme.text, fontWeight: 650 }}>{item.nome}</div>
-            {item.turma && <div style={{ color: theme.textMuted, fontSize: 11 }}>{item.turma}</div>}
+            {item.turma && <div style={{ color: theme.textSecondary, fontSize: 11 }}>{item.turma}</div>}
           </div>
         ))}
     </div>

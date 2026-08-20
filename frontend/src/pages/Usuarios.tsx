@@ -267,7 +267,7 @@ export default function Usuarios() {
                             : <span style={{ marginLeft: 8 }}>· 👁️ Somente consulta</span>}
                         {caps.filter(c => c !== 'faltas_todas').length > 0 &&
                           <span style={{ marginLeft: 8, color: theme.purple, fontWeight: 600 }}>
-                            · {caps.filter(c => c !== 'faltas_todas').map(c => CAPABILITIES.find(x => x.key === c)?.label.split(' ').slice(1, 3).join(' ')).join(', ')}
+                            · {caps.filter(c => c !== 'faltas_todas').map(c => CAPABILITIES.find(x => x.key === c)?.label.replace(/^\S+\s+/, '')).join(', ')}
                           </span>}
                       </> : '🔑 Acesso total'}
                     </div>
@@ -484,6 +484,9 @@ export default function Usuarios() {
                       <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10, color: theme.textSecondary }}>
                         🔧 Permissões avançadas de cadastro
                       </div>
+                      <div style={{ fontSize: 11.5, color: theme.textSecondary, margin: '-4px 0 10px' }}>
+                        Estas permissões são individuais e não são liberadas pelo botão “Todas as abas”.
+                      </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         {CAPABILITIES.filter(c => c.key !== 'faltas_todas').map(c => {
                           const ativa = isCapLiberada(c.key);
@@ -503,6 +506,7 @@ export default function Usuarios() {
                                   {c.label}
                                 </div>
                                 <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 1 }}>
+                                  {c.key === 'acessar_genero' && 'Exibe a aba Gênero e permite cruzar/aplicar o sexo oficial do Educacenso'}
                                   {c.key === 'editar_cpf' && 'Pode adicionar ou editar o CPF de qualquer aluno'}
                                   {c.key === 'editar_cor_raca' && 'Pode adicionar ou editar a Cor/Raça de qualquer aluno'}
                                 </div>
