@@ -254,6 +254,21 @@ export default function Dashboard() {
   const [loadingFaltas, setLoadingFaltas] = useState(false);
   const [modal, setModal] = useState<DetalheCard>(null);
 
+  const atualizarSexoAlunos = async (ids: string[], sexo: 'M' | 'F') => {
+    const idsFinais = new Set(ids.map(String));
+    const ras = new Set(
+      alunos
+        .filter(aluno => idsFinais.has(String(aluno.id)) && aluno.ra)
+        .map(aluno => String(aluno.ra)),
+    );
+    alunos.forEach(aluno => {
+      if (aluno.ra && ras.has(String(aluno.ra))) idsFinais.add(String(aluno.id));
+    });
+
+    await Promise.all([...idsFinais].map(id => api.updateAluno(id, { sexo })));
+    setAlunos(atuais => atuais.map(aluno => idsFinais.has(String(aluno.id)) ? { ...aluno, sexo } : aluno));
+  };
+
   useEffect(() => {
     Promise.all([api.getTurmas(), api.getAllAlunos()])
       .then(([t, a]) => { setTurmas(sortTurmasPedagogico(t)); setAlunos(a); setLoading(false); });
@@ -539,7 +554,13 @@ export default function Dashboard() {
             <StatCard label="⚠️ Alertas" val={alertas.length} color={alertas.length > 0 ? theme.danger : theme.textMuted} sub="Inf: <60% · Fund: <75%" />
           </div>
 
-          <MatriculasMensais alunos={alunos} turmas={turmas} ano={ano} onAnoChange={setAno} />
+          <MatriculasMensais
+            alunos={alunos}
+            turmas={turmas}
+            ano={ano}
+            onAnoChange={setAno}
+            onAtualizarSexo={atualizarSexoAlunos}
+          />
 
           {alertas.length > 0 && (
             <div style={{ background: theme.dangerLight, border: `1px solid ${theme.danger}`, borderRadius: theme.radiusMd, padding: 16, marginBottom: 20 }}>
