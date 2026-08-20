@@ -4,6 +4,7 @@ import { api, supabase } from '../api';
 import { theme, btn, input, label, SITUACAO_COR, SITUACAO_LABEL, SITUACOES, card as cardStyle, row, sortTurmasPedagogico, ordemTurma, dedupeAlunosPorRA } from '../styles';
 import { Loading, EmptyState, StatCard, Spinner } from '../components';
 import { useAuth } from '../AuthContext';
+import { normalizarSexo } from '../matriculasMensais';
 
 function labelDocente(nome: string): string {
   if (!nome) return 'Professora';
@@ -65,6 +66,7 @@ export default function Alunos() {
   const [dataMovimentacao, setDataMovimentacao] = useState('');
   const [dataInicioEdit, setDataInicioEdit] = useState('');
   const [dataFimEdit, setDataFimEdit] = useState('');
+  const [sexoEdit, setSexoEdit] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [editandoCpf, setEditandoCpf] = useState('');
   const [editandoCor, setEditandoCor] = useState('');
@@ -249,12 +251,13 @@ export default function Alunos() {
     setDataMovimentacao('');
     setDataInicioEdit(a.data_inicio_matricula ?? '');
     setDataFimEdit(a.data_fim_matricula ?? '');
+    setSexoEdit(normalizarSexo(a.sexo));
   };
 
   const salvarSituacao = async (alunoId: string) => {
     if (role !== 'admin') return;
     setSalvando(true);
-    const updates: any = { situacao: novaSituacao };
+    const updates: any = { situacao: novaSituacao, sexo: sexoEdit || null };
     if (dataMovimentacao) {
       updates.data_movimentacao = dataMovimentacao;
       if (['BXTR', 'TRAN', 'N COM', 'REMA'].includes(novaSituacao)) updates.data_fim_matricula = dataMovimentacao;
@@ -311,6 +314,7 @@ export default function Alunos() {
         'RA': a.ra ?? '',
         'Dig. RA': a.dig_ra ?? '',
         'Data Nascimento': a.data_nascimento ?? '',
+        'Sexo': normalizarSexo(a.sexo) === 'M' ? 'Masculino' : normalizarSexo(a.sexo) === 'F' ? 'Feminino' : 'Não informado',
         'Situação': SITUACAO_LABEL[a.situacao] ?? a.situacao,
         'Deficiência': a.deficiencia ?? '',
         'Bolsa Família': a.bolsa_familia ? 'Sim' : 'Não',
@@ -324,7 +328,7 @@ export default function Alunos() {
     const ws = XLSX.utils.json_to_sheet(dados);
     ws['!cols'] = [
       { wch: 4 }, { wch: 38 }, { wch: 14 }, { wch: 8 },
-      { wch: 16 }, { wch: 14 }, { wch: 24 }, { wch: 12 },
+      { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 24 }, { wch: 12 },
       { wch: 22 }, { wch: 24 }, { wch: 18 }, { wch: 18 }, { wch: 18 },
     ];
     const wb = XLSX.utils.book_new();
@@ -907,6 +911,9 @@ export default function Alunos() {
                             : <span style={{ color: theme.orange, fontSize: 12, fontWeight: 600 }}>⚠️ não informado</span>}
                         </div>
                         {a.data_movimentacao && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Movimentação:</span> {a.data_movimentacao}</div>}
+                        <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Sexo:</span>{' '}
+                          {normalizarSexo(a.sexo) === 'M' ? 'Masculino' : normalizarSexo(a.sexo) === 'F' ? 'Feminino' : <span style={{ color: theme.orange }}>não informado</span>}
+                        </div>
                         {t?.professora && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>{labelDocente(t.professora)}:</span> {t.professora}</div>}
                         {t?.nome && turmaId !== '__all__' && <div><span style={{ fontWeight: 600, color: theme.textSecondary }}>Turma:</span> {t.nome}</div>}
                         {a.turma_origem && a.situacao === 'ATIVO' && (
@@ -999,6 +1006,15 @@ export default function Alunos() {
                         <select value={novaSituacao} onChange={e => setNovaSituacao(e.target.value)}
                           style={{ padding: '8px 12px', borderRadius: theme.radius, border: `1.5px solid ${theme.border}`, width: '100%', fontSize: 14 }}>
                           {SITUACOES.map(s => <option key={s} value={s}>{SITUACAO_LABEL[s]}</option>)}
+                        </select>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 140 }}>
+                        <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 4, fontWeight: 600 }}>Sexo (conforme SED)</div>
+                        <select value={sexoEdit} onChange={e => setSexoEdit(e.target.value)}
+                          style={{ padding: '8px 12px', borderRadius: theme.radius, border: `1.5px solid ${sexoEdit ? theme.border : theme.orange}`, width: '100%', fontSize: 14 }}>
+                          <option value="">Não informado</option>
+                          <option value="M">Masculino</option>
+                          <option value="F">Feminino</option>
                         </select>
                       </div>
                       <div style={{ flex: 1, minWidth: 140 }}>
