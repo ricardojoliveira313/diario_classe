@@ -3,6 +3,7 @@ import { api } from '../api';
 import { theme, MESES_ABR, MESES, getDiasLetivos, input, row, sortTurmasPedagogico, isInfantilTurma, dedupeAlunosPorRA } from '../styles';
 import { Loading, EmptyState, StatCard } from '../components';
 import { useAno } from '../AnoContext';
+import MatriculasMensais from '../components/MatriculasMensais';
 
 type DetalheCard = 'bf' | 'defiRegular' | 'defiAEE' | null;
 
@@ -244,7 +245,7 @@ function ModalDetalhe({ titulo, cor, lista, colunas, onClose, nota }: {
 }
 
 export default function Dashboard() {
-  const { ano } = useAno();
+  const { ano, setAno } = useAno();
   const [turmas, setTurmas] = useState<any[]>([]);
   const [alunos, setAlunos] = useState<any[]>([]);
   const [faltas, setFaltas] = useState<any[]>([]);
@@ -537,6 +538,8 @@ export default function Dashboard() {
             />
             <StatCard label="⚠️ Alertas" val={alertas.length} color={alertas.length > 0 ? theme.danger : theme.textMuted} sub="Inf: <60% · Fund: <75%" />
           </div>
+
+          <MatriculasMensais alunos={alunos} turmas={turmas} ano={ano} onAnoChange={setAno} />
 
           {alertas.length > 0 && (
             <div style={{ background: theme.dangerLight, border: `1px solid ${theme.danger}`, borderRadius: theme.radiusMd, padding: 16, marginBottom: 20 }}>

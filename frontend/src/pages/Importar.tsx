@@ -4,6 +4,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import { api, supabase } from '../api';
 import { theme, btn, card as cardStyle } from '../styles';
 import { FileRow, ProgressBar, ErrorBox, Spinner } from '../components';
+import { normalizarSexo } from '../matriculasMensais';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs`;
 
@@ -277,6 +278,7 @@ interface AlunoUnificado {
   responsavel: string;
   cpf: string;
   corRaca: string;
+  sexo: string;
   turmaOrigem: string;
   professoraOrigem: string;
   turmaDestino: string;
@@ -574,7 +576,7 @@ export default function Importar() {
             bolsaFamilia: false,
             dataInicioMatricula: '', dataFimMatricula: '', dataMovimentacao: '',
             nis: '', responsavel: '', cpf: '',
-            turmaOrigem: '', professoraOrigem: '', turmaDestino: '', professoraDestino: '', corRaca: '',
+            turmaOrigem: '', professoraOrigem: '', turmaDestino: '', professoraDestino: '', corRaca: '', sexo: '',
             faltas: {},
           });
           continue;
@@ -609,7 +611,7 @@ export default function Importar() {
           dataFimMatricula: isAtivo ? (dataMovim ?? '') : '',
           dataMovimentacao: isAtivo ? '' : (dataMovim ?? ''),
           nis: '', responsavel: '', cpf: '',
-          turmaOrigem: '', professoraOrigem: '', turmaDestino: '', professoraDestino: '', corRaca: '',
+          turmaOrigem: '', professoraOrigem: '', turmaDestino: '', professoraDestino: '', corRaca: '', sexo: '',
           faltas: {},
         });
       }
@@ -620,7 +622,7 @@ export default function Importar() {
   // ─── PARSE: Excel ───
   // datesOnly: mapa externo onde são guardadas datas de séries numéricas não-AEE
   // (FUNDAMENTAL, INFANTIL) — esses alunos não entram no alunosMap, PDF é a base
-  function parseExcels(files: File[], datesOnly?: Map<string, { inicio: string; fim: string }>): Promise<AlunoUnificado[]> {
+  function parseExcels(files: File[], datesOnly?: Map<string, { inicio: string; fim: string; sexo: string }>): Promise<AlunoUnificado[]> {
     return new Promise((resolve, reject) => {
       const alunosMap = new Map<string, AlunoUnificado>();
       let pendentes = 0;
@@ -705,7 +707,15 @@ export default function Importar() {
                   if (raNum) {
                     const ini = fmtDate(nr[Object.keys(nr).find(k => normalizeStr(k).includes('INICIO') && normalizeStr(k).includes('MATRI') && !normalizeStr(k).includes('FIM')) ?? '']);
                     const fim = fmtDate(nr[Object.keys(nr).find(k => normalizeStr(k).includes('FIM') && normalizeStr(k).includes('MATRI')) ?? '']);
-                    if (ini || fim) datesOnly.set(String(raNum), { inicio: ini, fim: fim });
+                    const sexo = normalizarSexo(nr['SEXO'] ?? nr['GENERO'] ?? nr['GÊNERO'] ?? nr['SEXO DO ALUNO']);
+                    if (ini || fim || sexo) {
+                      const atual = datesOnly.get(String(raNum));
+                      datesOnly.set(String(raNum), {
+                        inicio: ini || atual?.inicio || '',
+                        fim: fim || atual?.fim || '',
+                        sexo: sexo || atual?.sexo || '',
+                      });
+                    }
                   }
                 }
                 continue;
@@ -729,6 +739,7 @@ export default function Importar() {
         }
 
         const situacao = normalizeSituacao(String(nr['SITUACAO'] ?? 'ATIVO'));
+        const sexo = normalizarSexo(nr['SEXO'] ?? nr['GENERO'] ?? nr['GÊNERO'] ?? nr['SEXO DO ALUNO']);
         const deficiencia = String(nr['DEFICIENCIA'] ?? '').trim();
         const professora = String(nr['PROFESSORA'] ?? '').trim();
         const bolsaFamilia = parseBool(nr['BOLSA FAMILIA'] ?? nr['BOLSA FAMLIA']);
@@ -785,6 +796,7 @@ export default function Importar() {
                     if (dataMovimentacao) e2.dataMovimentacao = dataMovimentacao;
                     if (deficiencia) e2.deficiencia = deficiencia;
                     if (digRa) e2.digRa = digRa;
+                    if (sexo) e2.sexo = sexo;
                   } else {
                     alunosMap.set(sufKey, {
                       nome, nomeNorm: normalizeNome(nome),
@@ -796,7 +808,7 @@ export default function Importar() {
                       dataInicioMatricula, dataFimMatricula, dataMovimentacao,
                       nis: '', responsavel: '',
                       cpf: String(nr['CPF'] ?? '').replace(/\D/g, '') || '',
-                      corRaca: '',
+                      corRaca: '', sexo,
                       turmaOrigem: '', professoraOrigem: '', turmaDestino: '', professoraDestino: '',
                       faltas: mes > 0 && faltasQtd >= 0 ? { [mes]: { faltas: faltasQtd, frequencia: freqTexto } } : {},
                     });
@@ -810,6 +822,7 @@ export default function Importar() {
                   if (dataMovimentacao) e.dataMovimentacao = dataMovimentacao;
                   if (deficiencia) e.deficiencia = deficiencia;
                   if (digRa) e.digRa = digRa;
+                  if (sexo) e.sexo = sexo;
                 }
                 continue;
               }
@@ -824,7 +837,7 @@ export default function Importar() {
                 dataInicioMatricula, dataFimMatricula, dataMovimentacao,
                 nis: '', responsavel: '',
                 cpf: String(nr['CPF'] ?? '').replace(/\D/g, '') || '',
-                corRaca: '',
+                corRaca: '', sexo,
                 turmaOrigem: '', professoraOrigem: '', turmaDestino: '', professoraDestino: '',
                 faltas: mes > 0 && faltasQtd >= 0 ? { [mes]: { faltas: faltasQtd, frequencia: freqTexto } } : {},
               });
@@ -989,7 +1002,7 @@ export default function Importar() {
                 bolsaFamilia: false,
                 dataInicioMatricula: '', dataFimMatricula: '', dataMovimentacao: '',
                 nis: '', responsavel: '', cpf: '',
-                turmaOrigem: '', professoraOrigem: '', turmaDestino: '', professoraDestino: '', corRaca: '',
+                turmaOrigem: '', professoraOrigem: '', turmaDestino: '', professoraDestino: '', corRaca: '', sexo: '',
                 faltas: {},
               });
             }
@@ -1252,7 +1265,7 @@ export default function Importar() {
       let cpfMap = new Map<string, { cpf: string; deficiencia: string; corRaca: string }>();
       try { alunosPDF = await parsePDFs(pdfFiles); } catch (e: any) { setErro('Erro nos PDFs: ' + (e.message ?? e)); return; }
       try { alunosHTML = await parseHTMLSED(xlsFiles); } catch (e: any) { setErro('Erro nos HTML (xls): ' + (e.message ?? e)); return; }
-      const excelDatesMap = new Map<string, { inicio: string; fim: string }>();
+      const excelDatesMap = new Map<string, { inicio: string; fim: string; sexo: string }>();
       try { alunosExcel = await parseExcels(xlsxFiles, excelDatesMap); } catch (e: any) { setErro('Erro nos Excel: ' + (e.message ?? e)); return; }
       try { turmasMap = await parseTurmasProfessores(files); } catch (e: any) { setErro('Erro na planilha Turmas: ' + (e.message ?? e)); return; }
       try { bolsaMapPDF = await parseBolsaFamiliaPDF(pdfFiles); } catch (e: any) { setErro('Erro no PDF Bolsa Família: ' + (e.message ?? e)); return; }
@@ -1475,6 +1488,7 @@ export default function Importar() {
             existente.nis = existente.nis || a.nis;
             existente.cpf = existente.cpf || a.cpf;
             existente.deficiencia = existente.deficiencia || a.deficiencia;
+            existente.sexo = existente.sexo || a.sexo;
             Object.assign(existente.faltas, a.faltas);
             return;
           }
@@ -1487,6 +1501,7 @@ export default function Importar() {
           existente.professora = existente.professora || a.professora;
           existente.situacao = a.situacao !== 'ATIVO' ? a.situacao : existente.situacao;
           existente.deficiencia = existente.deficiencia || a.deficiencia;
+          existente.sexo = existente.sexo || a.sexo;
           if (a.numero) existente.numero = a.numero;
           if (a.serie && a.serie.length > (existente.serie?.length ?? 0)) {
             existente.serie = a.serie;
@@ -1513,6 +1528,7 @@ export default function Importar() {
           if (!d) continue;
           if (!a.dataInicioMatricula && d.inicio) a.dataInicioMatricula = d.inicio;
           if (!a.dataFimMatricula && d.fim) a.dataFimMatricula = d.fim;
+          if (!a.sexo && d.sexo) a.sexo = d.sexo;
         }
       }
 
@@ -1533,6 +1549,7 @@ export default function Importar() {
           comRA.cpf           = comRA.cpf           || semRA.cpf;
           comRA.deficiencia   = comRA.deficiencia   || semRA.deficiencia;
           comRA.corRaca       = comRA.corRaca       || semRA.corRaca;
+          comRA.sexo          = comRA.sexo          || semRA.sexo;
           if (!comRA.numero && semRA.numero) comRA.numero = semRA.numero;
           if (!comRA.dataInicioMatricula && semRA.dataInicioMatricula) comRA.dataInicioMatricula = semRA.dataInicioMatricula;
           if (!comRA.dataFimMatricula && semRA.dataFimMatricula) comRA.dataFimMatricula = semRA.dataFimMatricula;
@@ -2005,6 +2022,7 @@ export default function Importar() {
           cpf?: string;
           nis?: string;
           responsavel?: string;
+          sexo?: string;
           bolsa_familia?: boolean;
           numero?: number;
           data_inicio_matricula?: string;
@@ -2071,6 +2089,7 @@ export default function Importar() {
               if (extra.cpf && !canonico.cpf) up.cpf = extra.cpf;
               if (extra.nis && !canonico.nis) up.nis = extra.nis;
               if (extra.responsavel && !canonico.responsavel) up.responsavel = extra.responsavel;
+              if (extra.sexo && !canonico.sexo) up.sexo = normalizarSexo(extra.sexo);
               if (numeroFinal && canonico.numero !== numeroFinal) up.numero = numeroFinal;
               if (extra.data_inicio_matricula && !canonico.data_inicio_matricula)
                 up.data_inicio_matricula = extra.data_inicio_matricula;
@@ -2131,6 +2150,7 @@ export default function Importar() {
               if (extra.nis && !canon.nis) up.nis = extra.nis;
               if (extra.ra && !canon.ra) up.ra = extra.ra;
               if (extra.responsavel && !canon.responsavel) up.responsavel = extra.responsavel;
+              if (extra.sexo && !canon.sexo) up.sexo = normalizarSexo(extra.sexo);
               if (Object.keys(up).length > 0)
                 await supabase.from('Aluno').update(up).eq('id', canon.id);
               snapAlunosDeletados.push(extra);
@@ -2332,6 +2352,7 @@ export default function Importar() {
           responsavel: a.responsavel || existente?.responsavel || null,
           cpf: a.cpf || existente?.cpf || null,
           cor_raca: a.corRaca || existente?.cor_raca || '',
+          sexo: a.sexo || existente?.sexo || null,
           turma_origem: a.turmaOrigem || '',
           professora_origem: a.professoraOrigem || '',
           turma_destino: a.turmaDestino || '',

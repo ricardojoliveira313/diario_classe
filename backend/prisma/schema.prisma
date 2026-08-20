@@ -32,6 +32,7 @@ model Aluno {
   dataInicioMatricula String   @default("") @map("data_inicio_matricula")
   dataFimMatricula    String   @default("") @map("data_fim_matricula")
   dataMovimentacao    String   @default("") @map("data_movimentacao")
+  sexo                String?
   deficiencia         String   @default("")
   bolsaFamilia        Boolean  @default(false) @map("bolsa_familia")
   situacao            String   @default("ATIVO")
