@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api } from '../api';
+import { api, supabase } from '../api';
 import { theme, MESES_ABR, MESES, getDiasLetivos, input, row, sortTurmasPedagogico, isInfantilTurma, dedupeAlunosPorRA } from '../styles';
 import { Loading, EmptyState, StatCard } from '../components';
 import { useAno } from '../AnoContext';
@@ -265,7 +265,11 @@ export default function Dashboard() {
       if (aluno.ra && ras.has(String(aluno.ra))) idsFinais.add(String(aluno.id));
     });
 
-    await Promise.all([...idsFinais].map(id => api.updateAluno(id, { sexo })));
+    const lista = [...idsFinais];
+    for (let i = 0; i < lista.length; i += 100) {
+      const { error } = await supabase.from('Aluno').update({ sexo }).in('id', lista.slice(i, i + 100));
+      if (error) throw error;
+    }
     setAlunos(atuais => atuais.map(aluno => idsFinais.has(String(aluno.id)) ? { ...aluno, sexo } : aluno));
   };
 

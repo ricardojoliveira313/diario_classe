@@ -16,6 +16,7 @@ import Historico from './pages/Historico';
 import Capa from './pages/Capa';
 import Formularios from './pages/Formularios';
 import Educacenso from './pages/Educacenso';
+import Genero from './pages/Genero';
 import Login from './pages/Login';
 import { api, supabase } from './api';
 import { theme } from './styles';
@@ -35,6 +36,7 @@ const NAV_ITEMS: { to: string; label: string; end?: boolean; badge?: boolean; ad
   { to: '/importar',  label: '📥 Importar',  adminOnly: true },
   { to: '/turmas',    label: '👩‍🏫 Turmas',                            pageKey: 'turmas' },
   { to: '/alunos',    label: '👥 Alunos',                             pageKey: 'alunos' },
+  { to: '/genero',    label: '👫 Gênero',                             adminOnly: true },
   { to: '/faltas',    label: '📋 Faltas',                             pageKey: 'faltas' },
   { to: '/bf-frequencia', label: '💚 BF - Frequência',                 pageKey: 'bffrequencia' },
   { to: '/ocorrencias', label: '📋 Ocorrências',                      pageKey: 'ocorrencias' },
@@ -285,6 +287,7 @@ function AppShell() {
             <Route path="/importar" element={<AdminRoute><Importar /></AdminRoute>} />
             <Route path="/turmas" element={<ViewerRoute pageKey="turmas"><Turmas /></ViewerRoute>} />
             <Route path="/alunos" element={<ViewerRoute pageKey="alunos"><Alunos /></ViewerRoute>} />
+            <Route path="/genero" element={<AdminRoute><Genero /></AdminRoute>} />
             <Route path="/faltas" element={<ViewerRoute pageKey="faltas"><Faltas /></ViewerRoute>} />
             <Route path="/bf-frequencia" element={<ViewerRoute pageKey="bffrequencia"><BFFrequencia /></ViewerRoute>} />
             <Route path="/distorcao" element={<ViewerRoute pageKey="distorcao"><Distorcao /></ViewerRoute>} />
