@@ -506,7 +506,7 @@ export default function Usuarios() {
                                   {c.label}
                                 </div>
                                 <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 1 }}>
-                                  {c.key === 'acessar_genero' && 'Exibe a aba Gênero e permite cruzar/aplicar o sexo oficial do Educacenso'}
+                                  {c.key === 'acessar_genero' && 'Permite filtrar e emitir PDF/Excel; importar e aplicar Educacenso continuam exclusivos do administrador'}
                                   {c.key === 'editar_cpf' && 'Pode adicionar ou editar o CPF de qualquer aluno'}
                                   {c.key === 'editar_cor_raca' && 'Pode adicionar ou editar a Cor/Raça de qualquer aluno'}
                                 </div>

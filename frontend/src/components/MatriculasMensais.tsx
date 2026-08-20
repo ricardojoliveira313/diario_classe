@@ -72,12 +72,14 @@ export default function MatriculasMensais({
   ano,
   onAnoChange,
   onAtualizarSexo,
+  somenteConsulta = false,
 }: {
   alunos: any[];
   turmas: any[];
   ano: number;
   onAnoChange: (ano: number) => void;
   onAtualizarSexo: (ids: string[], sexo: 'M' | 'F') => Promise<void>;
+  somenteConsulta?: boolean;
 }) {
   const hoje = useMemo(() => new Date(), []);
   const ultimoMesDisponivel = ano === hoje.getFullYear() ? hoje.getMonth() + 1 : 12;
@@ -201,6 +203,7 @@ export default function MatriculasMensais({
   );
 
   const confirmarSexo = async (chave: string, ids: string[], sexo: 'M' | 'F') => {
+    if (somenteConsulta) return;
     setSalvandoSexo(chave);
     setErroSexo('');
     try {
@@ -216,6 +219,7 @@ export default function MatriculasMensais({
   // admin revisou a lista e clicou no botão de confirmação em lote. Nomes sem
   // sugestão (fora da lista curada) continuam exigindo conferência individual.
   const confirmarSugestoesEmLote = async () => {
+    if (somenteConsulta) return;
     const comSugestao = pendentesSexoOrdenados.filter(pendente => pendente.sugestao);
     if (comSugestao.length === 0) return;
     setSalvandoSexo('__lote__');
@@ -235,7 +239,7 @@ export default function MatriculasMensais({
   };
 
   const analisarArquivoEducacenso = async (arquivo: File | undefined) => {
-    if (!arquivo) return;
+    if (somenteConsulta || !arquivo) return;
     setAnalisandoEducacenso(true);
     setMensagemEducacenso('');
     setResultadoEducacenso(null);
@@ -261,7 +265,7 @@ export default function MatriculasMensais({
   };
 
   const aplicarSexoEducacenso = async () => {
-    if (!resultadoEducacenso) return;
+    if (somenteConsulta || !resultadoEducacenso) return;
     setAplicandoEducacenso(true);
     setMensagemEducacenso('');
     try {
@@ -460,6 +464,11 @@ export default function MatriculasMensais({
           <h2 id="titulo-matriculas-mensais" style={{ margin: 0, fontSize: 17, color: theme.text }}>
             📅 Matrículas por mês — {ano}
           </h2>
+          {somenteConsulta && (
+            <span style={{ padding: '4px 8px', borderRadius: 999, background: 'var(--ghost-bg)', color: theme.textSecondary, fontSize: 11.5, fontWeight: 800 }}>
+              👁️ Somente consulta
+            </span>
+          )}
           <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
             <button type="button" onClick={exportarPDF} className="report-action report-action-danger">
               📄 Baixar PDF
@@ -472,7 +481,7 @@ export default function MatriculasMensais({
         <p style={{ margin: '5px 0 0', color: theme.textSecondary, fontSize: 12.5 }}>
           Somente matrículas ativas. Cada pessoa é contada uma única vez por RA; remanejamentos e AEE não duplicam o total.
         </p>
-        <div style={{ marginTop: 12, border: `1px solid ${theme.primary}55`, borderRadius: theme.radius, background: `${theme.primary}08`, padding: 11 }}>
+        {!somenteConsulta && <div style={{ marginTop: 12, border: `1px solid ${theme.primary}55`, borderRadius: theme.radius, background: `${theme.primary}08`, padding: 11 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <div>
               <div style={{ color: theme.text, fontWeight: 850, fontSize: 14 }}>🔎 Cruzamento SED × Educacenso</div>
@@ -521,7 +530,7 @@ export default function MatriculasMensais({
               )}
             </div>
           )}
-        </div>
+        </div>}
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginTop: 12 }}>
           <label style={{ fontSize: 12, color: theme.textSecondary }}>
             Ano letivo
@@ -604,7 +613,7 @@ export default function MatriculasMensais({
           {resumo.semSexo > 0 ? ` ${resumo.semSexo} aluno(s) sem sexo informado.` : ''}
           {resumo.semDataInicio > 0 ? ` ${resumo.semDataInicio} aluno(s) sem data de início e fora da contagem mensal.` : ''}
           {resumo.semDataSaida > 0 ? ` ${resumo.semDataSaida} aluno(s) com situação de saída, mas sem data de saída; contabilizado(s) apenas no mês de início até conferência.` : ''}
-          {resumo.semSexo > 0 && (
+          {!somenteConsulta && resumo.semSexo > 0 && (
             <button type="button" onClick={() => setMostrarConferenciaSexo(valor => !valor)}
               className="report-action report-action-warning" style={{ marginLeft: 10 }}>
               {mostrarConferenciaSexo ? 'Fechar conferência' : `Conferir ${resumo.semSexo} agora`}
@@ -613,7 +622,7 @@ export default function MatriculasMensais({
         </div>
       )}
 
-      {mostrarConferenciaSexo && resumo.semSexo > 0 && (
+      {!somenteConsulta && mostrarConferenciaSexo && resumo.semSexo > 0 && (
         <div style={{ margin: '0 16px 14px', border: `1px solid ${theme.orange}88`, borderRadius: theme.radius, overflow: 'hidden' }}>
           <div style={{ padding: '10px 12px', background: `${theme.orange}12`, borderBottom: `1px solid ${theme.orange}55` }}>
             <div style={{ fontSize: 14, fontWeight: 800, color: theme.text }}>👥 Conferência de meninos e meninas</div>
