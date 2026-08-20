@@ -143,16 +143,25 @@ export default function BFFrequencia() {
         const registro = registros.find((r: any) => r.alunoId === aluno.id);
         const turma = turmaMap.get(aluno.turmaId);
         const turmaNome = turma?.nome ?? '—';
-        // Sem lançamento no mês = dado ausente, NÃO é o mesmo que 100% de frequência.
-        // Marca como pendência em vez de assumir presença — ver auditoria de ago/2026.
-        if (!registro) {
+        // Sem registro OU registro zerado sem confirmação SF = dado ainda pendente.
+        // Um zero só vira 100% depois de confirmação humana explícita.
+        const diasRegistro = registro?.frequencia?.startsWith('DIAS:')
+          ? decodeDias(registro.frequencia, diasLetivosMes)
+          : null;
+        const totalAusenciasRegistro = diasRegistro
+          ? ct(diasRegistro, 'F') + ct(diasRegistro, 'J') + ct(diasRegistro, 'A')
+          : Number(registro?.faltas ?? 0);
+        const zeroSemConfirmacao = !!registro
+          && totalAusenciasRegistro === 0
+          && registro.conferido_sem_faltas !== true;
+        if (!registro || zeroSemConfirmacao) {
           pendentesLancamento.push({ aluno, mes, turmaNome, diasLetivos: diasLetivosMes });
           continue;
         }
         // Alguns fluxos antigos/alternativos salvam somente o total de faltas,
         // com `frequencia` vazia. O registro existe e não pode ser confundido
         // com mês sem lançamento.
-        const dias = registro.frequencia ? decodeDias(registro.frequencia, diasLetivosMes) : null;
+        const dias = diasRegistro;
         const faltas = dias ? ct(dias, 'F') : Number(registro.faltas ?? 0);
         const justificadas = dias ? ct(dias, 'J') : 0;
         const atestados = dias ? ct(dias, 'A') : 0;
@@ -362,13 +371,14 @@ export default function BFFrequencia() {
               padding: '12px 16px', marginBottom: 16,
             }}>
               <div style={{ fontWeight: 700, color: '#b45309', fontSize: 13.5, marginBottom: 4 }}>
-                ⚠️ {pendentes.length} lançamento{pendentes.length !== 1 ? 's' : ''} de frequência ausente{pendentes.length !== 1 ? 's' : ''} no período — não entram nesta lista
+                ⚠️ {pendentes.length} fechamento{pendentes.length !== 1 ? 's' : ''} de frequência pendente{pendentes.length !== 1 ? 's' : ''} no período — não entram nesta lista
               </div>
               <p style={{ fontSize: 12.5, color: '#92400e', margin: 0 }}>
-                Estes alunos com Bolsa Família ainda não têm o diário lançado no mês indicado. Frequência ausente
-                <strong> não</strong> é tratada como 100% — o aluno só aparece na lista acima depois que o diário for lançado.
-                Lance as faltas na tela <strong>Faltas</strong>, ou — se já conferiu o diário físico e não houve nenhuma falta —
-                marque abaixo e use "Registrar mês sem faltas".
+                Estes alunos com Bolsa Família ainda não têm o fechamento mensal confirmado no período indicado.
+                Isso inclui tanto quem não possui lançamento quanto quem está com zero faltas sem a marcação
+                <strong> SF — Sem faltas</strong>. O sistema não presume 100% de frequência: informe F/J/A ou confirme SF
+                na tela <strong>Faltas</strong>. Se já conferiu o diário físico e não houve nenhuma falta, também é possível
+                selecionar abaixo e usar "Registrar mês sem faltas".
               </p>
               <div style={{ maxHeight: 220, overflowY: 'auto', marginTop: 8, borderTop: '1px solid #f59e0b33', paddingTop: 6 }}>
                 {pendentes.map((p, i) => {
