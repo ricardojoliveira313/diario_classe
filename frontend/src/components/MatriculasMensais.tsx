@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { theme, MESES, input } from '../styles';
 import { calcularMatriculasMensais, ContagemSexo } from '../matriculasMensais';
+import { sugerirSexoPeloNome } from '../nomesGenero';
 
 type TipoEnsino = '' | 'INFANTIL' | 'FUNDAMENTAL' | 'EJA' | 'AEE';
 
@@ -175,10 +176,21 @@ export default function MatriculasMensais({
   const pendentesSexoOrdenados = useMemo(() => {
     const turmaMap = new Map(turmas.map(turma => [turma.id, turma.nome]));
     return resumo.pendentesSexo
-      .map(pendente => ({ ...pendente, turma: turmaMap.get(pendente.turmaId) ?? 'Sem turma' }))
+      .map(pendente => ({
+        ...pendente,
+        turma: turmaMap.get(pendente.turmaId) ?? 'Sem turma',
+        // Sugestão pelo primeiro nome — só orienta a conferência visualmente,
+        // nunca é salva sem o admin clicar num botão confirmando.
+        sugestao: sugerirSexoPeloNome(pendente.nome),
+      }))
       .sort((a, b) => a.turma.localeCompare(b.turma, 'pt-BR', { numeric: true })
         || a.nome.localeCompare(b.nome, 'pt-BR'));
   }, [resumo.pendentesSexo, turmas]);
+
+  const totalComSugestao = useMemo(
+    () => pendentesSexoOrdenados.filter(pendente => pendente.sugestao).length,
+    [pendentesSexoOrdenados],
+  );
 
   const confirmarSexo = async (chave: string, ids: string[], sexo: 'M' | 'F') => {
     setSalvandoSexo(chave);
@@ -187,6 +199,28 @@ export default function MatriculasMensais({
       await onAtualizarSexo(ids, sexo);
     } catch (erro: any) {
       setErroSexo(`Não foi possível salvar: ${erro?.message ?? erro}`);
+    } finally {
+      setSalvandoSexo('');
+    }
+  };
+
+  // Aplica de uma vez só as sugestões pelo primeiro nome — só depois que o
+  // admin revisou a lista e clicou no botão de confirmação em lote. Nomes sem
+  // sugestão (fora da lista curada) continuam exigindo conferência individual.
+  const confirmarSugestoesEmLote = async () => {
+    const comSugestao = pendentesSexoOrdenados.filter(pendente => pendente.sugestao);
+    if (comSugestao.length === 0) return;
+    setSalvandoSexo('__lote__');
+    setErroSexo('');
+    try {
+      const idsM = comSugestao.filter(p => p.sugestao === 'M').flatMap(p => p.ids);
+      const idsF = comSugestao.filter(p => p.sugestao === 'F').flatMap(p => p.ids);
+      await Promise.all([
+        idsM.length > 0 ? onAtualizarSexo(idsM, 'M') : Promise.resolve(),
+        idsF.length > 0 ? onAtualizarSexo(idsF, 'F') : Promise.resolve(),
+      ]);
+    } catch (erro: any) {
+      setErroSexo(`Não foi possível salvar as sugestões em lote: ${erro?.message ?? erro}`);
     } finally {
       setSalvandoSexo('');
     }
@@ -412,7 +446,14 @@ export default function MatriculasMensais({
             <div style={{ fontSize: 14, fontWeight: 800, color: theme.text }}>👥 Conferência de meninos e meninas</div>
             <div style={{ marginTop: 3, fontSize: 12, color: theme.textSecondary }}>
               Confira cada estudante na SED e marque a opção correta. A confirmação será aplicada a todos os registros do mesmo RA e os totais serão atualizados imediatamente.
+              {' '}Nomes com 💡 têm sugestão automática pelo primeiro nome — confira antes de aceitar, nada é salvo sem confirmação.
             </div>
+            {totalComSugestao > 0 && (
+              <button type="button" disabled={!!salvandoSexo} onClick={confirmarSugestoesEmLote}
+                style={{ marginTop: 8, border: `1px solid ${theme.primary}`, borderRadius: theme.radius, padding: '6px 11px', background: `${theme.primary}18`, color: theme.primary, cursor: salvandoSexo ? 'wait' : 'pointer', fontWeight: 800, fontSize: 12.5 }}>
+                {salvandoSexo === '__lote__' ? 'Salvando sugestões…' : `💡 Confirmar todas as sugestões (${totalComSugestao})`}
+              </button>
+            )}
             {erroSexo && <div style={{ marginTop: 6, color: theme.danger, fontWeight: 700 }}>{erroSexo}</div>}
           </div>
           <div style={{ maxHeight: 430, overflowY: 'auto' }}>
@@ -424,17 +465,30 @@ export default function MatriculasMensais({
                 borderBottom: `1px solid ${theme.borderLight}`,
               }}>
                 <div>
-                  <div style={{ color: theme.text, fontWeight: 700 }}>{pendente.nome}</div>
+                  <div style={{ color: theme.text, fontWeight: 700 }}>
+                    {pendente.nome}
+                    {pendente.sugestao && (
+                      <span title={`Sugestão pelo primeiro nome: ${pendente.sugestao === 'M' ? 'Menino' : 'Menina'}`} style={{ marginLeft: 5 }}>
+                        💡
+                      </span>
+                    )}
+                  </div>
                   <div style={{ color: theme.textMuted, fontSize: 11.5 }}>RA: {pendente.ra || 'não informado'}</div>
                 </div>
                 <div style={{ color: theme.textSecondary, fontSize: 12, fontWeight: 600 }}>{pendente.turma}</div>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button type="button" disabled={!!salvandoSexo} onClick={() => confirmarSexo(pendente.chave, pendente.ids, 'M')}
-                    style={{ border: '1px solid #2563eb', borderRadius: theme.radius, padding: '6px 9px', background: '#2563eb18', color: '#3b82f6', cursor: salvandoSexo ? 'wait' : 'pointer', fontWeight: 800 }}>
+                    style={{
+                      border: `${pendente.sugestao === 'M' ? 2 : 1}px solid #2563eb`, borderRadius: theme.radius, padding: '6px 9px',
+                      background: '#2563eb18', color: '#3b82f6', cursor: salvandoSexo ? 'wait' : 'pointer', fontWeight: 800,
+                    }}>
                     {salvandoSexo === pendente.chave ? 'Salvando…' : 'Menino'}
                   </button>
                   <button type="button" disabled={!!salvandoSexo} onClick={() => confirmarSexo(pendente.chave, pendente.ids, 'F')}
-                    style={{ border: '1px solid #db2777', borderRadius: theme.radius, padding: '6px 9px', background: '#db277718', color: '#ec4899', cursor: salvandoSexo ? 'wait' : 'pointer', fontWeight: 800 }}>
+                    style={{
+                      border: `${pendente.sugestao === 'F' ? 2 : 1}px solid #db2777`, borderRadius: theme.radius, padding: '6px 9px',
+                      background: '#db277718', color: '#ec4899', cursor: salvandoSexo ? 'wait' : 'pointer', fontWeight: 800,
+                    }}>
                     {salvandoSexo === pendente.chave ? 'Salvando…' : 'Menina'}
                   </button>
                 </div>
