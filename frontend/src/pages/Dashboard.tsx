@@ -246,7 +246,7 @@ function ModalDetalhe({ titulo, cor, lista, colunas, onClose, nota }: {
 }
 
 export default function Dashboard() {
-  const { podeAcessarGenero } = useAuth();
+  const { role, podeAcessarGenero } = useAuth();
   const { ano, setAno } = useAno();
   const [turmas, setTurmas] = useState<any[]>([]);
   const [alunos, setAlunos] = useState<any[]>([]);
@@ -567,6 +567,7 @@ export default function Dashboard() {
               ano={ano}
               onAnoChange={setAno}
               onAtualizarSexo={atualizarSexoAlunos}
+              somenteConsulta={role !== 'admin'}
             />
           )}
 

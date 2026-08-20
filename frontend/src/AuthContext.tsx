@@ -21,7 +21,7 @@
 //   "editar_cpf"      → pode editar CPF dos alunos
 //   "editar_cor_raca" → pode editar Cor/Raça dos alunos
 //   "faltas_todas"    → pode lançar faltas em todas as turmas
-//   "acessar_genero"  → pode ver a aba Gênero e operar o Educacenso
+//   "acessar_genero"  → pode consultar a aba Gênero e emitir relatórios
 
 import { createContext, useContext, useState } from 'react';
 import type { ReactNode } from 'react';
@@ -49,7 +49,7 @@ export type PageKey = typeof PAGINAS_VIEWER[number]['key'];
 
 // Capacidades especiais (permissões granulares além das páginas)
 export const CAPABILITIES = [
-  { key: 'acessar_genero',  label: '👫 Pode acessar a aba Gênero' },
+  { key: 'acessar_genero',  label: '👫 Pode consultar a aba Gênero' },
   { key: 'editar_cpf',      label: '✏️ Pode editar CPF dos alunos' },
   { key: 'editar_cor_raca', label: '🎨 Pode editar Cor/Raça dos alunos' },
   { key: 'faltas_todas',    label: '📋 Pode lançar faltas em todas as turmas' },

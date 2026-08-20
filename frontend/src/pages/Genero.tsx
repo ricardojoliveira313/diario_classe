@@ -54,7 +54,7 @@ export default function Genero() {
             <strong>Ordem correta:</strong> 1) envie os PDFs/Excel mais recentes da SED na aba{' '}
             <a href="/importar" style={{ color: theme.primaryText, fontWeight: 800, textDecoration: 'underline' }}>Importar</a>; 2) volte aqui e selecione o relatório Educacenso. Assim o cruzamento compara duas bases atualizadas da mesma data de referência.
           </> : <>
-            <strong>Base de referência:</strong> os dados da SED são atualizados pela administração. Selecione abaixo o relatório do Educacenso para realizar o cruzamento autorizado.
+            <strong>Modo consulta:</strong> os dados da SED e do Educacenso são atualizados exclusivamente pela administração. Você pode filtrar as informações e emitir relatórios em PDF ou Excel.
           </>}
         </div>
       </div>
@@ -64,6 +64,7 @@ export default function Genero() {
         ano={ano}
         onAnoChange={setAno}
         onAtualizarSexo={atualizarSexo}
+        somenteConsulta={role !== 'admin'}
       />
     </div>
   );
