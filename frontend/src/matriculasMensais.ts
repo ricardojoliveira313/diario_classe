@@ -21,6 +21,14 @@ export interface ResumoMatriculasMensais {
   totalSaidas: ContagemSexo;
   semSexo: number;
   semDataInicio: number;
+  semDataSaida: number;
+  pendentesSexo: Array<{
+    chave: string;
+    ids: string[];
+    nome: string;
+    ra: string;
+    turmaId: string;
+  }>;
 }
 
 const SITUACOES_SAIDA = new Set(['BXTR', 'TRAN', 'N COM', 'ABAN']);
@@ -128,8 +136,11 @@ export function calcularMatriculasMensais(
       const inicio = dataSED(registro.data_inicio_matricula);
       const situacao = String(registro.situacao ?? 'ATIVO').trim().toUpperCase();
       const fimInformado = dataSED(registro.data_fim_matricula) ?? dataSED(registro.data_movimentacao);
-      const fim = fimInformado ?? (situacao === 'ATIVO' ? fimAno : null);
-      return { registro, inicio, fim, situacao };
+      const saidaSemData = SITUACOES_SAIDA.has(situacao) && !fimInformado;
+      // Uma situação de saída nunca pode virar período aberto. Sem data oficial,
+      // encerra conservadoramente no início e mantém o caso visível no alerta.
+      const fim = fimInformado ?? (situacao === 'ATIVO' ? fimAno : saidaSemData ? inicio : null);
+      return { registro, inicio, fim, situacao, saidaSemData };
     });
     const inicios = periodos.map(p => p.inicio).filter((d): d is Date => !!d).sort((a, b) => a.getTime() - b.getTime());
     const primeiraEntrada = inicios[0] ?? null;
@@ -143,6 +154,7 @@ export function calcularMatriculasMensais(
     return {
       chave,
       sexo: sexoDoGrupo(registros),
+      registros,
       periodos,
       primeiraEntrada,
       ultimaSaida: houveRetornoDepois ? null : ultimaSaidaCandidata,
@@ -189,5 +201,19 @@ export function calcularMatriculasMensais(
     totalSaidas: contarSexos(saidasPeriodo.map(p => p.sexo)),
     semSexo: pessoasDoPeriodo.filter(p => p.sexo === 'NI').length,
     semDataInicio: pessoas.filter(p => !p.primeiraEntrada).length,
+    semDataSaida: pessoas.filter(pessoa => pessoa.periodos.some(periodo => periodo.saidaSemData)).length,
+    pendentesSexo: pessoasDoPeriodo
+      .filter(pessoa => pessoa.sexo === 'NI')
+      .map(pessoa => {
+        const representante = pessoa.registros.find(registro => !registro.situacao || registro.situacao === 'ATIVO')
+          ?? pessoa.registros[0];
+        return {
+          chave: pessoa.chave,
+          ids: pessoa.registros.map(registro => String(registro.id)).filter(Boolean),
+          nome: String(representante?.nome ?? ''),
+          ra: representante?.ra ? String(representante.ra) : '',
+          turmaId: String(representante?.turmaId ?? ''),
+        };
+      }),
   };
 }
