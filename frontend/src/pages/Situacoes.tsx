@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { api } from '../api';
-import { theme, input, label as labelStyle, MESES, SITUACAO_COR, SITUACAO_LABEL, sortTurmasPedagogico } from '../styles';
+import { theme, input, label as labelStyle, MESES, SITUACAO_COR, SITUACAO_LABEL, sortTurmasPedagogico, converterCodigoInep } from '../styles';
 import { Loading, EmptyState, StatCard, BadgeSituacao } from '../components';
 import { useAno } from '../AnoContext';
 
@@ -18,6 +18,7 @@ interface LinhaSituacao {
   data: Date | null;
   dataTexto: string;
   turmaNome: string;
+  inepDestino: string;
 }
 
 // Mesmo parser de data usada em matriculasMensais.ts (aceita ISO e dd/mm/aaaa).
@@ -50,6 +51,9 @@ export default function Situacoes() {
   const [filtroSituacao, setFiltroSituacao] = useState('');
   const [filtroTurmaId, setFiltroTurmaId] = useState('');
   const [busca, setBusca] = useState('');
+  const [inepInputs, setInepInputs] = useState<Record<string, string>>({});
+  const [inepSalvando, setInepSalvando] = useState<Set<string>>(new Set());
+  const [inepSalvos, setInepSalvos] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     setLoading(true);
@@ -82,6 +86,7 @@ export default function Situacoes() {
           data,
           dataTexto: formatarData(data),
           turmaNome: turmaMap.get(a.turmaId) ?? 'Sem turma',
+          inepDestino: String(a.inep_destino ?? ''),
         };
       })
       .filter(l => l.data && l.data >= inicioPeriodo && l.data <= fimPeriodo)
@@ -106,6 +111,20 @@ export default function Situacoes() {
     })),
   [alunos, turmaMap]);
 
+  const salvarInepDestino = async (alunoId: string, valor: string) => {
+    setInepSalvando(atual => new Set(atual).add(alunoId));
+    setInepSalvos(atual => { const novo = new Set(atual); novo.delete(alunoId); return novo; });
+    try {
+      await api.updateAluno(alunoId, { inep_destino: valor.trim() || null });
+      setAlunos(atuais => atuais.map(a => String(a.id) === alunoId ? { ...a, inep_destino: valor.trim() || null } : a));
+      setInepSalvos(atual => new Set(atual).add(alunoId));
+    } catch (e: any) {
+      setErro(`Não foi possível salvar o Inep de destino: ${e?.message ?? e}`);
+    } finally {
+      setInepSalvando(atual => { const novo = new Set(atual); novo.delete(alunoId); return novo; });
+    }
+  };
+
   const contagemPorSituacao = useMemo(() => {
     const contagem: Record<string, number> = {};
     for (const linha of linhas) contagem[linha.situacao] = (contagem[linha.situacao] ?? 0) + 1;
@@ -120,9 +139,10 @@ export default function Situacoes() {
       'Situação': SITUACAO_LABEL[l.situacao] ?? l.situacao,
       'Data da movimentação': l.dataTexto,
       'Turma de origem': l.turmaNome,
+      'Inep de destino': l.inepDestino,
     }));
     const ws = XLSX.utils.json_to_sheet(dados);
-    ws['!cols'] = [{ wch: 34 }, { wch: 10 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 26 }];
+    ws['!cols'] = [{ wch: 34 }, { wch: 10 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 26 }, { wch: 16 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Situações');
     XLSX.writeFile(wb, `situacoes_${MESES[mesInicio - 1]}_a_${MESES[mesFim - 1]}_${ano}.xlsx`);
@@ -206,19 +226,58 @@ export default function Situacoes() {
                   <th style={{ textAlign: 'left', padding: '9px 12px', color: theme.textSecondary }}>Situação</th>
                   <th style={{ textAlign: 'left', padding: '9px 12px', color: theme.textSecondary }}>Data da movimentação</th>
                   <th style={{ textAlign: 'left', padding: '9px 12px', color: theme.textSecondary }}>Turma de origem</th>
+                  <th style={{ textAlign: 'left', padding: '9px 12px', color: theme.textSecondary }}>Inep de destino</th>
                 </tr>
               </thead>
               <tbody>
-                {linhas.map((l, i) => (
-                  <tr key={l.id} style={{ background: i % 2 === 0 ? 'var(--row-even)' : 'var(--row-odd)', borderTop: `1px solid ${theme.borderLight}` }}>
-                    <td style={{ padding: '8px 12px', color: theme.text, fontWeight: 600 }}>{l.nome}</td>
-                    <td style={{ padding: '8px 12px', color: theme.textSecondary }}>{l.ra || '—'}</td>
-                    <td style={{ padding: '8px 12px', color: theme.textSecondary }}>{l.data_nascimento || '—'}</td>
-                    <td style={{ padding: '8px 12px' }}><BadgeSituacao situacao={l.situacao} /></td>
-                    <td style={{ padding: '8px 12px', color: theme.textSecondary }}>{l.dataTexto}</td>
-                    <td style={{ padding: '8px 12px', color: theme.textSecondary }}>{l.turmaNome}</td>
-                  </tr>
-                ))}
+                {linhas.map((l, i) => {
+                  const salvando = inepSalvando.has(l.id);
+                  const salvo = inepSalvos.has(l.id);
+                  return (
+                    <tr key={l.id} style={{ background: i % 2 === 0 ? 'var(--row-even)' : 'var(--row-odd)', borderTop: `1px solid ${theme.borderLight}` }}>
+                      <td style={{ padding: '8px 12px', color: theme.text, fontWeight: 600 }}>{l.nome}</td>
+                      <td style={{ padding: '8px 12px', color: theme.textSecondary }}>{l.ra || '—'}</td>
+                      <td style={{ padding: '8px 12px', color: theme.textSecondary }}>{l.data_nascimento || '—'}</td>
+                      <td style={{ padding: '8px 12px' }}><BadgeSituacao situacao={l.situacao} /></td>
+                      <td style={{ padding: '8px 12px', color: theme.textSecondary }}>{l.dataTexto}</td>
+                      <td style={{ padding: '8px 12px', color: theme.textSecondary }}>{l.turmaNome}</td>
+                      <td style={{ padding: '6px 10px' }}>
+                        {(() => {
+                          const valorAtual = inepInputs[l.id] ?? l.inepDestino;
+                          const convertido = converterCodigoInep(valorAtual);
+                          const mostrarPreview = valorAtual && convertido && convertido !== valorAtual;
+                          return (
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <input
+                                  value={valorAtual}
+                                  onChange={e => setInepInputs(atual => ({ ...atual, [l.id]: e.target.value.replace(/[^\d]/g, '').slice(0, 8) }))}
+                                  onBlur={e => {
+                                    const digitado = e.target.value;
+                                    const final = converterCodigoInep(digitado);
+                                    if (final !== l.inepDestino) {
+                                      setInepInputs(atual => ({ ...atual, [l.id]: final }));
+                                      void salvarInepDestino(l.id, final);
+                                    }
+                                  }}
+                                  placeholder="Ex.: 4539 ou 35008607"
+                                  style={{ ...input, padding: '6px 9px', fontSize: 12.5, minWidth: 130 }}
+                                />
+                                {salvando && <span style={{ fontSize: 11, color: theme.textMuted }}>salvando…</span>}
+                                {!salvando && salvo && <span style={{ fontSize: 13, color: theme.success }}>✓</span>}
+                              </div>
+                              {mostrarPreview && (
+                                <div style={{ fontSize: 10.5, color: theme.textMuted, marginTop: 2 }}>
+                                  → converte para <strong>{convertido}</strong> ao sair do campo
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
