@@ -17,6 +17,7 @@ import Capa from './pages/Capa';
 import Formularios from './pages/Formularios';
 import Educacenso from './pages/Educacenso';
 import Genero from './pages/Genero';
+import Situacoes from './pages/Situacoes';
 import Login from './pages/Login';
 import { api, supabase } from './api';
 import { theme } from './styles';
@@ -46,6 +47,7 @@ const NAV_ITEMS: { to: string; label: string; end?: boolean; badge?: boolean; ad
   { to: '/formularios', label: '📄 Formulários', pageKey: 'formularios' },
   { to: '/capa',        label: '✉️ Capa',       pageKey: 'capa' },
   { to: '/educacenso', label: '🔗 Educacenso',                       pageKey: 'educacenso' },
+  { to: '/situacoes', label: '🔄 Situações',                         pageKey: 'situacoes' },
   { to: '/controle',  label: '📊 Controle',  adminOnly: true },
   { to: '/usuarios',  label: '👥 Usuários',  adminOnly: true },
 ];
@@ -307,6 +309,7 @@ function AppShell() {
             <Route path="/formularios" element={<ViewerRoute pageKey="formularios"><Formularios /></ViewerRoute>} />
             <Route path="/capa" element={<ViewerRoute pageKey="capa"><Capa /></ViewerRoute>} />
             <Route path="/educacenso" element={<ViewerRoute pageKey="educacenso"><Educacenso /></ViewerRoute>} />
+            <Route path="/situacoes" element={<ViewerRoute pageKey="situacoes"><Situacoes /></ViewerRoute>} />
             <Route path="/controle" element={<AdminRoute><Controle /></AdminRoute>} />
             <Route path="/usuarios" element={<AdminRoute><Usuarios /></AdminRoute>} />
           </Routes>

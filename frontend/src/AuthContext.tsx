@@ -43,6 +43,7 @@ export const PAGINAS_VIEWER = [
   { key: 'formularios', label: '📄 Formulários' },
   { key: 'capa',        label: '✉️ Capa de Envelope' },
   { key: 'educacenso',  label: '🔗 Educacenso' },
+  { key: 'situacoes',   label: '🔄 Situações' },
 ] as const;
 
 export type PageKey = typeof PAGINAS_VIEWER[number]['key'];
