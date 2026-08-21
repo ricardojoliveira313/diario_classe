@@ -4,10 +4,7 @@ import { api } from '../api';
 import { theme, input, label as labelStyle, MESES, SITUACAO_COR, SITUACAO_LABEL, sortTurmasPedagogico, converterCodigoInep } from '../styles';
 import { Loading, EmptyState, StatCard, BadgeSituacao } from '../components';
 import { useAno } from '../AnoContext';
-
-// Qualquer situação diferente de ATIVO (vazio/nulo também conta como ATIVO,
-// mesma regra usada em todo o resto do sistema).
-const SITUACOES_NAO_ATIVAS = ['REMA', 'BXTR', 'TRAN', 'N COM', 'ABAN'];
+import { SITUACOES_NAO_ATIVAS, formatarData, consolidarPorAluno } from '../situacoes';
 
 interface LinhaSituacao {
   id: string;
@@ -17,28 +14,10 @@ interface LinhaSituacao {
   situacao: string;
   data: Date | null;
   dataTexto: string;
+  turmaId: string;
   turmaNome: string;
   inepDestino: string;
   bolsaFamilia: boolean;
-}
-
-// Mesmo parser de data usada em matriculasMensais.ts (aceita ISO e dd/mm/aaaa).
-function parseData(valor: unknown): Date | null {
-  const texto = String(valor ?? '').trim();
-  if (!texto) return null;
-  let ano: number, mes: number, dia: number;
-  const iso = texto.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  const br = texto.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (iso) { ano = Number(iso[1]); mes = Number(iso[2]); dia = Number(iso[3]); }
-  else if (br) { dia = Number(br[1]); mes = Number(br[2]); ano = Number(br[3]); }
-  else return null;
-  const data = new Date(ano, mes - 1, dia);
-  return data.getFullYear() === ano && data.getMonth() === mes - 1 && data.getDate() === dia ? data : null;
-}
-
-function formatarData(data: Date | null): string {
-  if (!data) return '—';
-  return data.toLocaleDateString('pt-BR');
 }
 
 export default function Situacoes() {
@@ -72,50 +51,54 @@ export default function Situacoes() {
   const inicioPeriodo = useMemo(() => new Date(ano, mesInicio - 1, 1), [ano, mesInicio]);
   const fimPeriodo = useMemo(() => new Date(ano, mesFim, 0, 23, 59, 59, 999), [ano, mesFim]);
 
-  // Alunos com situação diferente de ATIVO cuja data de saída (data_fim_matricula,
-  // com data_movimentacao como reserva) caiu dentro do período selecionado.
+  // Consolida TODOS os registros de cada aluno (mesmo RA, ou nome+nascimento
+  // sem RA) num único vencedor — o de maior data de referência — ANTES de
+  // qualquer filtro. Um aluno com BXTR antigo e ATIVO mais recente nunca
+  // aparece aqui como transferido, porque o vencedor do grupo dele é o
+  // registro ATIVO.
+  const vencedores = useMemo(() => consolidarPorAluno(alunos), [alunos]);
+
+  // Só os vencedores cuja situação NÃO é ATIVO, com a data de referência
+  // caindo dentro do período selecionado.
   const linhas: LinhaSituacao[] = useMemo(() => {
-    return alunos
-      .filter(a => SITUACOES_NAO_ATIVAS.includes(String(a.situacao ?? '').toUpperCase()))
-      .map(a => {
-        const data = parseData(a.data_fim_matricula) ?? parseData(a.data_movimentacao);
-        return {
-          id: String(a.id),
-          ra: a.ra ? String(a.ra) : '',
-          nome: String(a.nome ?? ''),
-          data_nascimento: String(a.data_nascimento ?? ''),
-          situacao: String(a.situacao ?? '').toUpperCase(),
-          data,
-          dataTexto: formatarData(data),
-          turmaNome: turmaMap.get(a.turmaId) ?? 'Sem turma',
-          inepDestino: String(a.inep_destino ?? ''),
-          bolsaFamilia: !!a.bolsa_familia,
-        };
-      })
+    return vencedores
+      .filter(v => SITUACOES_NAO_ATIVAS.includes(v.situacaoNorm))
+      .map(v => ({
+        id: String(v.aluno.id),
+        ra: v.aluno.ra ? String(v.aluno.ra) : '',
+        nome: String(v.aluno.nome ?? ''),
+        data_nascimento: String(v.aluno.data_nascimento ?? ''),
+        situacao: v.situacaoNorm,
+        data: v.data,
+        dataTexto: formatarData(v.data),
+        turmaId: String(v.aluno.turmaId ?? ''),
+        turmaNome: turmaMap.get(v.aluno.turmaId) ?? 'Sem turma',
+        inepDestino: String(v.aluno.inep_destino ?? ''),
+        bolsaFamilia: !!v.aluno.bolsa_familia,
+      }))
       .filter(l => l.data && l.data >= inicioPeriodo && l.data <= fimPeriodo)
       .filter(l => !filtroSituacao || l.situacao === filtroSituacao)
-      .filter(l => !filtroTurmaId || alunos.find(a => String(a.id) === l.id)?.turmaId === filtroTurmaId)
+      .filter(l => !filtroTurmaId || l.turmaId === filtroTurmaId)
       .filter(l => !soBolsa || l.bolsaFamilia)
       .filter(l => !busca.trim() || l.nome.toUpperCase().includes(busca.trim().toUpperCase()) || l.ra.includes(busca.trim()))
       .sort((x, y) => (y.data?.getTime() ?? 0) - (x.data?.getTime() ?? 0) || x.nome.localeCompare(y.nome, 'pt-BR'));
-  }, [alunos, turmaMap, inicioPeriodo, fimPeriodo, filtroSituacao, filtroTurmaId, soBolsa, busca]);
+  }, [vencedores, turmaMap, inicioPeriodo, fimPeriodo, filtroSituacao, filtroTurmaId, soBolsa, busca]);
 
-  // Alunos com situação de saída mas SEM nenhuma data registrada — não entram
-  // no filtro por período (não há como saber quando saíram), mas precisam
-  // aparecer em algum lugar para não ficarem invisíveis.
-  const semData = useMemo(() => alunos
-    .filter(a => SITUACOES_NAO_ATIVAS.includes(String(a.situacao ?? '').toUpperCase()))
-    .filter(a => !parseData(a.data_fim_matricula) && !parseData(a.data_movimentacao))
-    .filter(a => !soBolsa || a.bolsa_familia)
-    .map(a => ({
-      id: String(a.id),
-      ra: a.ra ? String(a.ra) : '',
-      nome: String(a.nome ?? ''),
-      situacao: String(a.situacao ?? '').toUpperCase(),
-      turmaNome: turmaMap.get(a.turmaId) ?? 'Sem turma',
-      bolsaFamilia: !!a.bolsa_familia,
+  // Vencedores com situação de saída mas SEM nenhuma data registrada em
+  // nenhum dos registros do grupo — não entram no filtro por período (não há
+  // como saber quando saíram), mas precisam aparecer em algum lugar.
+  const semData = useMemo(() => vencedores
+    .filter(v => SITUACOES_NAO_ATIVAS.includes(v.situacaoNorm) && !v.data)
+    .filter(v => !soBolsa || v.aluno.bolsa_familia)
+    .map(v => ({
+      id: String(v.aluno.id),
+      ra: v.aluno.ra ? String(v.aluno.ra) : '',
+      nome: String(v.aluno.nome ?? ''),
+      situacao: v.situacaoNorm,
+      turmaNome: turmaMap.get(v.aluno.turmaId) ?? 'Sem turma',
+      bolsaFamilia: !!v.aluno.bolsa_familia,
     })),
-  [alunos, turmaMap, soBolsa]);
+  [vencedores, turmaMap, soBolsa]);
 
   const salvarInepDestino = async (alunoId: string, valor: string) => {
     setInepSalvando(atual => new Set(atual).add(alunoId));
