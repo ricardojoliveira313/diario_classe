@@ -312,7 +312,7 @@ export default function Historico() {
   const [transferenciaDataFim, setTransferenciaDataFim] = useState('');
   const [erroCalculoDiasLetivos, setErroCalculoDiasLetivos] = useState<string | null>(null);
   const [prosseguimentoAno, setProsseguimentoAno] = useState('');
-  const [certSerie, setCertSerie] = useState('5º Ano');
+  const [certSerie, setCertSerie] = useState('');
   const [via, setVia] = useState('1ª VIA');
   const [nomeAssinante, setNomeAssinante] = useState(DIRETOR);
   const [cargoAssinante, setCargoAssinante] = useState(CARGO_DIRETOR);
@@ -364,6 +364,7 @@ export default function Historico() {
     setTransferenciaAusencias('');
     setProsseguimentoAno('');
     setDataEmissao(new Date().toLocaleDateString('pt-BR'));
+    setCertSerie('');
   };
 
   // Calcula os dias letivos de um período exato (ex.: transferência no meio
@@ -814,6 +815,16 @@ export default function Historico() {
     if (salvo) window.print();
   };
 
+  // O certificado só pode afirmar conclusão do 5º ano quando isso for
+  // verdade: situação ATIVO/CONCLUÍDO E o ano letivo do 5º ano preenchido.
+  // Um aluno transferido antes de chegar ao 5º ano (ex.: saiu no 2º ano)
+  // NUNCA pode aparecer aqui como "concluiu o 5º Ano" — documento oficial.
+  const concluiu5Ano = Boolean(
+    aluno
+    && (isAtivo(aluno.situacao) || normalizarSituacao(aluno.situacao).startsWith('CONCLUI'))
+    && linhas[4]?.anoLetivo.trim(),
+  );
+
   // Monta Base Nacional Comum + Parte Diversificada JUNTAS por ano — nunca separadas
   // em páginas diferentes. Cada ano contribui suas tabelas em sequência (base antes
   // da diversificada), e essa sequência é tratada como um bloco indivisível na hora
@@ -868,6 +879,8 @@ export default function Historico() {
         .quadro-oficial { border: 1.5px solid #111; margin-bottom: 5mm; }
         .titulo-quadro { border-bottom: 1px solid #111; font-size: 12pt; font-weight: 800; margin: 0; padding: 2mm 2mm; text-align: center; text-transform: uppercase; }
         .historico-frente .quadro-oficial { margin-bottom: 3mm; }
+        .historico-frente { display: flex; flex-direction: column; }
+        .quadro-preenchimento { flex: 1 1 auto; min-height: 12mm; }
         .cabecalho-wrapper { position: relative; border: 1.5px solid #111; margin-bottom: 2mm; }
         .cabecalho-oficial { height: 22mm; display: grid; grid-template-columns: 34mm 1fr; align-items: center; padding: 1.5mm; }
         .cabecalho-oficial img { width: 31mm; height: auto; }
@@ -1212,6 +1225,8 @@ export default function Historico() {
                     ))}
                   </div>
                 </div>
+
+                <div className="quadro-oficial quadro-preenchimento" aria-hidden="true" />
               </section>
             </div>
 
@@ -1300,9 +1315,11 @@ export default function Historico() {
                       <input
                         aria-label="Série no certificado"
                         className="certificado-campo"
-                        size={Math.max(certSerie.length + 2, 8)}
-                        value={certSerie}
+                        size={Math.max((concluiu5Ano ? (certSerie || '5º Ano') : '').length + 2, 8)}
+                        value={concluiu5Ano ? (certSerie || '5º Ano') : ''}
                         placeholder="————"
+                        disabled={!concluiu5Ano}
+                        title={concluiu5Ano ? undefined : 'Só pode ser preenchido quando o aluno concluir o 5º ano (situação ativa/concluída com o ano letivo do 5º ano lançado)'}
                         onChange={event => setCertSerie(event.target.value)}
                       />
                       {' '}do Ensino Fundamental, no ano letivo de{' '}
@@ -1310,8 +1327,10 @@ export default function Historico() {
                         aria-label="Ano letivo no certificado"
                         className="certificado-campo"
                         size={6}
-                        value={linhas[4]?.anoLetivo ?? ''}
+                        value={concluiu5Ano ? (linhas[4]?.anoLetivo ?? '') : ''}
                         placeholder="————"
+                        disabled={!concluiu5Ano}
+                        title={concluiu5Ano ? undefined : 'Só pode ser preenchido quando o aluno concluir o 5º ano (situação ativa/concluída com o ano letivo do 5º ano lançado)'}
                         onChange={event => atualizarLinha(4, 'anoLetivo', event.target.value)}
                       />.
                     </span>
