@@ -1295,47 +1295,42 @@ export default function Historico() {
                   </div>
                 </div>
 
-                <div className="quadro-oficial certificado-oficial">
-                  <h3 className="titulo-quadro">Certificado</h3>
-                  <div className="certificado-texto">
-                    <span className="certificado-linha">
-                      O diretor da <strong>{ESCOLA_PADRAO}</strong>, de acordo com o inciso VII do artigo 24 da lei 9394/96,
-                    </span>
-                    <span className="certificado-linha">
-                      certifica que{' '}
-                      <input
-                        aria-label="Nome do aluno no certificado"
-                        className="certificado-campo"
-                        size={Math.max(aluno.nome.length + 2, 20)}
-                        value={aluno.nome}
-                        placeholder="——————————"
-                        onChange={event => atualizarAluno('nome', event.target.value)}
-                      />
-                      , concluiu o{' '}
-                      <input
-                        aria-label="Série no certificado"
-                        className="certificado-campo"
-                        size={Math.max((concluiu5Ano ? (certSerie || '5º Ano') : '').length + 2, 8)}
-                        value={concluiu5Ano ? (certSerie || '5º Ano') : ''}
-                        placeholder="————"
-                        disabled={!concluiu5Ano}
-                        title={concluiu5Ano ? undefined : 'Só pode ser preenchido quando o aluno concluir o 5º ano (situação ativa/concluída com o ano letivo do 5º ano lançado)'}
-                        onChange={event => setCertSerie(event.target.value)}
-                      />
-                      {' '}do Ensino Fundamental, no ano letivo de{' '}
-                      <input
-                        aria-label="Ano letivo no certificado"
-                        className="certificado-campo"
-                        size={6}
-                        value={concluiu5Ano ? (linhas[4]?.anoLetivo ?? '') : ''}
-                        placeholder="————"
-                        disabled={!concluiu5Ano}
-                        title={concluiu5Ano ? undefined : 'Só pode ser preenchido quando o aluno concluir o 5º ano (situação ativa/concluída com o ano letivo do 5º ano lançado)'}
-                        onChange={event => atualizarLinha(4, 'anoLetivo', event.target.value)}
-                      />.
-                    </span>
+                {concluiu5Ano && (
+                  <div className="quadro-oficial certificado-oficial">
+                    <h3 className="titulo-quadro">Certificado</h3>
+                    <div className="certificado-texto">
+                      <span className="certificado-linha">
+                        O diretor da <strong>{ESCOLA_PADRAO}</strong>, de acordo com o inciso VII do artigo 24 da lei 9394/96,
+                      </span>
+                      <span className="certificado-linha">
+                        certifica que{' '}
+                        <input
+                          aria-label="Nome do aluno no certificado"
+                          className="certificado-campo"
+                          size={Math.max(aluno.nome.length + 2, 20)}
+                          value={aluno.nome}
+                          onChange={event => atualizarAluno('nome', event.target.value)}
+                        />
+                        , concluiu o{' '}
+                        <input
+                          aria-label="Série no certificado"
+                          className="certificado-campo"
+                          size={Math.max((certSerie || '5º Ano').length + 2, 8)}
+                          value={certSerie || '5º Ano'}
+                          onChange={event => setCertSerie(event.target.value)}
+                        />
+                        {' '}do Ensino Fundamental, no ano letivo de{' '}
+                        <input
+                          aria-label="Ano letivo no certificado"
+                          className="certificado-campo"
+                          size={6}
+                          value={linhas[4]?.anoLetivo ?? ''}
+                          onChange={event => atualizarLinha(4, 'anoLetivo', event.target.value)}
+                        />.
+                      </span>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className="quadro-oficial assinatura-oficial">
                   <div className="assinatura-coluna"><div className="assinatura-conteudo"><strong>Santo André, <input aria-label="Data de emissão" style={{ ...campoDocumento, display: 'inline-block', width: '36mm', fontWeight: 800 }} value={dataEmissao} onChange={event => setDataEmissao(event.target.value)} /></strong></div><div className="assinatura-legenda">DATA</div></div>
