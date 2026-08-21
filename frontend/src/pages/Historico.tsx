@@ -595,7 +595,20 @@ export default function Historico() {
       }
       if (campo === 'complementoEstabelecimento' && normalizarSituacao(valor).includes('TRANSFERE')) {
         if (!transferenciaAnoCiclo) setTransferenciaAnoCiclo(linha.anoLetivo || linha.label);
-        if (!prosseguimentoAno) setProsseguimentoAno(linha.label.replace(/\s*\/.*$/, ''));
+        if (!prosseguimentoAno) {
+          // Prosseguimento é sempre o ano SEGUINTE ao que foi interrompido pela
+          // transferência — nunca o mesmo ano onde o TRANSFERE-SE foi marcado
+          // (ciclos 6/7 são repetições do 3º/5º ano, valem como se fossem eles).
+          const cicloEquivalente = linha.ciclo === 6 ? 3 : linha.ciclo === 7 ? 5 : linha.ciclo;
+          const proximoCiclo = cicloEquivalente + 1;
+          setProsseguimentoAno(
+            proximoCiclo <= 5
+              ? CICLOS_LABELS[proximoCiclo - 1].replace(/\s*\/.*$/, '')
+              // 5º ano é o último desta etapa — sem conclusão, o aluno permanece
+              // no 5º ano (não existe "6º ano" para onde prosseguir).
+              : '5º Ano',
+          );
+        }
       }
       return { ...linha, [campo]: valor };
     }));
