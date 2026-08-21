@@ -879,7 +879,14 @@ export default function Historico() {
         .cabecalho-oficial img { width: 31mm; height: auto; }
         .cabecalho-texto { text-align: center; font-weight: 800; font-size: 11pt; line-height: 1.2; }
         .cabecalho-texto h2 { font-size: 13pt; margin: 2.5mm 0 0; }
-        .select-via { position: absolute; top: 2mm; right: 3mm; font-family: Arial, sans-serif; font-weight: 800; font-size: 9pt; border: 1px solid #555; background: transparent; color: #111; padding: 1px 4px; cursor: pointer; }
+        .select-via {
+          position: absolute; top: 2mm; right: 3mm; font-family: Arial, sans-serif; font-weight: 800; font-size: 9pt;
+          border: 1px solid #555; border-radius: 0; background: transparent; color: #111; padding: 1px 14px 1px 4px; cursor: pointer;
+          appearance: none; -webkit-appearance: none; -moz-appearance: none;
+          background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'><path d='M0 0 L5 6 L10 0 Z' fill='%23111'/></svg>");
+          background-repeat: no-repeat; background-position: right 4px center; background-size: 7px 5px;
+        }
+        @media print { .select-via { background-image: none; padding-right: 4px; } }
         .dados-escola { min-height: 32mm; padding: 2mm; font-size: 9.5pt; font-weight: 800; line-height: 1.28; }
         .tabela-oficial, .tabela-estudos, .tabela-transferencia, .tabela-notas { width: 100%; border-collapse: collapse; table-layout: fixed; }
         .tabela-oficial { font-size: 9pt; }
