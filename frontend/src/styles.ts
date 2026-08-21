@@ -291,6 +291,20 @@ export function sortTurmasPedagogico<T extends { nome: string }>(turmas: T[]): T
   return [...turmas].sort((a, b) => ordemTurma(a.nome).localeCompare(ordemTurma(b.nome)));
 }
 
+// Converte o código curto de escola do SED (4 a 7 dígitos) no código INEP de
+// 8 dígitos usado no Sistema Presença — sempre começa com "35" (código do
+// estado de SP) e completa com zeros à esquerda até fechar 8 dígitos. Um
+// código já com 8 dígitos passa direto, sem alteração.
+export function converterCodigoInep(sed: string): string {
+  const digitos = sed.replace(/\D/g, '');
+  if (!digitos) return '';
+  if (digitos.length <= 4) return '35' + digitos.padStart(6, '0');
+  if (digitos.length === 5) return '35' + digitos.padStart(6, '0');
+  if (digitos.length === 6) return '35' + digitos;
+  if (digitos.length === 7) return '3' + digitos;
+  return digitos;
+}
+
 export function isInfantilTurma(nome?: string): boolean {
   if (!nome) return false;
   const g = ordemTurma(nome).slice(0, 2);

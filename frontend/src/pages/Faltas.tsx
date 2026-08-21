@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { api } from '../api';
-import { theme, btn, input, label, MESES, SITUACAO_COR, SITUACAO_LABEL, getFeriado, isRecesso, isSabadoLetivo, sortTurmasPedagogico, isInfantilTurma, calendarioDetalhadoDisponivel } from '../styles';
+import { theme, btn, input, label, MESES, SITUACAO_COR, SITUACAO_LABEL, getFeriado, isRecesso, isSabadoLetivo, sortTurmasPedagogico, isInfantilTurma, calendarioDetalhadoDisponivel, converterCodigoInep } from '../styles';
 import { Loading, EmptyState, StatCard, Spinner } from '../components';
 import { useTheme } from '../ThemeContext';
 import { useAno } from '../AnoContext';
@@ -470,15 +470,6 @@ export default function Faltas() {
     });
   };
 
-  const converterInep = (sed: string): string => {
-    const digitos = sed.replace(/\D/g, '');
-    if (!digitos) return '';
-    if (digitos.length <= 4) return '35' + digitos.padStart(6, '0');
-    if (digitos.length === 5) return '35' + digitos.padStart(6, '0');
-    if (digitos.length === 6) return '35' + digitos;
-    if (digitos.length === 7) return '3' + digitos;
-    return digitos;
-  };
   // Sai do Modo Digitação Sequencial se trocar para o Modo Rápido
   useEffect(() => { if (modo !== 'grade') { setCursor(null); setNumBuffer(''); } }, [modo]);
 
@@ -1312,7 +1303,7 @@ export default function Faltas() {
                 textAlign: 'center',
               }}>
                 <div style={{ fontSize: 11, color: theme.textMuted, fontWeight: 600 }}>CÓDIGO INEP (SISTEMA PRESENÇA)</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: theme.success, letterSpacing: 1 }}>{converterInep(inepCodigo)}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: theme.success, letterSpacing: 1 }}>{converterCodigoInep(inepCodigo)}</div>
               </div>
             )}
           </div>
