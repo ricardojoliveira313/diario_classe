@@ -1286,9 +1286,9 @@ export default function Historico() {
                   </div>
                 </div>
 
-                <div className="quadro-oficial certificado-oficial">
-                  <h3 className="titulo-quadro">Certificado</h3>
-                  {linhas[4]?.anoLetivo.trim() ? (
+                {mostrarCertificado && (
+                  <div className="quadro-oficial certificado-oficial">
+                    <h3 className="titulo-quadro">Certificado</h3>
                     <div className="certificado-texto">
                       <span className="certificado-linha">
                         O diretor da <strong>{ESCOLA_PADRAO}</strong>, de acordo com o inciso VII do artigo 24 da lei 9394/96,
@@ -1315,13 +1315,13 @@ export default function Historico() {
                           aria-label="Ano letivo no certificado"
                           className="certificado-campo"
                           size={6}
-                          value={linhas[4].anoLetivo}
+                          value={linhas[4]?.anoLetivo ?? ''}
                           onChange={event => atualizarLinha(4, 'anoLetivo', event.target.value)}
                         />.
                       </span>
                     </div>
-                  ) : null}
-                </div>
+                  </div>
+                )}
 
                 <div className="quadro-oficial assinatura-oficial">
                   <div className="assinatura-coluna"><div className="assinatura-conteudo"><strong>Santo André, <input aria-label="Data de emissão" style={{ ...campoDocumento, display: 'inline-block', width: '36mm', fontWeight: 800 }} value={dataEmissao} onChange={event => setDataEmissao(event.target.value)} /></strong></div><div className="assinatura-legenda">DATA</div></div>
