@@ -19,6 +19,7 @@ interface LinhaSituacao {
   dataTexto: string;
   turmaNome: string;
   inepDestino: string;
+  bolsaFamilia: boolean;
 }
 
 // Mesmo parser de data usada em matriculasMensais.ts (aceita ISO e dd/mm/aaaa).
@@ -50,6 +51,7 @@ export default function Situacoes() {
   const [mesFim, setMesFim] = useState(12);
   const [filtroSituacao, setFiltroSituacao] = useState('');
   const [filtroTurmaId, setFiltroTurmaId] = useState('');
+  const [soBolsa, setSoBolsa] = useState(false);
   const [busca, setBusca] = useState('');
   const [inepInputs, setInepInputs] = useState<Record<string, string>>({});
   const [inepSalvando, setInepSalvando] = useState<Set<string>>(new Set());
@@ -87,14 +89,16 @@ export default function Situacoes() {
           dataTexto: formatarData(data),
           turmaNome: turmaMap.get(a.turmaId) ?? 'Sem turma',
           inepDestino: String(a.inep_destino ?? ''),
+          bolsaFamilia: !!a.bolsa_familia,
         };
       })
       .filter(l => l.data && l.data >= inicioPeriodo && l.data <= fimPeriodo)
       .filter(l => !filtroSituacao || l.situacao === filtroSituacao)
       .filter(l => !filtroTurmaId || alunos.find(a => String(a.id) === l.id)?.turmaId === filtroTurmaId)
+      .filter(l => !soBolsa || l.bolsaFamilia)
       .filter(l => !busca.trim() || l.nome.toUpperCase().includes(busca.trim().toUpperCase()) || l.ra.includes(busca.trim()))
       .sort((x, y) => (y.data?.getTime() ?? 0) - (x.data?.getTime() ?? 0) || x.nome.localeCompare(y.nome, 'pt-BR'));
-  }, [alunos, turmaMap, inicioPeriodo, fimPeriodo, filtroSituacao, filtroTurmaId, busca]);
+  }, [alunos, turmaMap, inicioPeriodo, fimPeriodo, filtroSituacao, filtroTurmaId, soBolsa, busca]);
 
   // Alunos com situação de saída mas SEM nenhuma data registrada — não entram
   // no filtro por período (não há como saber quando saíram), mas precisam
@@ -102,14 +106,16 @@ export default function Situacoes() {
   const semData = useMemo(() => alunos
     .filter(a => SITUACOES_NAO_ATIVAS.includes(String(a.situacao ?? '').toUpperCase()))
     .filter(a => !parseData(a.data_fim_matricula) && !parseData(a.data_movimentacao))
+    .filter(a => !soBolsa || a.bolsa_familia)
     .map(a => ({
       id: String(a.id),
       ra: a.ra ? String(a.ra) : '',
       nome: String(a.nome ?? ''),
       situacao: String(a.situacao ?? '').toUpperCase(),
       turmaNome: turmaMap.get(a.turmaId) ?? 'Sem turma',
+      bolsaFamilia: !!a.bolsa_familia,
     })),
-  [alunos, turmaMap]);
+  [alunos, turmaMap, soBolsa]);
 
   const salvarInepDestino = async (alunoId: string, valor: string) => {
     setInepSalvando(atual => new Set(atual).add(alunoId));
@@ -131,6 +137,8 @@ export default function Situacoes() {
     return contagem;
   }, [linhas]);
 
+  const totalBolsaNoPeriodo = useMemo(() => linhas.filter(l => l.bolsaFamilia).length, [linhas]);
+
   const exportarExcel = () => {
     const dados = linhas.map(l => ({
       'Nome': l.nome,
@@ -140,9 +148,10 @@ export default function Situacoes() {
       'Data da movimentação': l.dataTexto,
       'Turma de origem': l.turmaNome,
       'Inep de destino': l.inepDestino,
+      'Bolsa Família': l.bolsaFamilia ? 'Sim' : 'Não',
     }));
     const ws = XLSX.utils.json_to_sheet(dados);
-    ws['!cols'] = [{ wch: 34 }, { wch: 10 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 26 }, { wch: 16 }];
+    ws['!cols'] = [{ wch: 34 }, { wch: 10 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 26 }, { wch: 16 }, { wch: 14 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Situações');
     XLSX.writeFile(wb, `situacoes_${MESES[mesInicio - 1]}_a_${MESES[mesFim - 1]}_${ano}.xlsx`);
@@ -159,6 +168,7 @@ export default function Situacoes() {
           Todo aluno com situação diferente de ATIVO (transferido, remanejado, baixa por transferência,
           não compareceu ou abandono) que teve movimentação dentro do período selecionado. Use para localizar
           quem precisa de tratamento administrativo — como lançar o Inep da escola de destino no caso de transferência.
+          Marque "Só Bolsa Família" para ver apenas quem recebe o benefício e precisa de acompanhamento de frequência.
         </p>
 
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginTop: 14 }}>
@@ -198,6 +208,14 @@ export default function Situacoes() {
             Buscar por nome ou RA
             <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Nome ou RA..." style={{ ...input, marginTop: 4 }} />
           </label>
+          <label style={{
+            fontSize: 12.5, color: theme.text, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 7,
+            border: `1.5px solid ${soBolsa ? theme.success : theme.border}`, borderRadius: theme.radius,
+            padding: '10px 12px', cursor: 'pointer', background: soBolsa ? `${theme.success}12` : 'transparent',
+          }}>
+            <input type="checkbox" checked={soBolsa} onChange={e => setSoBolsa(e.target.checked)} style={{ width: 16, height: 16, cursor: 'pointer' }} />
+            💚 Só Bolsa Família
+          </label>
           <button type="button" onClick={exportarExcel} disabled={linhas.length === 0}
             className="report-action report-action-success">
             📊 Baixar Excel
@@ -207,6 +225,7 @@ export default function Situacoes() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, marginBottom: 16 }}>
         <StatCard label="Total no período" val={linhas.length} color={theme.primary} />
+        <StatCard label="💚 Com Bolsa Família" val={totalBolsaNoPeriodo} color={theme.success} />
         {SITUACOES_NAO_ATIVAS.map(s => (
           <StatCard key={s} label={SITUACAO_LABEL[s]} val={contagemPorSituacao[s] ?? 0} color={SITUACAO_COR[s]} />
         ))}
@@ -221,6 +240,7 @@ export default function Situacoes() {
               <thead>
                 <tr style={{ background: 'var(--footer-row)' }}>
                   <th style={{ textAlign: 'left', padding: '9px 12px', color: theme.textSecondary }}>Nome</th>
+                  <th style={{ textAlign: 'center', padding: '9px 12px', color: theme.textSecondary }}>BF</th>
                   <th style={{ textAlign: 'left', padding: '9px 12px', color: theme.textSecondary }}>RA</th>
                   <th style={{ textAlign: 'left', padding: '9px 12px', color: theme.textSecondary }}>Nascimento</th>
                   <th style={{ textAlign: 'left', padding: '9px 12px', color: theme.textSecondary }}>Situação</th>
@@ -236,6 +256,7 @@ export default function Situacoes() {
                   return (
                     <tr key={l.id} style={{ background: i % 2 === 0 ? 'var(--row-even)' : 'var(--row-odd)', borderTop: `1px solid ${theme.borderLight}` }}>
                       <td style={{ padding: '8px 12px', color: theme.text, fontWeight: 600 }}>{l.nome}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'center', fontSize: 15 }} title={l.bolsaFamilia ? 'Bolsa Família' : ''}>{l.bolsaFamilia ? '💚' : '—'}</td>
                       <td style={{ padding: '8px 12px', color: theme.textSecondary }}>{l.ra || '—'}</td>
                       <td style={{ padding: '8px 12px', color: theme.textSecondary }}>{l.data_nascimento || '—'}</td>
                       <td style={{ padding: '8px 12px' }}><BadgeSituacao situacao={l.situacao} /></td>
@@ -297,6 +318,7 @@ export default function Situacoes() {
             {semData.map(a => (
               <div key={a.id} style={{ fontSize: 12.5, color: theme.text, display: 'flex', gap: 8, alignItems: 'center' }}>
                 <BadgeSituacao situacao={a.situacao} />
+                {a.bolsaFamilia && <span title="Bolsa Família">💚</span>}
                 <span style={{ fontWeight: 600 }}>{a.nome}</span>
                 <span style={{ color: theme.textSecondary }}>RA {a.ra || '—'} · {a.turmaNome}</span>
               </div>
