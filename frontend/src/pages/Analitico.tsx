@@ -389,8 +389,14 @@ export default function Analitico() {
   }, [ativos, turmaMap]);
 
   // ── 9) Mapa de risco de NCOM — maior sequência de faltas seguidas ────
+  // A sequência é calculada dentro de cada registro mensal de Falta (um mês
+  // por vez) — uma falta que começa nos últimos dias de um mês e continua
+  // nos primeiros do seguinte aparece como duas sequências menores, não uma
+  // só. É uma limitação conhecida: o alerta pode subestimar o caso, nunca
+  // superestimar. Por isso é essencial guardar EM QUAL MÊS ocorreu a maior
+  // sequência de cada aluno — sem isso a informação não é acionável.
   const riscoNcom = useMemo(() => {
-    const porAluno = new Map<string, number>();
+    const porAluno = new Map<string, { sequencia: number; mes: number }>();
     for (let mes = 1; mes <= 12; mes++) {
       const registrosMes = faltasPorMes[mes - 1] ?? [];
       const diasLetivos = getDiasLetivos(mes, ano);
@@ -399,15 +405,18 @@ export default function Analitico() {
         if (!aluno || (aluno.situacao && aluno.situacao !== 'ATIVO') || !f.frequencia) continue;
         const dias = decodeDias(f.frequencia, diasLetivos);
         const sequencia = maiorSequenciaFalta(dias);
-        if (sequencia > (porAluno.get(f.alunoId) ?? 0)) porAluno.set(f.alunoId, sequencia);
+        if (sequencia > (porAluno.get(f.alunoId)?.sequencia ?? 0)) porAluno.set(f.alunoId, { sequencia, mes });
       }
     }
     return [...porAluno.entries()]
-      .filter(([, seq]) => seq >= 10)
-      .map(([alunoId, seq]) => {
+      .filter(([, dados]) => dados.sequencia >= 10)
+      .map(([alunoId, dados]) => {
         const aluno = alunoMap.get(alunoId);
         const turma = aluno ? turmaMap.get(aluno.turmaId) : null;
-        return { alunoId, nome: aluno?.nome ?? '—', turmaNome: turma?.nome ?? 'Sem turma', sequencia: seq };
+        return {
+          alunoId, nome: aluno?.nome ?? '—', turmaNome: turma?.nome ?? 'Sem turma',
+          sequencia: dados.sequencia, mesLabel: MESES[dados.mes - 1],
+        };
       })
       .sort((a, b) => b.sequencia - a.sequencia)
       .slice(0, 20);
@@ -440,6 +449,11 @@ export default function Analitico() {
           Visão gerencial cruzando dados que já existem no sistema (Faltas, Bolsa Família, Situações) — sem nenhum
           lançamento novo, só leitura.
         </p>
+        <p style={{ margin: '4px 0 0', color: theme.textMuted, fontSize: 11.5 }}>
+          O filtro de Mês inicial/final abaixo só afeta os gráficos de Ranking por turma, BF x demais alunos e Motivos
+          de baixa frequência. Os demais sempre consideram o ano letivo inteiro (todos os 12 meses) ou o cadastro
+          atual dos alunos, independente do período selecionado.
+        </p>
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginTop: 14 }}>
           <label style={{ fontSize: 12, color: theme.textSecondary }}>
             Ano letivo
@@ -468,7 +482,7 @@ export default function Analitico() {
           : <BarraHorizontal linhas={rankingTurmas} cor={theme.danger} escalaMax={100} formatarValor={v => `${v}%`} />}
       </CardGrafico>
 
-      <CardGrafico titulo="💚 Frequência média: Bolsa Família x demais alunos" sub={`Frequência média (%) no período selecionado, entre alunos ativos.`}>
+      <CardGrafico titulo="💚 Frequência média: Bolsa Família x demais alunos" sub={`Frequência média (%) de ${MESES[mesInicio - 1]} a ${MESES[mesFim - 1]}/${ano}, entre alunos ativos. Meses sem conferência (pendentes) não entram na conta.`}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
           <div style={{ textAlign: 'center', padding: '10px 8px', borderRadius: theme.radius, background: 'var(--ghost-bg)' }}>
             <div style={{ fontSize: 12, color: theme.textSecondary, fontWeight: 600 }}>💚 Com Bolsa Família</div>
@@ -519,7 +533,7 @@ export default function Analitico() {
           : <BarraDuasSeries linhas={sexoPorEtapa} corA="#2563eb" corB="#db2777" rotuloA="Meninos" rotuloB="Meninas" />}
       </CardGrafico>
 
-      <CardGrafico titulo="🚨 Mapa de risco de Não Comparecimento (NCOM)" sub="Maior sequência de faltas seguidas no ano, por aluno — 15+ já caracteriza NCOM pela regra da SED; 10-14 é alerta preventivo.">
+      <CardGrafico titulo="🚨 Mapa de risco de Não Comparecimento (NCOM)" sub={`Maior sequência de faltas seguidas em ${ano}, por aluno, com o mês em que ocorreu — 15+ já caracteriza NCOM pela regra da SED; 10-14 é alerta preventivo. Sequência que atravessa a virada do mês pode aparecer subestimada (nunca superestimada).`}>
         {riscoNcom.length === 0
           ? <p style={{ color: theme.textMuted, fontSize: 13 }}>Nenhum aluno com 10 ou mais faltas seguidas neste ano.</p>
           : (
@@ -535,7 +549,7 @@ export default function Analitico() {
                     color: r.sequencia >= 15 ? theme.danger : theme.orange,
                     background: `${r.sequencia >= 15 ? theme.danger : theme.orange}18`,
                   }}>
-                    {r.sequencia} dias seguidos {r.sequencia >= 15 ? '— NCOM' : ''}
+                    {r.sequencia} dias seguidos em {r.mesLabel} {r.sequencia >= 15 ? '— NCOM' : ''}
                   </span>
                 </div>
               ))}
