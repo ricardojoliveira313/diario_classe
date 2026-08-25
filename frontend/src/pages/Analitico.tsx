@@ -7,43 +7,7 @@ import { useAuth } from '../AuthContext';
 import { SITUACOES_NAO_ATIVAS, consolidarPorAluno } from '../situacoes';
 import { MOTIVO_BF_POR_CODIGO } from '../motivosBaixaFrequencia';
 import { decodeDias, maiorSequenciaFalta } from '../frequenciaDias';
-
-// Data de referência oficial do INEP para distorção idade-série: 31/03.
-function calcIdadeEm31Marco(dataNasc: string, ano: number): number {
-  if (!dataNasc) return 0;
-  const partes = dataNasc.split('/');
-  if (partes.length !== 3) return 0;
-  const nasc = new Date(Number(partes[2]), Number(partes[1]) - 1, Number(partes[0]));
-  if (isNaN(nasc.getTime())) return 0;
-  const ref = new Date(ano, 2, 31);
-  let idade = ref.getFullYear() - nasc.getFullYear();
-  const m = ref.getMonth() - nasc.getMonth();
-  if (m < 0 || (m === 0 && ref.getDate() < nasc.getDate())) idade--;
-  return idade;
-}
-
-function extrairSerie(nomeTurma: string): number | null {
-  const m = nomeTurma.match(/^(\d)/);
-  return m ? parseInt(m[1], 10) : null;
-}
-
-function etapaDaTurma(nomeTurma: string): 'Infantil' | 'Fundamental' | 'EJA' | 'AEE' {
-  const nome = nomeTurma.toUpperCase();
-  if (/^AEE\b/.test(nome)) return 'AEE';
-  if (/\bEJA\b/.test(nome)) return 'EJA';
-  if (/ETAPA/.test(nome)) return 'Infantil';
-  return 'Fundamental';
-}
-
-// Um registro de Falta com faltas=0 só representa presença real quando foi
-// EXPLICITAMENTE confirmado (conferido_sem_faltas) — mesma regra da aba
-// BF-Frequência. Sem essa confirmação, é um mês ainda não conferido pela
-// escola, e contá-lo como 100% de frequência infla artificialmente qualquer
-// média. Por isso todo cálculo de frequência (%) deste painel ignora esses
-// registros pendentes por completo, em vez de tratá-los como presença.
-function estaPendente(f: any): boolean {
-  return (f.faltas ?? 0) === 0 && f.conferido_sem_faltas !== true;
-}
+import { calcIdadeEm31Marco, extrairSerie, etapaDaTurma, estaPendente, contaParaSequenciaReal } from '../analiticoCalculos';
 
 // ─── Painel Analítico — visão gerencial cruzando dados que já existem em
 // outras telas (Faltas, BF-Frequência, Situações), sem duplicar cálculo:
@@ -199,6 +163,10 @@ export default function Analitico() {
   const [mesFim, setMesFim] = useState(12);
 
   useEffect(() => {
+    // Guarda contra resposta desatualizada: se o usuário trocar o ano de
+    // novo antes desta busca terminar, a resposta antiga (mais lenta) não
+    // pode sobrescrever o estado com dados do ano errado.
+    let cancelado = false;
     setLoading(true);
     setErro('');
     Promise.all([
@@ -212,21 +180,28 @@ export default function Analitico() {
       role === 'admin' ? api.getOcorrencias() : Promise.resolve([]),
     ])
       .then(([t, a, ...resto]) => {
+        if (cancelado) return;
         const meses = resto.slice(0, 12);
         setTurmas(t); setAlunos(a); setFaltasPorMes(meses);
         setOcorrencias(resto[12] ?? []);
       })
-      .catch((e: any) => setErro(`Não foi possível carregar os dados: ${e?.message ?? e}`))
-      .finally(() => setLoading(false));
-  }, [ano]);
+      .catch((e: any) => { if (!cancelado) setErro(`Não foi possível carregar os dados: ${e?.message ?? e}`); })
+      .finally(() => { if (!cancelado) setLoading(false); });
+    return () => { cancelado = true; };
+  }, [ano, role]);
 
   const turmaMap = useMemo(() => new Map(turmas.map(t => [t.id, t])), [turmas]);
   const alunoMap = useMemo(() => new Map(alunos.map(a => [a.id, a])), [alunos]);
   const ativos = useMemo(() => alunos.filter(a => !a.situacao || a.situacao === 'ATIVO'), [alunos]);
 
+  // Mês inicial depois do mês final geraria um recorte vazio silenciosamente
+  // (Array.slice com início > fim retorna []), mostrando "nenhuma falta
+  // encontrada" como se o período estivesse correto e só não tivesse dado.
+  const periodoInvalido = mesInicio > mesFim;
+
   const faltasNoPeriodo = useMemo(
-    () => faltasPorMes.slice(mesInicio - 1, mesFim).flat(),
-    [faltasPorMes, mesInicio, mesFim],
+    () => periodoInvalido ? [] : faltasPorMes.slice(mesInicio - 1, mesFim).flat(),
+    [faltasPorMes, mesInicio, mesFim, periodoInvalido],
   );
 
   // ── 1) Ranking de frequência por turma (% média, não soma bruta) ──────
@@ -296,10 +271,14 @@ export default function Analitico() {
   }, [faltasPorMes, alunoMap, ano]);
 
   // ── 4) Ranking de motivos de baixa frequência ─────────────────────────
+  // Um registro pendente (zero faltas, sem confirmação) não pode ter um
+  // motivo real associado — se tiver algo salvo ali, é resíduo de uma
+  // digitação desfeita, não uma baixa frequência confirmada. Mesma regra
+  // estaPendente() dos gráficos 1/2/3.
   const rankingMotivos: LinhaBarra[] = useMemo(() => {
     const contagem = new Map<string, number>();
     for (const f of faltasNoPeriodo) {
-      if (!f.motivo_baixa_frequencia) continue;
+      if (!f.motivo_baixa_frequencia || estaPendente(f)) continue;
       contagem.set(f.motivo_baixa_frequencia, (contagem.get(f.motivo_baixa_frequencia) ?? 0) + 1);
     }
     return [...contagem.entries()]
@@ -367,15 +346,30 @@ export default function Analitico() {
   }, [ativos, turmas, turmaMap]);
 
   // ── 8) Distribuição por sexo e etapa ──────────────────────────────────
+  // Um aluno de AEE tem 2 registros (turma regular + sala de recursos). Ao
+  // deduplicar por RA, sempre prioriza o registro da turma REGULAR pra
+  // decidir a etapa — sem isso, dependendo da ordem em que os registros
+  // vêm do banco, a etapa "de verdade" do aluno (Infantil/Fundamental/EJA)
+  // podia ser perdida e ele contado como "AEE" na tabela.
   const sexoPorEtapa = useMemo(() => {
     const grupos: Record<string, { m: number; f: number }> = {
       Infantil: { m: 0, f: 0 }, Fundamental: { m: 0, f: 0 }, EJA: { m: 0, f: 0 }, AEE: { m: 0, f: 0 },
     };
-    const vistos = new Set<string>();
+    const porChave = new Map<string, any>();
     for (const a of ativos) {
       const chave = a.ra ? `RA:${a.ra}` : `ID:${a.id}`;
-      if (vistos.has(chave)) continue;
-      vistos.add(chave);
+      const existente = porChave.get(chave);
+      if (!existente) { porChave.set(chave, a); continue; }
+      const turmaExistente = turmaMap.get(existente.turmaId);
+      const etapaExistente = turmaExistente ? etapaDaTurma(turmaExistente.nome) : null;
+      // Só substitui o registro já escolhido se ele for AEE e o novo não for
+      // — ou seja, a matrícula regular sempre "ganha" da sala de recursos.
+      if (etapaExistente === 'AEE') {
+        const turmaNova = turmaMap.get(a.turmaId);
+        if (turmaNova && etapaDaTurma(turmaNova.nome) !== 'AEE') porChave.set(chave, a);
+      }
+    }
+    for (const a of porChave.values()) {
       const turma = turmaMap.get(a.turmaId);
       if (!turma) continue;
       const etapa = etapaDaTurma(turma.nome);
@@ -389,12 +383,22 @@ export default function Analitico() {
   }, [ativos, turmaMap]);
 
   // ── 9) Mapa de risco de NCOM — maior sequência de faltas seguidas ────
-  // A sequência é calculada dentro de cada registro mensal de Falta (um mês
-  // por vez) — uma falta que começa nos últimos dias de um mês e continua
-  // nos primeiros do seguinte aparece como duas sequências menores, não uma
-  // só. É uma limitação conhecida: o alerta pode subestimar o caso, nunca
-  // superestimar. Por isso é essencial guardar EM QUAL MÊS ocorreu a maior
-  // sequência de cada aluno — sem isso a informação não é acionável.
+  // O Lançamento Rápido (totais) empilha os dias digitados nos primeiros
+  // dias letivos do mês (diasFromCounts, em Faltas.tsx) só para fins de
+  // contagem — NÃO são datas reais. Sem filtrar isso, este gráfico podia
+  // reportar "21 dias seguidos" pra um aluno cujas faltas reais estavam
+  // espalhadas pelo mês. Por isso só entram registros marcados como
+  // DIA_A_DIA (origem_frequencia) — Lançamento Rápido e registros antigos
+  // sem essa marcação (salvos antes dessa distinção existir) ficam de fora,
+  // mesmo que isso reduza a cobertura: um falso negativo (não avisar) é
+  // sempre preferível a um falso positivo (acusar NCOM que não existiu).
+  //
+  // Limitação ainda conhecida e não resolvida: a sequência é calculada
+  // dentro de cada registro mensal isoladamente — uma falta real que começa
+  // nos últimos dias de um mês e continua nos primeiros do seguinte aparece
+  // como duas sequências menores, não uma só (subestimação, nunca
+  // superestimação, já que essa parte do cálculo não depende de dado
+  // sintético).
   const riscoNcom = useMemo(() => {
     const porAluno = new Map<string, { sequencia: number; mes: number }>();
     for (let mes = 1; mes <= 12; mes++) {
@@ -403,6 +407,7 @@ export default function Analitico() {
       for (const f of registrosMes) {
         const aluno = alunoMap.get(f.alunoId);
         if (!aluno || (aluno.situacao && aluno.situacao !== 'ATIVO') || !f.frequencia) continue;
+        if (!contaParaSequenciaReal(f)) continue;
         const dias = decodeDias(f.frequencia, diasLetivos);
         const sequencia = maiorSequenciaFalta(dias);
         if (sequencia > (porAluno.get(f.alunoId)?.sequencia ?? 0)) porAluno.set(f.alunoId, { sequencia, mes });
@@ -474,15 +479,26 @@ export default function Analitico() {
             </select>
           </label>
         </div>
+        {periodoInvalido && (
+          <p style={{ margin: '10px 0 0', color: theme.danger, fontSize: 12.5, fontWeight: 700 }}>
+            ⚠️ Mês inicial ({MESES[mesInicio - 1]}) é depois do mês final ({MESES[mesFim - 1]}) — corrija pra ver os
+            gráficos de Ranking por turma, BF x demais e Motivos de baixa frequência.
+          </p>
+        )}
       </div>
 
-      <CardGrafico titulo="🏫 Ranking de frequência por turma" sub={`% média de frequência de alunos ativos, de ${MESES[mesInicio - 1]} a ${MESES[mesFim - 1]}/${ano} — ordenado da turma que mais precisa de atenção pra que menos precisa. Meses sem conferência (pendentes) não entram na conta.`}>
-        {rankingTurmas.length === 0
+      <CardGrafico titulo="🏫 Ranking de frequência por turma" sub={`% média de frequência entre os alunos ativos com pelo menos um mês já lançado e confirmado, de ${MESES[mesInicio - 1]} a ${MESES[mesFim - 1]}/${ano} — ordenado da turma que mais precisa de atenção pra que menos precisa. Alunos/meses ainda pendentes (sem conferência) não entram na conta, nem no numerador nem no denominador.`}>
+        {periodoInvalido
+          ? <p style={{ color: theme.danger, fontSize: 13 }}>Corrija o período acima (mês inicial não pode ser depois do mês final).</p>
+          : rankingTurmas.length === 0
           ? <p style={{ color: theme.textMuted, fontSize: 13 }}>Nenhuma falta conferida nesse período (tudo ainda pendente ou sem lançamento).</p>
           : <BarraHorizontal linhas={rankingTurmas} cor={theme.danger} escalaMax={100} formatarValor={v => `${v}%`} />}
       </CardGrafico>
 
-      <CardGrafico titulo="💚 Frequência média: Bolsa Família x demais alunos" sub={`Frequência média (%) de ${MESES[mesInicio - 1]} a ${MESES[mesFim - 1]}/${ano}, entre alunos ativos. Meses sem conferência (pendentes) não entram na conta.`}>
+      <CardGrafico titulo="💚 Frequência média: Bolsa Família x demais alunos" sub={`Frequência média (%) entre os alunos ativos com lançamento confirmado de ${MESES[mesInicio - 1]} a ${MESES[mesFim - 1]}/${ano}. Meses sem conferência (pendentes) não entram na conta.`}>
+        {periodoInvalido
+          ? <p style={{ color: theme.danger, fontSize: 13 }}>Corrija o período acima (mês inicial não pode ser depois do mês final).</p>
+          : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
           <div style={{ textAlign: 'center', padding: '10px 8px', borderRadius: theme.radius, background: 'var(--ghost-bg)' }}>
             <div style={{ fontSize: 12, color: theme.textSecondary, fontWeight: 600 }}>💚 Com Bolsa Família</div>
@@ -499,14 +515,17 @@ export default function Analitico() {
             {comparativoBF.semBolsa && <div style={{ fontSize: 11, color: theme.textMuted }}>{comparativoBF.semBolsa.alunos} aluno(s)</div>}
           </div>
         </div>
+          )}
       </CardGrafico>
 
       <CardGrafico titulo="📅 Evolução mensal de frequência" sub={`% média de frequência de alunos ativos por mês, em ${ano} — comparável entre meses (não confunde mês com mais dias letivos com mês pior). Meses pendentes/sem dado aparecem em branco.`}>
         <GraficoMensal valores={evolucaoMensal} cor={theme.warning} escalaMax={100} formatarValor={v => `${v}%`} />
       </CardGrafico>
 
-      <CardGrafico titulo="📋 Motivos de baixa frequência mais frequentes" sub={`Top 10 motivos lançados de ${MESES[mesInicio - 1]} a ${MESES[mesFim - 1]}/${ano}.`}>
-        {rankingMotivos.length === 0
+      <CardGrafico titulo="📋 Motivos de baixa frequência mais frequentes" sub={`Top 10 motivos lançados (excluindo pendentes) de ${MESES[mesInicio - 1]} a ${MESES[mesFim - 1]}/${ano}.`}>
+        {periodoInvalido
+          ? <p style={{ color: theme.danger, fontSize: 13 }}>Corrija o período acima (mês inicial não pode ser depois do mês final).</p>
+          : rankingMotivos.length === 0
           ? <p style={{ color: theme.textMuted, fontSize: 13 }}>Nenhum motivo registrado nesse período.</p>
           : <BarraHorizontal linhas={rankingMotivos} cor={theme.purple} />}
       </CardGrafico>
@@ -533,9 +552,9 @@ export default function Analitico() {
           : <BarraDuasSeries linhas={sexoPorEtapa} corA="#2563eb" corB="#db2777" rotuloA="Meninos" rotuloB="Meninas" />}
       </CardGrafico>
 
-      <CardGrafico titulo="🚨 Mapa de risco de Não Comparecimento (NCOM)" sub={`Maior sequência de faltas seguidas em ${ano}, por aluno, com o mês em que ocorreu — 15+ já caracteriza NCOM pela regra da SED; 10-14 é alerta preventivo. Sequência que atravessa a virada do mês pode aparecer subestimada (nunca superestimada).`}>
+      <CardGrafico titulo="🚨 Mapa de risco de Não Comparecimento (NCOM)" sub={`Maior sequência de faltas seguidas em ${ano}, por aluno, com o mês em que ocorreu — 15+ já caracteriza NCOM pela regra da SED; 10-14 é alerta preventivo. Considera só meses lançados dia a dia na Grade (Lançamento Rápido não entra, pois não registra as datas reais). Sequência que atravessa a virada do mês pode aparecer subestimada.`}>
         {riscoNcom.length === 0
-          ? <p style={{ color: theme.textMuted, fontSize: 13 }}>Nenhum aluno com 10 ou mais faltas seguidas neste ano.</p>
+          ? <p style={{ color: theme.textMuted, fontSize: 13 }}>Nenhum aluno com 10 ou mais faltas seguidas neste ano (considerando só meses lançados dia a dia).</p>
           : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {riscoNcom.map(r => (

@@ -413,7 +413,7 @@ export default function Faltas() {
     const registros = alunos.map(a => {
       const motivo = motivos[a.id] || null;
       if (statusTextos[a.id]) {
-        return { alunoId: a.id, turmaId, mes, ano, faltas: 0, frequencia: statusTextos[a.id], motivo_baixa_frequencia: motivo };
+        return { alunoId: a.id, turmaId, mes, ano, faltas: 0, frequencia: statusTextos[a.id], motivo_baixa_frequencia: motivo, origem_frequencia: null };
       }
       const dias = diasAluno[a.id] ?? initDias(numDias);
       const sfConfirmado = semFaltas[a.id] === true;
@@ -426,6 +426,11 @@ export default function Faltas() {
         conferido_sem_faltas: sfConfirmado,
         confirmado_por: sfConfirmado ? (confirmacaoSF?.por ?? username ?? 'desconhecido') : null,
         confirmado_em: sfConfirmado ? (confirmacaoSF?.em ?? new Date().toISOString()) : null,
+        // O Modo Rápido empilha os totais digitados nos primeiros dias
+        // letivos do mês (diasFromCounts) só para fins de contagem — não
+        // são datas reais. Marcar a origem evita que o Painel Analítico
+        // confunda essa sequência artificial com faltas consecutivas reais.
+        origem_frequencia: modo === 'rapido' ? 'LANCAMENTO_RAPIDO' : 'DIA_A_DIA',
       };
     });
     await api.upsertFaltasBatch(registros);
