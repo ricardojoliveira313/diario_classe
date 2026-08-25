@@ -35,6 +35,16 @@ function etapaDaTurma(nomeTurma: string): 'Infantil' | 'Fundamental' | 'EJA' | '
   return 'Fundamental';
 }
 
+// Um registro de Falta com faltas=0 só representa presença real quando foi
+// EXPLICITAMENTE confirmado (conferido_sem_faltas) — mesma regra da aba
+// BF-Frequência. Sem essa confirmação, é um mês ainda não conferido pela
+// escola, e contá-lo como 100% de frequência infla artificialmente qualquer
+// média. Por isso todo cálculo de frequência (%) deste painel ignora esses
+// registros pendentes por completo, em vez de tratá-los como presença.
+function estaPendente(f: any): boolean {
+  return (f.faltas ?? 0) === 0 && f.conferido_sem_faltas !== true;
+}
+
 // ─── Painel Analítico — visão gerencial cruzando dados que já existem em
 // outras telas (Faltas, BF-Frequência, Situações), sem duplicar cálculo:
 // reaproveita consolidarPorAluno (Situações) e os mesmos campos de Falta
@@ -50,10 +60,10 @@ interface LinhaBarra {
 // Barra horizontal simples: rótulo à esquerda, barra proporcional ao maior
 // valor do conjunto, número por extenso ao lado (rótulo direto, sem exigir
 // hover) — uma única cor por gráfico (magnitude = escala sequencial única).
-function BarraHorizontal({ linhas, cor, formatarValor }: {
-  linhas: LinhaBarra[]; cor: string; formatarValor?: (v: number) => string;
+function BarraHorizontal({ linhas, cor, formatarValor, escalaMax }: {
+  linhas: LinhaBarra[]; cor: string; formatarValor?: (v: number) => string; escalaMax?: number;
 }) {
-  const max = Math.max(1, ...linhas.map(l => l.valor));
+  const max = escalaMax ?? Math.max(1, ...linhas.map(l => l.valor));
   const fmt = formatarValor ?? (v => String(v));
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
@@ -76,10 +86,10 @@ function BarraHorizontal({ linhas, cor, formatarValor }: {
 }
 
 // 12 colunas verticais (uma por mês) — magnitude única por coluna.
-function GraficoMensal({ valores, cor, formatarValor }: {
-  valores: number[]; cor: string; formatarValor?: (v: number) => string;
+function GraficoMensal({ valores, cor, formatarValor, escalaMax }: {
+  valores: number[]; cor: string; formatarValor?: (v: number) => string; escalaMax?: number;
 }) {
-  const max = Math.max(1, ...valores);
+  const max = escalaMax ?? Math.max(1, ...valores);
   const fmt = formatarValor ?? (v => String(v));
   return (
     <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 140 }}>
@@ -218,33 +228,38 @@ export default function Analitico() {
     () => faltasPorMes.slice(mesInicio - 1, mesFim).flat(),
     [faltasPorMes, mesInicio, mesFim],
   );
-  const mesesNoPeriodo = mesFim - mesInicio + 1;
 
-  // ── 1) Ranking de faltas por turma ────────────────────────────────────
+  // ── 1) Ranking de frequência por turma (% média, não soma bruta) ──────
+  // Soma bruta de faltas favorece turmas pequenas e período curto — não dá
+  // pra comparar turma de 30 alunos com turma de 15. A métrica comparável é
+  // % de frequência média da turma no período (exclui registros pendentes).
   const rankingTurmas: LinhaBarra[] = useMemo(() => {
-    const somaPorTurma = new Map<string, number>();
+    const acumulado = new Map<string, { faltas: number; letivos: number }>();
     for (const f of faltasNoPeriodo) {
       const aluno = alunoMap.get(f.alunoId);
-      if (!aluno || (aluno.situacao && aluno.situacao !== 'ATIVO')) continue;
-      somaPorTurma.set(f.turmaId, (somaPorTurma.get(f.turmaId) ?? 0) + (f.faltas ?? 0));
+      if (!aluno || (aluno.situacao && aluno.situacao !== 'ATIVO') || estaPendente(f)) continue;
+      const atual = acumulado.get(f.turmaId) ?? { faltas: 0, letivos: 0 };
+      atual.faltas += f.faltas ?? 0;
+      atual.letivos += getDiasLetivos(f.mes, ano);
+      acumulado.set(f.turmaId, atual);
     }
     return sortTurmasPedagogico(turmas)
-      .map(t => ({
-        chave: t.id,
-        label: t.nome,
-        sub: t.professora || undefined,
-        valor: somaPorTurma.get(t.id) ?? 0,
-      }))
-      .filter(l => l.valor > 0)
-      .sort((a, b) => b.valor - a.valor);
-  }, [faltasNoPeriodo, turmas, alunoMap]);
+      .map((t): LinhaBarra | null => {
+        const dados = acumulado.get(t.id);
+        if (!dados || dados.letivos === 0) return null;
+        const percentual = ((dados.letivos - dados.faltas) / dados.letivos) * 100;
+        return { chave: t.id, label: t.nome, sub: t.professora || undefined, valor: Math.round(percentual * 10) / 10 };
+      })
+      .filter((l): l is LinhaBarra => l !== null)
+      .sort((a, b) => a.valor - b.valor); // menor frequência primeiro = mais atenção
+  }, [faltasNoPeriodo, turmas, alunoMap, ano]);
 
   // ── 2) Frequência média: Bolsa Família vs. demais ─────────────────────
   const comparativoBF = useMemo(() => {
     const porAluno = new Map<string, { faltas: number; letivos: number; bf: boolean }>();
     for (const f of faltasNoPeriodo) {
       const aluno = alunoMap.get(f.alunoId);
-      if (!aluno || (aluno.situacao && aluno.situacao !== 'ATIVO')) continue;
+      if (!aluno || (aluno.situacao && aluno.situacao !== 'ATIVO') || estaPendente(f)) continue;
       const atual = porAluno.get(f.alunoId) ?? { faltas: 0, letivos: 0, bf: !!aluno.bolsa_familia };
       atual.faltas += f.faltas ?? 0;
       atual.letivos += getDiasLetivos(f.mes, ano);
@@ -259,18 +274,26 @@ export default function Analitico() {
     return { comBolsa: calcularMedia(true), semBolsa: calcularMedia(false) };
   }, [faltasNoPeriodo, alunoMap, ano]);
 
-  // ── 3) Evolução mensal de faltas (ano inteiro, todas as turmas) ───────
+  // ── 3) Evolução mensal de % de frequência (não soma bruta de faltas) ──
+  // Soma bruta comparava meses com números de dias letivos e de alunos
+  // matriculados diferentes entre si (maio "parece pior" que julho só por
+  // ter mais dias letivos). A métrica comparável é % de frequência média
+  // ponderada do mês, excluindo registros pendentes (sem conferência).
   const evolucaoMensal = useMemo(() => {
-    return faltasPorMes.map(mesRegistros => {
-      let soma = 0;
+    return faltasPorMes.map((mesRegistros, indiceMes) => {
+      const diasLetivosMes = getDiasLetivos(indiceMes + 1, ano);
+      let somaFaltas = 0;
+      let somaLetivos = 0;
       for (const f of mesRegistros) {
         const aluno = alunoMap.get(f.alunoId);
-        if (!aluno || (aluno.situacao && aluno.situacao !== 'ATIVO')) continue;
-        soma += f.faltas ?? 0;
+        if (!aluno || (aluno.situacao && aluno.situacao !== 'ATIVO') || estaPendente(f)) continue;
+        somaFaltas += f.faltas ?? 0;
+        somaLetivos += diasLetivosMes;
       }
-      return soma;
+      if (somaLetivos === 0) return 0;
+      return Math.round(((somaLetivos - somaFaltas) / somaLetivos) * 1000) / 10;
     });
-  }, [faltasPorMes, alunoMap]);
+  }, [faltasPorMes, alunoMap, ano]);
 
   // ── 4) Ranking de motivos de baixa frequência ─────────────────────────
   const rankingMotivos: LinhaBarra[] = useMemo(() => {
@@ -297,21 +320,36 @@ export default function Analitico() {
     });
   }, [alunos, ano]);
 
-  // ── 6) Distorção idade-série por turma (mesma regra de Distorcao.tsx) ─
+  // ── 6) Distorção idade-série por turma (% da turma, não só contagem) ──
+  // extrairSerie olha o primeiro dígito do nome — "1ª ETAPA"/"2ª ETAPA"
+  // (Infantil) também começam com dígito e seriam confundidas com "1º/2º
+  // ano" do Fundamental, aplicando a fórmula errada de idade esperada. Por
+  // isso só entram no cálculo turmas cuja etapa é realmente Fundamental.
+  // Também troca contagem absoluta por % da turma — uma turma de 30 alunos
+  // com 3 em distorção (10%) não é "pior" que uma de 15 com 2 (13%).
   const distorcaoPorTurma: LinhaBarra[] = useMemo(() => {
-    const contagem = new Map<string, number>();
+    const comDistorcao = new Map<string, number>();
+    const totalPorTurma = new Map<string, number>();
     for (const a of ativos) {
       const turma = turmaMap.get(a.turmaId);
-      const serie = turma ? extrairSerie(turma.nome) : null;
+      if (!turma || etapaDaTurma(turma.nome) !== 'Fundamental') continue;
+      const serie = extrairSerie(turma.nome);
       if (!serie || !a.data_nascimento) continue;
       const idade = calcIdadeEm31Marco(a.data_nascimento, ano);
       if (!idade) continue;
+      totalPorTurma.set(a.turmaId, (totalPorTurma.get(a.turmaId) ?? 0) + 1);
       const defasagem = idade - (serie + 5);
-      if (defasagem >= 2) contagem.set(a.turmaId, (contagem.get(a.turmaId) ?? 0) + 1);
+      if (defasagem >= 2) comDistorcao.set(a.turmaId, (comDistorcao.get(a.turmaId) ?? 0) + 1);
     }
     return sortTurmasPedagogico(turmas)
-      .map(t => ({ chave: t.id, label: t.nome, sub: t.professora || undefined, valor: contagem.get(t.id) ?? 0 }))
-      .filter(l => l.valor > 0)
+      .map((t): LinhaBarra | null => {
+        const total = totalPorTurma.get(t.id) ?? 0;
+        const distorcidos = comDistorcao.get(t.id) ?? 0;
+        if (total === 0 || distorcidos === 0) return null;
+        const percentual = Math.round((distorcidos / total) * 1000) / 10;
+        return { chave: t.id, label: t.nome, sub: `${distorcidos} de ${total} alunos`, valor: percentual };
+      })
+      .filter((l): l is LinhaBarra => l !== null)
       .sort((a, b) => b.valor - a.valor);
   }, [ativos, turmas, turmaMap, ano]);
 
@@ -424,10 +462,10 @@ export default function Analitico() {
         </div>
       </div>
 
-      <CardGrafico titulo="🏫 Ranking de faltas por turma" sub={`Total de faltas (F+J+A) de alunos ativos, de ${MESES[mesInicio - 1]} a ${MESES[mesFim - 1]}/${ano} — quanto maior, mais atenção a turma precisa.`}>
+      <CardGrafico titulo="🏫 Ranking de frequência por turma" sub={`% média de frequência de alunos ativos, de ${MESES[mesInicio - 1]} a ${MESES[mesFim - 1]}/${ano} — ordenado da turma que mais precisa de atenção pra que menos precisa. Meses sem conferência (pendentes) não entram na conta.`}>
         {rankingTurmas.length === 0
-          ? <p style={{ color: theme.textMuted, fontSize: 13 }}>Nenhuma falta lançada nesse período.</p>
-          : <BarraHorizontal linhas={rankingTurmas} cor={theme.danger} />}
+          ? <p style={{ color: theme.textMuted, fontSize: 13 }}>Nenhuma falta conferida nesse período (tudo ainda pendente ou sem lançamento).</p>
+          : <BarraHorizontal linhas={rankingTurmas} cor={theme.danger} escalaMax={100} formatarValor={v => `${v}%`} />}
       </CardGrafico>
 
       <CardGrafico titulo="💚 Frequência média: Bolsa Família x demais alunos" sub={`Frequência média (%) no período selecionado, entre alunos ativos.`}>
@@ -449,8 +487,8 @@ export default function Analitico() {
         </div>
       </CardGrafico>
 
-      <CardGrafico titulo="📅 Evolução mensal de faltas" sub={`Total de faltas de alunos ativos por mês, em ${ano} — ajuda a identificar picos (ex.: pós-recesso).`}>
-        <GraficoMensal valores={evolucaoMensal} cor={theme.warning} />
+      <CardGrafico titulo="📅 Evolução mensal de frequência" sub={`% média de frequência de alunos ativos por mês, em ${ano} — comparável entre meses (não confunde mês com mais dias letivos com mês pior). Meses pendentes/sem dado aparecem em branco.`}>
+        <GraficoMensal valores={evolucaoMensal} cor={theme.warning} escalaMax={100} formatarValor={v => `${v}%`} />
       </CardGrafico>
 
       <CardGrafico titulo="📋 Motivos de baixa frequência mais frequentes" sub={`Top 10 motivos lançados de ${MESES[mesInicio - 1]} a ${MESES[mesFim - 1]}/${ano}.`}>
@@ -463,10 +501,10 @@ export default function Analitico() {
         <GraficoMensalEmpilhado porMes={situacoesPorMes} situacoes={SITUACOES_NAO_ATIVAS} />
       </CardGrafico>
 
-      <CardGrafico titulo="📐 Distorção idade-série por turma" sub={`Alunos ativos com 2+ anos de defasagem, referência 31/03/${ano} — mesmo critério da aba Distorção.`}>
+      <CardGrafico titulo="📐 Distorção idade-série por turma" sub={`% de alunos com 2+ anos de defasagem, referência 31/03/${ano} — só turmas de Ensino Fundamental (mesmo critério da aba Distorção).`}>
         {distorcaoPorTurma.length === 0
-          ? <p style={{ color: theme.textMuted, fontSize: 13 }}>Nenhum aluno com distorção idade-série encontrada.</p>
-          : <BarraHorizontal linhas={distorcaoPorTurma} cor={theme.orange} />}
+          ? <p style={{ color: theme.textMuted, fontSize: 13 }}>Nenhuma turma do Fundamental com distorção idade-série encontrada.</p>
+          : <BarraHorizontal linhas={distorcaoPorTurma} cor={theme.orange} escalaMax={100} formatarValor={v => `${v}%`} />}
       </CardGrafico>
 
       <CardGrafico titulo="🏥 Alunos com deficiência (laudo) por turma" sub="Contagem de alunos ativos com deficiência preenchida, por turma.">
