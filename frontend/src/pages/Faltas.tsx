@@ -1150,7 +1150,7 @@ export default function Faltas() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
           <div>
             <label style={label}>Turma</label>
-            <select style={input} value={turmaId} onChange={e => setTurmaId(e.target.value)} disabled={minhasTurmasIds.length <= 1 && !podeEditarTodasFaltas}>
+            <select style={input} value={turmaId} onChange={e => setTurmaId(e.target.value)} disabled={minhasTurmasIds.length === 1 && !podeEditarTodasFaltas}>
               {turmas.map(t => {
                 // Se existem duas turmas com o mesmo nome (ex: duas "EJA I"), mostra a professora
                 const duplicado = turmas.filter(x => x.nome === t.nome).length > 1;
