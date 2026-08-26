@@ -108,6 +108,13 @@ export default function Faltas() {
   const [mes, setMes] = useState(new Date().getMonth() + 1);
   const [alunos, setAlunos] = useState<any[]>([]);
   const [diasAluno, setDiasAluno] = useState<Record<string, Status[]>>({});
+  // Rastreia, por aluno, se o registro veio de digitação dia a dia (Grade,
+  // Pintura, Digitação Sequencial, SF) ou do Lançamento Rápido (totais) —
+  // NUNCA pela aba atualmente selecionada na tela, porque reabrir um mês
+  // já lançado dia a dia carrega com a aba "Rápido" em foco por padrão, e
+  // salvar sem editar nada apagaria essa informação de todo mundo da turma
+  // se a origem fosse decidida pelo `modo` no momento de salvar.
+  const [origemAluno, setOrigemAluno] = useState<Record<string, 'DIA_A_DIA' | 'LANCAMENTO_RAPIDO'>>({});
   const [statusTextos, setStatusTextos] = useState<Record<string, string>>({});
   const [semFaltas, setSemFaltas] = useState<Record<string, boolean>>({});
   const [confirmacoesSemFaltas, setConfirmacoesSemFaltas] = useState<Record<string, { por: string | null; em: string | null }>>({});
@@ -216,6 +223,7 @@ export default function Faltas() {
       const mapMotivos: Record<string, string> = {};
       const mapSemFaltas: Record<string, boolean> = {};
       const mapConfirmacoesSemFaltas: Record<string, { por: string | null; em: string | null }> = {};
+      const mapOrigem: Record<string, 'DIA_A_DIA' | 'LANCAMENTO_RAPIDO'> = {};
       fa.forEach((f: any) => {
         if (f.frequencia?.startsWith('DIAS:')) {
           mapDias[f.alunoId] = decodeDias(f.frequencia, numDias);
@@ -230,6 +238,9 @@ export default function Faltas() {
             em: f.confirmado_em ?? null,
           };
         }
+        if (f.origem_frequencia === 'DIA_A_DIA' || f.origem_frequencia === 'LANCAMENTO_RAPIDO') {
+          mapOrigem[f.alunoId] = f.origem_frequencia;
+        }
       });
       al.forEach((a: any) => {
         if (!mapDias[a.id] && !mapTextos[a.id]) mapDias[a.id] = initDias(numDias);
@@ -239,6 +250,7 @@ export default function Faltas() {
         if (f.motivo_baixa_frequencia) mapMotivosAnterior[f.alunoId] = f.motivo_baixa_frequencia;
       });
       setDiasAluno(mapDias);
+      setOrigemAluno(mapOrigem);
       setStatusTextos(mapTextos);
       setSemFaltas(mapSemFaltas);
       setConfirmacoesSemFaltas(mapConfirmacoesSemFaltas);
@@ -271,6 +283,7 @@ export default function Faltas() {
       dias[diaIdx] = CICLO[(idx + 1) % CICLO.length];
       return { ...prev, [alunoId]: dias };
     });
+    setOrigemAluno(prev => ({ ...prev, [alunoId]: 'DIA_A_DIA' }));
     setSaved(false);
   };
 
@@ -286,6 +299,7 @@ export default function Faltas() {
       dias[schoolIdx] = status;
       return { ...prev, [alunoId]: dias };
     });
+    setOrigemAluno(prev => ({ ...prev, [alunoId]: 'DIA_A_DIA' }));
     setSaved(false);
   };
 
@@ -297,6 +311,7 @@ export default function Faltas() {
       letivoIdxs.forEach(idx => { dias[idx] = status; });
       return { ...prev, [alunoId]: dias };
     });
+    setOrigemAluno(prev => ({ ...prev, [alunoId]: 'DIA_A_DIA' }));
     setSaved(false);
   };
 
@@ -310,6 +325,11 @@ export default function Faltas() {
         dias[schoolIdx] = status;
         next[id] = dias;
       });
+      return next;
+    });
+    setOrigemAluno(prev => {
+      const next = { ...prev };
+      idsElegiveis.forEach(id => { next[id] = 'DIA_A_DIA'; });
       return next;
     });
     setSaved(false);
@@ -341,6 +361,7 @@ export default function Faltas() {
       for (let d = cur.day; d < fim; d++) dias[d] = status;
       return { ...prev, [cur.alunoId]: dias };
     });
+    setOrigemAluno(prev => ({ ...prev, [cur.alunoId]: 'DIA_A_DIA' }));
     setSaved(false);
     setNumBuffer('');
     setCursor(avancarCursor(cur.alunoId, cur.day, fim - cur.day));
@@ -367,6 +388,7 @@ export default function Faltas() {
       atual[tipo] = Math.max(0, Math.min(valor || 0, numDias - outrosDois));
       return { ...prev, [alunoId]: diasFromCounts(atual.F, atual.J, atual.A, numDias) };
     });
+    setOrigemAluno(prev => ({ ...prev, [alunoId]: 'LANCAMENTO_RAPIDO' }));
     setSaved(false);
   };
 
@@ -387,6 +409,7 @@ export default function Faltas() {
       ...prev,
       [alunoId]: { por: username ?? 'desconhecido', em: agora },
     }));
+    setOrigemAluno(prev => ({ ...prev, [alunoId]: 'DIA_A_DIA' }));
     setSaved(false);
   };
 
@@ -413,7 +436,7 @@ export default function Faltas() {
     const registros = alunos.map(a => {
       const motivo = motivos[a.id] || null;
       if (statusTextos[a.id]) {
-        return { alunoId: a.id, turmaId, mes, ano, faltas: 0, frequencia: statusTextos[a.id], motivo_baixa_frequencia: motivo };
+        return { alunoId: a.id, turmaId, mes, ano, faltas: 0, frequencia: statusTextos[a.id], motivo_baixa_frequencia: motivo, origem_frequencia: null };
       }
       const dias = diasAluno[a.id] ?? initDias(numDias);
       const sfConfirmado = semFaltas[a.id] === true;
@@ -426,6 +449,11 @@ export default function Faltas() {
         conferido_sem_faltas: sfConfirmado,
         confirmado_por: sfConfirmado ? (confirmacaoSF?.por ?? username ?? 'desconhecido') : null,
         confirmado_em: sfConfirmado ? (confirmacaoSF?.em ?? new Date().toISOString()) : null,
+        // Origem rastreada por aluno, conforme a interação que realmente
+        // editou aquele registro (ver origemAluno) — nunca pela aba `modo`
+        // ativa na tela no momento de salvar, pois reabrir um mês já
+        // lançado por qualquer via carrega com "Rápido" em foco por padrão.
+        origem_frequencia: origemAluno[a.id] ?? null,
       };
     });
     await api.upsertFaltasBatch(registros);
@@ -1991,6 +2019,19 @@ export default function Faltas() {
                         {a.situacao && a.situacao !== 'ATIVO' && (
                           <span style={{ marginLeft: 6, fontSize: 10, color: SITUACAO_COR[a.situacao] ?? theme.textSecondary, fontWeight: 700 }}>
                             {SITUACAO_LABEL[a.situacao] ?? a.situacao}
+                          </span>
+                        )}
+                        {a.deficiencia && (
+                          <span
+                            title={`Deficiência: ${a.deficiencia} — tratamento de faltas pode seguir regra diferenciada`}
+                            style={{ marginLeft: 6, fontSize: 10, color: '#7c3aed', fontWeight: 700 }}
+                          >
+                            ♿ {a.deficiencia}
+                          </span>
+                        )}
+                        {a.bolsa_familia && (
+                          <span style={{ marginLeft: 6, fontSize: 10, color: '#15803d', fontWeight: 700 }}>
+                            💚
                           </span>
                         )}
                         {motivoRepetido && (
