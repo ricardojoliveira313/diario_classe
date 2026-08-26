@@ -296,6 +296,23 @@ interface BolsaFamiliaRegistro {
 
 const normalizeFileName = (s: string) => s.toUpperCase();
 
+// Guardado por navegador (não por conta) — é só um indicador de "há quanto
+// tempo a última importação SED foi feita NESTE computador", para dar uma
+// noção de desatualização sem depender de uma tabela nova no banco.
+const ULTIMA_IMPORTACAO_KEY = 'ultimaImportacaoSED';
+
+function descreverTempoDesde(isoDate: string): string {
+  const data = new Date(isoDate);
+  if (isNaN(data.getTime())) return '';
+  const diffMs = Date.now() - data.getTime();
+  const diffDias = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const dataFormatada = data.toLocaleDateString('pt-BR');
+  const horaFormatada = data.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  if (diffDias <= 0) return `hoje às ${horaFormatada}`;
+  if (diffDias === 1) return `ontem às ${horaFormatada}`;
+  return `${dataFormatada} às ${horaFormatada} (há ${diffDias} dias)`;
+}
+
 export default function Importar() {
   const [files, setFiles] = useState<File[]>([]);
   const [preview, setPreview] = useState<Record<string, any> | null>(null);
@@ -307,6 +324,10 @@ export default function Importar() {
   const [fixing, setFixing] = useState(false);
   const [importando, setImportando] = useState(false);
   const [bfConfirmados, setBFConfirmados] = useState<Record<string, string>>({});
+  const [ultimaImportacao, setUltimaImportacao] = useState<string | null>(() => {
+    try { return localStorage.getItem(ULTIMA_IMPORTACAO_KEY); }
+    catch { return null; }
+  });
   const fileRef = useRef<HTMLInputElement>(null);
   const dadosRef = useRef<{ turmas: any[]; alunos: AlunoUnificado[]; faltasArr: any[]; educacenso?: any[]; bfNaoEncontrados?: { nome: string; nasc: string; nis: string }[]; bfSugestoes?: BFSugestao[]; bfConfirmacoes?: Record<string, string>; bolsaFamiliaRegistros?: BolsaFamiliaRegistro[]; bolsaMapSize?: number } | null>(null);
   // Snapshot para rollback em caso de falha na importação
@@ -2630,6 +2651,9 @@ export default function Importar() {
 
       setStatus('');
       setSucesso(true);
+      const agoraIso = new Date().toISOString();
+      try { localStorage.setItem(ULTIMA_IMPORTACAO_KEY, agoraIso); } catch { /* localStorage indisponível — segue sem o indicador */ }
+      setUltimaImportacao(agoraIso);
     } catch (ex: any) {
       const msg = ex.message ?? String(ex);
       setErro(msg);
@@ -2670,6 +2694,18 @@ export default function Importar() {
         PDFs (Alunos por Classe) + Excels (Diário de Classe, Turmas-Professores) + <strong>TXT do Bolsa Família</strong>.
         O sistema cruza automaticamente por nome, RA e data de nascimento.
       </p>
+
+      <div style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6,
+        padding: '6px 12px', borderRadius: theme.radius, marginBottom: 16,
+        background: ultimaImportacao ? 'var(--row-odd)' : theme.warningLight,
+        color: ultimaImportacao ? theme.textSecondary : theme.warningHover,
+        fontSize: 13, fontWeight: 600,
+      }}>
+        {ultimaImportacao
+          ? <>🕓 Última importação neste computador: {descreverTempoDesde(ultimaImportacao)}</>
+          : <>⚠️ Nenhuma importação registrada neste computador ainda</>}
+      </div>
 
       {/* Upload zone */}
       <div style={{
