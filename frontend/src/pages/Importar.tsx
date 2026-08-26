@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { extrairLinhasEducacenso } from '../educacenso';
 import * as pdfjsLib from 'pdfjs-dist';
@@ -6,6 +6,7 @@ import { api, supabase } from '../api';
 import { theme, btn, card as cardStyle } from '../styles';
 import { FileRow, ProgressBar, ErrorBox, Spinner } from '../components';
 import { normalizarSexo } from '../matriculasMensais';
+import { useAuth } from '../AuthContext';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs`;
 
@@ -324,11 +325,25 @@ export default function Importar() {
   const [fixing, setFixing] = useState(false);
   const [importando, setImportando] = useState(false);
   const [bfConfirmados, setBFConfirmados] = useState<Record<string, string>>({});
-  const [ultimaImportacao, setUltimaImportacao] = useState<string | null>(() => {
-    try { return localStorage.getItem(ULTIMA_IMPORTACAO_KEY); }
-    catch { return null; }
+  const { username } = useAuth();
+  // Indicador local (por navegador) some assim que o do banco (por escola
+  // inteira) chega — fica só como fallback enquanto a consulta não responde,
+  // ou se a tabela ControleImportacao ainda não existir no banco.
+  const [ultimaImportacao, setUltimaImportacao] = useState<{ quando: string; local: boolean } | null>(() => {
+    try {
+      const salvo = localStorage.getItem(ULTIMA_IMPORTACAO_KEY);
+      return salvo ? { quando: salvo, local: true } : null;
+    } catch { return null; }
   });
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    api.getUltimaImportacao().then(registro => {
+      if (registro?.importado_em) {
+        setUltimaImportacao({ quando: registro.importado_em, local: false });
+      }
+    });
+  }, []);
   const dadosRef = useRef<{ turmas: any[]; alunos: AlunoUnificado[]; faltasArr: any[]; educacenso?: any[]; bfNaoEncontrados?: { nome: string; nasc: string; nis: string }[]; bfSugestoes?: BFSugestao[]; bfConfirmacoes?: Record<string, string>; bolsaFamiliaRegistros?: BolsaFamiliaRegistro[]; bolsaMapSize?: number } | null>(null);
   // Snapshot para rollback em caso de falha na importação
   const rollbackRef = useRef<{ alunosInseridos: any[]; alunosDeletados: any[]; faltasInseridas: any[]; turmasCriadas: any[] } | null>(null);
@@ -2653,7 +2668,13 @@ export default function Importar() {
       setSucesso(true);
       const agoraIso = new Date().toISOString();
       try { localStorage.setItem(ULTIMA_IMPORTACAO_KEY, agoraIso); } catch { /* localStorage indisponível — segue sem o indicador */ }
-      setUltimaImportacao(agoraIso);
+      setUltimaImportacao({ quando: agoraIso, local: true });
+      await api.registrarImportacao(username ?? 'desconhecido');
+      // Confirma com o valor que o banco realmente aceitou (se a tabela já
+      // existir) — assim o indicador vira "válido pra escola toda" na hora,
+      // sem esperar o próximo reload da página.
+      const registro = await api.getUltimaImportacao();
+      if (registro?.importado_em) setUltimaImportacao({ quando: registro.importado_em, local: false });
     } catch (ex: any) {
       const msg = ex.message ?? String(ex);
       setErro(msg);
@@ -2703,8 +2724,8 @@ export default function Importar() {
         fontSize: 13, fontWeight: 600,
       }}>
         {ultimaImportacao
-          ? <>🕓 Última importação neste computador: {descreverTempoDesde(ultimaImportacao)}</>
-          : <>⚠️ Nenhuma importação registrada neste computador ainda</>}
+          ? <>🕓 Última importação{ultimaImportacao.local ? ' neste computador' : ''}: {descreverTempoDesde(ultimaImportacao.quando)}</>
+          : <>⚠️ Nenhuma importação registrada ainda</>}
       </div>
 
       {/* Upload zone */}
