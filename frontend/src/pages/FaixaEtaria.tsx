@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { theme, card as cardStyle, input, label as labelStyle } from '../styles';
-import { calcTabelaFaixaEtaria, etapaParaNascimento } from '../faixaEtariaCalculos';
+import { calcTabelaFaixaEtaria, classificarNascimento } from '../faixaEtariaCalculos';
 
 const anoAtual = new Date().getFullYear();
-const ANOS_DISPONIVEIS = [anoAtual, anoAtual + 1, anoAtual + 2];
+const ANOS_DISPONIVEIS = [anoAtual, anoAtual + 1, anoAtual + 2, anoAtual + 3, anoAtual + 4];
 
 function Tabela({ titulo, linhas }: { titulo: string; linhas: ReturnType<typeof calcTabelaFaixaEtaria> }) {
   return (
@@ -50,13 +50,8 @@ export default function FaixaEtaria() {
 
   const resultado = useMemo(() => {
     if (!dataNasc || dataNasc.length < 10) return null;
-    return etapaParaNascimento(dataNasc, anoLetivo);
+    return classificarNascimento(dataNasc, anoLetivo);
   }, [dataNasc, anoLetivo]);
-
-  const handleDataNascChange = (v: string) => {
-    // Aceita digitação livre (dd/mm/aaaa) sem exigir máscara
-    setDataNasc(v);
-  };
 
   return (
     <div>
@@ -66,53 +61,64 @@ export default function FaixaEtaria() {
         Só é possível ingressar em uma etapa no ano letivo em que a criança se encaixar na faixa; não há antecipação.
       </p>
 
-      <div style={cardStyle({ padding: 16, marginBottom: 20 })}>
-        <label style={labelStyle}>Ano letivo</label>
-        <div style={{ display: 'flex', gap: 8 }}>
-          {ANOS_DISPONIVEIS.map(a => (
-            <button
-              key={a}
-              onClick={() => setAnoLetivo(a)}
-              style={{
-                padding: '8px 18px',
-                borderRadius: theme.radius,
-                border: `1.5px solid ${anoLetivo === a ? theme.primary : theme.border}`,
-                background: anoLetivo === a ? theme.primary : 'transparent',
-                color: anoLetivo === a ? '#fff' : theme.text,
-                fontWeight: 700,
-                cursor: 'pointer',
-              }}
-            >
-              {a}
-            </button>
-          ))}
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
+        <div style={cardStyle({ padding: 16, flex: '1 1 220px' })}>
+          <label style={labelStyle}>Ano letivo</label>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {ANOS_DISPONIVEIS.map(a => (
+              <button
+                key={a}
+                onClick={() => setAnoLetivo(a)}
+                style={{
+                  padding: '8px 18px',
+                  borderRadius: theme.radius,
+                  border: `1.5px solid ${anoLetivo === a ? theme.primary : theme.border}`,
+                  background: anoLetivo === a ? theme.primary : 'transparent',
+                  color: anoLetivo === a ? '#fff' : theme.text,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                {a}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={cardStyle({ padding: 16, flex: '2 1 360px' })}>
+          <div style={{ fontWeight: 800, color: theme.text, marginBottom: 10, fontSize: 15 }}>🔎 Verificar etapa por data de nascimento</div>
+          <div style={{ maxWidth: 200, marginBottom: resultado ? 10 : 0 }}>
+            <input
+              style={input}
+              placeholder="dd/mm/aaaa"
+              value={dataNasc}
+              onChange={e => setDataNasc(e.target.value)}
+            />
+          </div>
+          {resultado && (
+            <div style={{ fontSize: 14, color: theme.text }}>
+              {resultado.tipo === 'etapa' && (
+                <>Em <strong>{anoLetivo}</strong>, essa criança se encaixa em: <strong style={{ color: theme.primary }}>{resultado.etapa.etapa}</strong> ({resultado.etapa.idade} {resultado.etapa.idade === 1 ? 'ano completo' : 'anos completos'} em 31/03/{anoLetivo}).</>
+              )}
+              {resultado.tipo === 'creche' && (
+                <span style={{ color: theme.textSecondary }}>Em <strong>{anoLetivo}</strong>, essa criança estaria na faixa de <strong>Creche (0 a 2 anos)</strong> — matrícula contínua, sem data de corte fixa.</span>
+              )}
+              {resultado.tipo === 'fundamental_alem' && (
+                <span>Em <strong>{anoLetivo}</strong>, essa criança já estaria cursando o <strong style={{ color: theme.warning }}>{resultado.serie}º Ano</strong> — fora da faixa atendida por esta escola, que vai até o 5º Ano.</span>
+              )}
+              {resultado.tipo === 'concluido' && (
+                <span>Em <strong>{anoLetivo}</strong>, essa criança já teria concluído o Ensino Fundamental (09 anos) regular.</span>
+              )}
+              {resultado.tipo === 'invalido' && (
+                <span style={{ color: theme.danger }}>Data de nascimento inválida.</span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
       <Tabela titulo={`Educação Infantil — ano letivo ${anoLetivo}`} linhas={infantil} />
       <Tabela titulo={`Ensino Fundamental (09 anos) — ano letivo ${anoLetivo}`} linhas={fundamental} />
-
-      <div style={cardStyle({ padding: 16, marginBottom: 20 })}>
-        <div style={{ fontWeight: 800, color: theme.text, marginBottom: 10, fontSize: 15 }}>🔎 Verificar etapa por data de nascimento</div>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-          <div style={{ maxWidth: 200 }}>
-            <label style={labelStyle}>Data de nascimento</label>
-            <input
-              style={input}
-              placeholder="dd/mm/aaaa"
-              value={dataNasc}
-              onChange={e => handleDataNascChange(e.target.value)}
-            />
-          </div>
-        </div>
-        {dataNasc.length >= 10 && (
-          <div style={{ marginTop: 12, fontSize: 14, color: theme.text }}>
-            {resultado
-              ? <>Em <strong>{anoLetivo}</strong>, essa criança se encaixa em: <strong style={{ color: theme.primary }}>{resultado.etapa}</strong> ({resultado.idade} {resultado.idade === 1 ? 'ano completo' : 'anos completos'} em 31/03/{anoLetivo}).</>
-              : <span style={{ color: theme.textSecondary }}>Fora das faixas do Ensino Fundamental/Pré-escola calculadas para {anoLetivo} — verifique se é caso de Creche (0 a 2 anos) ou de uma data inválida.</span>}
-          </div>
-        )}
-      </div>
 
       <div style={{ fontSize: 12, color: theme.textMuted, lineHeight: 1.6 }}>
         ⚠️ A Creche (Berçário I e II) não segue a data de corte de 31/03 — a matrícula é contínua ao longo do ano para

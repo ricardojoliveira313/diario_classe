@@ -85,3 +85,40 @@ export function etapaParaNascimento(dataNasc: string, anoLetivo: number): EtapaF
   }
   return null;
 }
+
+export type ResultadoClassificacao =
+  | { tipo: 'etapa'; etapa: EtapaFaixaEtaria }
+  | { tipo: 'creche' }
+  | { tipo: 'fundamental_alem'; serie: number } // 6º a 9º Ano — além do 5º Ano atendido por esta escola
+  | { tipo: 'concluido' } // já teria concluído o Ensino Fundamental (09 anos) regular
+  | { tipo: 'invalido' };
+
+// Idade completa em 31/03 do ano letivo — mesma regra de corte usada na tabela.
+function calcIdadeEm31Marco(nasc: Date, anoLetivo: number): number {
+  const ref = new Date(anoLetivo, 2, 31);
+  let idade = ref.getFullYear() - nasc.getFullYear();
+  const m = ref.getMonth() - nasc.getMonth();
+  if (m < 0 || (m === 0 && ref.getDate() < nasc.getDate())) idade--;
+  return idade;
+}
+
+// Classificação completa: cobre a tabela (Creche ao 5º Ano) e também informa,
+// fora da janela atendida por esta escola, se a criança já estaria cursando
+// um ano mais avançado do Fundamental (6º a 9º) ou já teria concluído — em
+// vez de só dizer "fora da faixa calculada", como fazia a versão anterior.
+export function classificarNascimento(dataNasc: string, anoLetivo: number): ResultadoClassificacao {
+  const partes = dataNasc.split('/');
+  if (partes.length !== 3) return { tipo: 'invalido' };
+  const nasc = new Date(Number(partes[2]), Number(partes[1]) - 1, Number(partes[0]));
+  if (isNaN(nasc.getTime())) return { tipo: 'invalido' };
+
+  const etapa = etapaParaNascimento(dataNasc, anoLetivo);
+  if (etapa) return { tipo: 'etapa', etapa };
+
+  const idade = calcIdadeEm31Marco(nasc, anoLetivo);
+  if (idade < 2) return { tipo: 'creche' };
+  const serie = idade - 5; // 1º Ano = idade 6 → série 1
+  if (serie > 5 && serie <= 9) return { tipo: 'fundamental_alem', serie };
+  if (serie > 9) return { tipo: 'concluido' };
+  return { tipo: 'invalido' };
+}
