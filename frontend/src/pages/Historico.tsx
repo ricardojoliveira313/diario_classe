@@ -218,13 +218,6 @@ function isAtivo(situacao: string | null): boolean {
   return !situacao || situacao === 'ATIVO';
 }
 
-function normalizarSituacao(situacao: string | null): string {
-  return (situacao ?? '')
-    .toUpperCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-}
-
 function isTurmaAEE(turma: TurmaHistorico | null): boolean {
   const nome = turma?.nome?.toUpperCase() ?? '';
   return nome.includes('AEE') || nome.includes('ATENDIMENTO');
@@ -593,22 +586,16 @@ export default function Historico() {
       if (campo === 'anoLetivo' && valor === '2020') {
         return { ...linha, anoLetivo: valor, cargaHoraria: '800' };
       }
-      if (campo === 'complementoEstabelecimento' && normalizarSituacao(valor).includes('TRANSFERE')) {
-        if (!transferenciaAnoCiclo) setTransferenciaAnoCiclo(linha.anoLetivo || linha.label);
-        if (!prosseguimentoAno) {
-          // Prosseguimento é sempre o ano SEGUINTE ao que foi interrompido pela
-          // transferência — nunca o mesmo ano onde o TRANSFERE-SE foi marcado
-          // (ciclos 6/7 são repetições do 3º/5º ano, valem como se fossem eles).
-          const cicloEquivalente = linha.ciclo === 6 ? 3 : linha.ciclo === 7 ? 5 : linha.ciclo;
-          const proximoCiclo = cicloEquivalente + 1;
-          setProsseguimentoAno(
-            proximoCiclo <= 5
-              ? CICLOS_LABELS[proximoCiclo - 1].replace(/\s*\/.*$/, '')
-              // 5º ano é o último desta etapa — sem conclusão, o aluno permanece
-              // no 5º ano (não existe "6º ano" para onde prosseguir).
-              : '5º Ano',
-          );
-        }
+      // Clicar em "TRANSFERE-SE" numa linha (exceto o 5º Ano — ver comentário
+      // no chip mais abaixo) vincula automaticamente essa linha ao quadro
+      // "Transferência durante o período letivo": foi ALI que o aluno saiu
+      // antes de terminar o ano, então o prosseguimento é na MESMA série
+      // (o aluno vai continuar/repetir esse mesmo ano em outra escola) —
+      // nunca na série seguinte, que só se aplica quando o ano foi concluído
+      // por inteiro (ver concluiu5AnoAutomatico, que não depende deste chip).
+      if (campo === 'resultado' && valor === 'TRANSFERE-SE') {
+        if (!transferenciaAnoCiclo) setTransferenciaAnoCiclo(linha.label.replace(/\s*\/.*$/, ''));
+        if (!prosseguimentoAno) setProsseguimentoAno(linha.label.replace(/\s*\/.*$/, ''));
       }
       return { ...linha, [campo]: valor };
     }));
@@ -632,6 +619,17 @@ export default function Historico() {
     setAlteradoSemSalvar(true);
     setLinhas(atuais => {
       const linha = atuais[index];
+      // TRANSFERE-SE no 3º Ano vincula ao quadro "Transferência durante o
+      // período letivo" (mesma lógica de atualizarLinha, ver comentário lá).
+      // O 5º Ano fica de fora de propósito: sem ele, praticamente todo aluno
+      // desta escola (que só vai até o 5º Ano) teria essa transferência
+      // marcada mesmo tendo concluído o ano inteiro — a conclusão do 5º Ano
+      // já é detectada automaticamente por concluiu5AnoAutomatico, sem
+      // depender deste chip.
+      if (linha.ciclo === 3 && valor === 'TRANSFERE-SE') {
+        if (!transferenciaAnoCiclo) setTransferenciaAnoCiclo(linha.label.replace(/\s*\/.*$/, ''));
+        if (!prosseguimentoAno) setProsseguimentoAno(linha.label.replace(/\s*\/.*$/, ''));
+      }
       const cicloExtra = linha.ciclo === 3 ? 6 : 7;
       const updated = atuais.map((l, i) => i === index ? { ...l, resultado: valor } : l);
       const jaTemExtra = updated.some(l => l.ciclo === cicloExtra);
