@@ -181,6 +181,28 @@ export const api = {
       .order('id').range(inicio, fim));
   },
 
+  // --- CONTROLE DE IMPORTAÇÃO SED (data válida pra escola inteira) ---
+  // Tolerante a falha de propósito: se a tabela ainda não existir no banco
+  // (migração não rodada), a importação continua funcionando normalmente —
+  // só não atualiza esse indicador específico.
+  registrarImportacao: async (importadoPor: string) => {
+    const { error } = await supabase.from('ControleImportacao').upsert({
+      id: 'unica',
+      importado_em: new Date().toISOString(),
+      importado_por: importadoPor,
+    }, { onConflict: 'id' });
+    if (error) console.error('Não foi possível registrar a data da importação:', error);
+  },
+  getUltimaImportacao: async (): Promise<{ importado_em: string; importado_por: string } | null> => {
+    try {
+      const { data, error } = await supabase.from('ControleImportacao').select('importado_em, importado_por').eq('id', 'unica').maybeSingle();
+      if (error) return null;
+      return data ?? null;
+    } catch {
+      return null;
+    }
+  },
+
   getUsuarios: async () => todasAsPaginas((inicio, fim) => supabase
     .from('Usuario')
     .select('id, nome, perfil, ativo, turma_id, permissoes')
