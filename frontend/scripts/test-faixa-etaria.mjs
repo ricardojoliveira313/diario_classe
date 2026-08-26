@@ -17,7 +17,7 @@ try {
     outfile: bundle,
   });
 
-  const { calcJanelaNascimento, calcTabelaFaixaEtaria, etapaParaNascimento } =
+  const { calcJanelaNascimento, calcTabelaFaixaEtaria, etapaParaNascimento, classificarNascimento } =
     await import(`${pathToFileURL(bundle).href}?${Date.now()}`);
 
   // ── Conferência linha a linha contra a tabela oficial do Anexo 01 (2027) ──
@@ -69,6 +69,20 @@ try {
   assert.equal(etapaParaNascimento('01/04/2020', 2027)?.etapa, '1º Ano');
   assert.equal(etapaParaNascimento('', 2027), null);
   console.log('Teste etapaParaNascimento: OK');
+
+  // ── classificarNascimento — cobre além do 5º Ano e a Creche ───────────────
+  assert.equal(classificarNascimento('15/08/2022', 2027).tipo, 'etapa');
+  assert.equal(classificarNascimento('01/06/2025', 2027).tipo, 'creche');
+  // nasceu em 2016: idade completa em 31/03/2027 = 10 (5º Ano) — ainda dentro da tabela
+  assert.equal(classificarNascimento('01/04/2016', 2027).tipo, 'etapa');
+  // nasceu em 2015: idade completa em 31/03/2027 = 11 → 6º Ano, além do 5º Ano atendido
+  const alem = classificarNascimento('01/04/2015', 2027);
+  assert.equal(alem.tipo, 'fundamental_alem');
+  assert.equal(alem.serie, 6);
+  // nasceu em 2010: idade completa em 31/03/2027 = 16 → série 11, já concluiu
+  assert.equal(classificarNascimento('01/04/2010', 2027).tipo, 'concluido');
+  assert.equal(classificarNascimento('data-invalida', 2027).tipo, 'invalido');
+  console.log('Teste classificarNascimento (além do 5º Ano e Creche): OK');
 
   console.log('\nTodos os testes de Faixa Etária passaram.');
 } finally {
