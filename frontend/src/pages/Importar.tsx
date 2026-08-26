@@ -305,13 +305,10 @@ const ULTIMA_IMPORTACAO_KEY = 'ultimaImportacaoSED';
 function descreverTempoDesde(isoDate: string): string {
   const data = new Date(isoDate);
   if (isNaN(data.getTime())) return '';
-  const diffMs = Date.now() - data.getTime();
-  const diffDias = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const diffDias = Math.floor((Date.now() - data.getTime()) / (1000 * 60 * 60 * 24));
   const dataFormatada = data.toLocaleDateString('pt-BR');
   const horaFormatada = data.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-  if (diffDias <= 0) return `hoje às ${horaFormatada}`;
-  if (diffDias === 1) return `ontem às ${horaFormatada}`;
-  return `${dataFormatada} às ${horaFormatada} (há ${diffDias} dias)`;
+  return diffDias > 0 ? `${dataFormatada} às ${horaFormatada} (há ${diffDias} dias)` : `${dataFormatada} às ${horaFormatada}`;
 }
 
 export default function Importar() {
