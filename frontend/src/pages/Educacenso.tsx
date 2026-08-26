@@ -4,6 +4,7 @@ import { api } from '../api';
 import { theme, btn, input, label } from '../styles';
 import { Loading, EmptyState, StatCard } from '../components';
 import { useAno } from '../AnoContext';
+import { estavaMatriculadoNaData } from '../educacensoCorte';
 
 type Status = 'P' | 'F' | 'J' | 'A';
 const CICLO: Status[] = ['P', 'F', 'J', 'A'];
@@ -45,9 +46,6 @@ function normalizarDataDigits(d: any): string {
   return `${digs.slice(4)}${digs.slice(2, 4)}${digs.slice(0, 2)}`;
 }
 
-function isAtivo(situacao: string | null | undefined): boolean {
-  return !situacao || situacao === 'ATIVO';
-}
 
 interface LinhaEduc {
   nome: string;
@@ -168,8 +166,11 @@ export default function Educacenso() {
     setCarregando(true);
     setResultado(null);
     try {
+      const [anoCorteStr, mesCorteStr, diaCorteStr] = dataCorte.split('-');
+      const anoCorte = Number(anoCorteStr), mesCorte = Number(mesCorteStr);
+      const dataCorteDate = new Date(anoCorte, mesCorte - 1, Number(diaCorteStr));
       const todosAlunos = await api.getAllAlunos();
-      const alunosAtivos = (todosAlunos ?? []).filter((a: any) => isAtivo(a.situacao));
+      const alunosAtivos = (todosAlunos ?? []).filter((a: any) => estavaMatriculadoNaData(a, dataCorteDate));
       const usados = new Set<string>();
       const linhas: LinhaResultado[] = [];
 
@@ -204,8 +205,6 @@ export default function Educacenso() {
 
       // Calcula a dica de frequência só para os casos de dúvida (só SED / só Educacenso) —
       // evita disparar uma consulta por aluno para a lista inteira.
-      const [anoCorteStr, mesCorteStr] = dataCorte.split('-');
-      const anoCorte = Number(anoCorteStr), mesCorte = Number(mesCorteStr);
       const duvidosos = linhas.filter(l => l.status === 'so_sed' && l.aluno);
       for (const l of duvidosos) {
         l.frequenciaHint = await calcularFrequenciaHint(l.aluno.id, mesCorte, anoCorte);
