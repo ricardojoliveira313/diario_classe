@@ -828,6 +828,28 @@ export default function Historico() {
     if (salvo) window.print();
   };
 
+  // Conclusão do 5º Ano é detectada pelo PREENCHIMENTO DO HISTÓRICO (1º ao 5º
+  // Ano com ano letivo e escola registrados) — nunca pelo chip "TRANSFERE-SE"
+  // da tabela de estudos, que só descreve para onde o aluno foi depois (essa
+  // escola só vai até o 5º Ano, então TODO concluinte é "transferido" para
+  // cursar o 6º ano em outra unidade; isso não significa que ele saiu no meio
+  // do ano). Uma transferência real no meio do período letivo é um campo
+  // separado, preenchido explicitamente no quadro "Transferência durante o
+  // período letivo" (dias letivos/presenças/ausências) — só ela deve impedir
+  // a conclusão automática.
+  // Filtra por ciclo (não por posição no array) porque uma repetição de ano
+  // (PERMANECENTE no 3º ou 5º Ano) insere uma linha extra (ciclo 6/7) que
+  // desloca os índices seguintes — usar linhas[4] às cegas quebraria nesse caso.
+  const linhasRegularesFundamental1 = linhas.filter(l => l.ciclo >= 1 && l.ciclo <= 5);
+  const linha5Ano = linhas.find(l => l.ciclo === 5);
+  const historico5AnosCompleto = linhasRegularesFundamental1.length === 5
+    && linhasRegularesFundamental1.every(l => l.anoLetivo.trim() && l.escola.trim());
+  const houveTransferenciaNoMeioDoAno = Boolean(
+    transferenciaDiasLetivos.trim() || transferenciaPresencas.trim()
+    || transferenciaAusencias.trim() || transferenciaPeriodo.trim(),
+  );
+  const concluiu5AnoAutomatico = historico5AnosCompleto && !houveTransferenciaNoMeioDoAno;
+
   // Monta Base Nacional Comum + Parte Diversificada JUNTAS por ano — nunca separadas
   // em páginas diferentes. Cada ano contribui suas tabelas em sequência (base antes
   // da diversificada), e essa sequência é tratada como um bloco indivisível na hora
@@ -1270,7 +1292,7 @@ export default function Historico() {
                       <tr>
                         <td colSpan={5} style={{ textAlign: 'left', fontWeight: 800, padding: '2mm 1mm' }}>
                           O aluno tem direito a prosseguimento de estudos no{' '}
-                          <input aria-label="Ano de prosseguimento" style={{ ...campoDocumento, display: 'inline-block', width: '28%', fontWeight: 800 }} value={prosseguimentoAno} onChange={event => setProsseguimentoAno(event.target.value)} placeholder="- - - - - - - - -" />
+                          <input aria-label="Ano de prosseguimento" style={{ ...campoDocumento, display: 'inline-block', width: '28%', fontWeight: 800 }} value={prosseguimentoAno || (concluiu5AnoAutomatico ? '6º Ano' : '')} onChange={event => setProsseguimentoAno(event.target.value)} placeholder="- - - - - - - - -" />
                           {' '}do Ensino Fundamental de 9 anos.
                         </td>
                       </tr>
@@ -1298,16 +1320,15 @@ export default function Historico() {
                   </div>
                 </div>
 
-                {/* O Certificado SEMPRE aparece, independente da "Transferência durante
-                    o período letivo" acima — são duas situações que podem ocorrer juntas:
-                    o aluno pode ter concluído integralmente o 5º Ano E, na sequência,
-                    ter sido transferido para outra escola cursar o 6º Ano (é o caso
-                    normal de TODO concluinte desta unidade, que só vai até o 5º Ano).
-                    Antes, essa seção só aparecia quando aluno.situacao era ATIVO/CONCLUÍDO,
-                    o que escondia o Certificado de praticamente todo aluno que realmente
-                    concluiu — já que a situação dele vira TRANSFERE-SE ao sair para o 6º
-                    ano em outra escola. Os campos ficam com traço quando não preenchidos,
-                    para a direção decidir manualmente se este documento se aplica. */}
+                {/* O Certificado SEMPRE aparece — o quadro fica visível mesmo quando
+                    vazio (traço nos campos), mas se preenche sozinho quando o histórico
+                    do 1º ao 5º Ano está completo (ano letivo + escola em cada linha) e
+                    NÃO há uma transferência real no meio do período letivo registrada
+                    no quadro acima. O chip "TRANSFERE-SE" da tabela de estudos NÃO entra
+                    nessa conta — ele só descreve para onde o aluno foi depois de concluir
+                    (esta escola só vai até o 5º Ano, então TODO concluinte "se transfere"
+                    para cursar o 6º ano em outra unidade; isso não é uma saída no meio do
+                    ano). A direção pode sempre sobrescrever os campos manualmente. */}
                 <div className="quadro-oficial certificado-oficial">
                   <h3 className="titulo-quadro">Certificado</h3>
                   <div className="certificado-texto">
@@ -1327,8 +1348,8 @@ export default function Historico() {
                       <input
                         aria-label="Série no certificado"
                         className="certificado-campo"
-                        size={Math.max((certSerie || '- - - - -').length + 2, 8)}
-                        value={certSerie}
+                        size={Math.max((certSerie || (concluiu5AnoAutomatico ? '5º Ano' : '- - - - -')).length + 2, 8)}
+                        value={certSerie || (concluiu5AnoAutomatico ? '5º Ano' : '')}
                         placeholder="- - - - -"
                         onChange={event => setCertSerie(event.target.value)}
                       />
@@ -1337,9 +1358,12 @@ export default function Historico() {
                         aria-label="Ano letivo no certificado"
                         className="certificado-campo"
                         size={6}
-                        value={linhas[4]?.anoLetivo ?? ''}
+                        value={linha5Ano?.anoLetivo ?? ''}
                         placeholder="- - - -"
-                        onChange={event => atualizarLinha(4, 'anoLetivo', event.target.value)}
+                        onChange={event => {
+                          const idx = linhas.findIndex(l => l.ciclo === 5);
+                          if (idx !== -1) atualizarLinha(idx, 'anoLetivo', event.target.value);
+                        }}
                       />.
                     </span>
                   </div>
