@@ -1351,9 +1351,9 @@ export default function Historico() {
                       <input
                         aria-label="Série no certificado"
                         className="certificado-campo"
-                        size={Math.max((certSerie || (concluiu5AnoAutomatico ? '5º Ano' : '- - - - -')).length + 2, 8)}
+                        size={Math.max((certSerie || (concluiu5AnoAutomatico ? '5º Ano' : '..........')).length + 2, 8)}
                         value={certSerie || (concluiu5AnoAutomatico ? '5º Ano' : '')}
-                        placeholder="- - - - -"
+                        placeholder="........."
                         onChange={event => setCertSerie(event.target.value)}
                       />
                       {' '}do Ensino Fundamental, no ano letivo de{' '}
@@ -1362,7 +1362,7 @@ export default function Historico() {
                         className="certificado-campo"
                         size={6}
                         value={linha5Ano?.anoLetivo ?? ''}
-                        placeholder="- - - -"
+                        placeholder="......."
                         onChange={event => {
                           const idx = linhas.findIndex(l => l.ciclo === 5);
                           if (idx !== -1) atualizarLinha(idx, 'anoLetivo', event.target.value);
