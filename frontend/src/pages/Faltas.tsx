@@ -2021,6 +2021,19 @@ export default function Faltas() {
                             {SITUACAO_LABEL[a.situacao] ?? a.situacao}
                           </span>
                         )}
+                        {a.deficiencia && (
+                          <span
+                            title={`Deficiência: ${a.deficiencia} — tratamento de faltas pode seguir regra diferenciada`}
+                            style={{ marginLeft: 6, fontSize: 10, color: '#7c3aed', fontWeight: 700 }}
+                          >
+                            ♿ {a.deficiencia}
+                          </span>
+                        )}
+                        {a.bolsa_familia && (
+                          <span style={{ marginLeft: 6, fontSize: 10, color: '#15803d', fontWeight: 700 }}>
+                            💚
+                          </span>
+                        )}
                         {motivoRepetido && (
                           <span
                             title={`Mesmo motivo (${motivos[a.id]}) lançado no mês anterior — verifique se há um padrão`}
