@@ -34,9 +34,15 @@ import { ErrorBoundary } from './components';
 // pageKey          → chave usada no painel de permissões (viewers)
 //                    se pageKey estiver definida, viewer só vê se permissoes===null
 //                    ou se permissoes.includes(pageKey)
-const NAV_ITEMS: { to: string; label: string; end?: boolean; badge?: boolean; adminOnly?: boolean; pageKey?: PageKey; capabilityKey?: CapabilityKey }[] = [
+// Restrição extra além de "admin": esta aba fica visível/acessível SOMENTE
+// para este usuário específico, mesmo que outros admins existam — pedido
+// explícito para a Importação (que reescreve dados de Alunos/Turmas/Faltas
+// em lote e não deve ficar disponível pra qualquer administrador).
+const USUARIO_IMPORTACAO = 'ricojoliveira';
+
+const NAV_ITEMS: { to: string; label: string; end?: boolean; badge?: boolean; adminOnly?: boolean; usernameOnly?: string; pageKey?: PageKey; capabilityKey?: CapabilityKey }[] = [
   { to: '/',          label: '📊 Dashboard', end: true,              pageKey: 'dashboard' },
-  { to: '/importar',  label: '📥 Importar',  adminOnly: true },
+  { to: '/importar',  label: '📥 Importar',  adminOnly: true, usernameOnly: USUARIO_IMPORTACAO },
   { to: '/turmas',    label: '👩‍🏫 Turmas',                            pageKey: 'turmas' },
   { to: '/alunos',    label: '👥 Alunos',                             pageKey: 'alunos' },
   { to: '/genero',    label: '👫 Gênero',                             capabilityKey: 'acessar_genero' },
@@ -86,6 +92,14 @@ function SemAcesso() {
 function AdminRoute({ children }: { children: React.ReactNode }) {
   const { role, permissoes } = useAuth();
   if (role === 'admin') return <>{children}</>;
+  const destino = primeiraPaginaPermitida(permissoes);
+  return destino ? <Navigate to={destino} replace /> : <SemAcesso />;
+}
+
+// ─── Guarda de rota: só libera para um usuário específico (nem outros admins) ─
+function SomenteUsuarioRoute({ children }: { children: React.ReactNode }) {
+  const { username, permissoes } = useAuth();
+  if ((username ?? '').trim().toLowerCase() === USUARIO_IMPORTACAO) return <>{children}</>;
   const destino = primeiraPaginaPermitida(permissoes);
   return destino ? <Navigate to={destino} replace /> : <SemAcesso />;
 }
@@ -151,6 +165,9 @@ function AppShell() {
 
   // Filtra itens do menu conforme o perfil e permissões
   const navItems = NAV_ITEMS.filter(item => {
+    if (item.usernameOnly) {                               // trava por usuário específico, vale até para outros admins
+      return (username ?? '').trim().toLowerCase() === item.usernameOnly;
+    }
     if (role === 'admin') return true;                    // admin vê tudo
     if (item.adminOnly) return false;                     // viewer nunca vê adminOnly
     if (item.capabilityKey) return !!permissoes?.includes(item.capabilityKey);
@@ -300,7 +317,7 @@ function AppShell() {
         <div style={{ padding: 20, maxWidth: 1200, margin: '0 auto' }}>
           <Routes>
             <Route path="/" element={<ViewerRoute pageKey="dashboard"><Dashboard /></ViewerRoute>} />
-            <Route path="/importar" element={<AdminRoute><Importar /></AdminRoute>} />
+            <Route path="/importar" element={<SomenteUsuarioRoute><Importar /></SomenteUsuarioRoute>} />
             <Route path="/turmas" element={<ViewerRoute pageKey="turmas"><Turmas /></ViewerRoute>} />
             <Route path="/alunos" element={<ViewerRoute pageKey="alunos"><Alunos /></ViewerRoute>} />
             <Route path="/genero" element={<CapabilityRoute capabilityKey="acessar_genero"><Genero /></CapabilityRoute>} />
