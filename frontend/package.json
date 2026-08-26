@@ -8,7 +8,8 @@
     "test:matriculas": "node scripts/test-matriculas-mensais.mjs",
     "test:educacenso": "node scripts/test-educacenso-sexo.mjs",
     "test:situacoes": "node scripts/test-situacoes.mjs",
-    "test:faixa-etaria": "node scripts/test-faixa-etaria.mjs"
+    "test:faixa-etaria": "node scripts/test-faixa-etaria.mjs",
+    "test:educacenso-corte": "node scripts/test-educacenso-corte.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.43.4",
