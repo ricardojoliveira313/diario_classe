@@ -828,16 +828,6 @@ export default function Historico() {
     if (salvo) window.print();
   };
 
-  // O certificado só pode afirmar conclusão do 5º ano quando isso for
-  // verdade: situação ATIVO/CONCLUÍDO E o ano letivo do 5º ano preenchido.
-  // Um aluno transferido antes de chegar ao 5º ano (ex.: saiu no 2º ano)
-  // NUNCA pode aparecer aqui como "concluiu o 5º Ano" — documento oficial.
-  const concluiu5Ano = Boolean(
-    aluno
-    && (isAtivo(aluno.situacao) || normalizarSituacao(aluno.situacao).startsWith('CONCLUI'))
-    && linhas[4]?.anoLetivo.trim(),
-  );
-
   // Monta Base Nacional Comum + Parte Diversificada JUNTAS por ano — nunca separadas
   // em páginas diferentes. Cada ano contribui suas tabelas em sequência (base antes
   // da diversificada), e essa sequência é tratada como um bloco indivisível na hora
@@ -1308,42 +1298,52 @@ export default function Historico() {
                   </div>
                 </div>
 
-                {concluiu5Ano && (
-                  <div className="quadro-oficial certificado-oficial">
-                    <h3 className="titulo-quadro">Certificado</h3>
-                    <div className="certificado-texto">
-                      <span className="certificado-linha">
-                        O diretor da <strong>{ESCOLA_PADRAO}</strong>, de acordo com o inciso VII do artigo 24 da lei 9394/96,
-                      </span>
-                      <span className="certificado-linha">
-                        certifica que{' '}
-                        <input
-                          aria-label="Nome do aluno no certificado"
-                          className="certificado-campo"
-                          size={Math.max(aluno.nome.length + 2, 20)}
-                          value={aluno.nome}
-                          onChange={event => atualizarAluno('nome', event.target.value)}
-                        />
-                        , concluiu o{' '}
-                        <input
-                          aria-label="Série no certificado"
-                          className="certificado-campo"
-                          size={Math.max((certSerie || '5º Ano').length + 2, 8)}
-                          value={certSerie || '5º Ano'}
-                          onChange={event => setCertSerie(event.target.value)}
-                        />
-                        {' '}do Ensino Fundamental, no ano letivo de{' '}
-                        <input
-                          aria-label="Ano letivo no certificado"
-                          className="certificado-campo"
-                          size={6}
-                          value={linhas[4]?.anoLetivo ?? ''}
-                          onChange={event => atualizarLinha(4, 'anoLetivo', event.target.value)}
-                        />.
-                      </span>
-                    </div>
+                {/* O Certificado SEMPRE aparece, independente da "Transferência durante
+                    o período letivo" acima — são duas situações que podem ocorrer juntas:
+                    o aluno pode ter concluído integralmente o 5º Ano E, na sequência,
+                    ter sido transferido para outra escola cursar o 6º Ano (é o caso
+                    normal de TODO concluinte desta unidade, que só vai até o 5º Ano).
+                    Antes, essa seção só aparecia quando aluno.situacao era ATIVO/CONCLUÍDO,
+                    o que escondia o Certificado de praticamente todo aluno que realmente
+                    concluiu — já que a situação dele vira TRANSFERE-SE ao sair para o 6º
+                    ano em outra escola. Os campos ficam com traço quando não preenchidos,
+                    para a direção decidir manualmente se este documento se aplica. */}
+                <div className="quadro-oficial certificado-oficial">
+                  <h3 className="titulo-quadro">Certificado</h3>
+                  <div className="certificado-texto">
+                    <span className="certificado-linha">
+                      O diretor da <strong>{ESCOLA_PADRAO}</strong>, de acordo com o inciso VII do artigo 24 da lei 9394/96,
+                    </span>
+                    <span className="certificado-linha">
+                      certifica que{' '}
+                      <input
+                        aria-label="Nome do aluno no certificado"
+                        className="certificado-campo"
+                        size={Math.max(aluno.nome.length + 2, 20)}
+                        value={aluno.nome}
+                        onChange={event => atualizarAluno('nome', event.target.value)}
+                      />
+                      , concluiu o{' '}
+                      <input
+                        aria-label="Série no certificado"
+                        className="certificado-campo"
+                        size={Math.max((certSerie || '- - - - -').length + 2, 8)}
+                        value={certSerie}
+                        placeholder="- - - - -"
+                        onChange={event => setCertSerie(event.target.value)}
+                      />
+                      {' '}do Ensino Fundamental, no ano letivo de{' '}
+                      <input
+                        aria-label="Ano letivo no certificado"
+                        className="certificado-campo"
+                        size={6}
+                        value={linhas[4]?.anoLetivo ?? ''}
+                        placeholder="- - - -"
+                        onChange={event => atualizarLinha(4, 'anoLetivo', event.target.value)}
+                      />.
+                    </span>
                   </div>
-                )}
+                </div>
 
                 <div className="quadro-oficial assinatura-oficial">
                   <div className="assinatura-coluna"><div className="assinatura-conteudo"><strong>Santo André, <input aria-label="Data de emissão" style={{ ...campoDocumento, display: 'inline-block', width: '36mm', fontWeight: 800 }} value={dataEmissao} onChange={event => setDataEmissao(event.target.value)} /></strong></div><div className="assinatura-legenda">DATA</div></div>
