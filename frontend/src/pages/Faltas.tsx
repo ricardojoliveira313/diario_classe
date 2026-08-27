@@ -1013,9 +1013,13 @@ export default function Faltas() {
         `<td style="${tdDia(d.isWeekend ? '#c8e6c9' : '#fff')}"></td>`
       ).join('');
       const badges = (a.deficiencia ? ' ♿' : '') + (a.bolsa_familia ? ' 💚' : '');
+      const situacaoLabel = a.situacao && a.situacao !== 'ATIVO' ? (SITUACAO_LABEL[a.situacao] ?? a.situacao) : '';
+      const situacao = situacaoLabel
+        ? ` <span style="color:${SITUACAO_COR[a.situacao] ?? '#000'};font-weight:bold;">(${situacaoLabel})</span>`
+        : '';
       return `<tr>
         <td style="border:1px solid #aaa;padding:1px 3px;font-size:9px;text-align:center;width:26px;">${String(a.numero || (i + 1)).padStart(2, '0')}</td>
-        <td style="border:1px solid #aaa;padding:1px 5px;font-size:9px;white-space:nowrap;min-width:145px;">${a.nome}${badges}</td>
+        <td style="border:1px solid #aaa;padding:1px 5px;font-size:9px;white-space:nowrap;min-width:145px;">${a.nome}${badges}${situacao}</td>
         ${cells}
         <td style="${tdExtra('#ffcdd2')}"></td>
         <td style="${tdExtra('#c8e6c9')}"></td>
