@@ -7,6 +7,7 @@ import { useAuth } from '../AuthContext';
 import { SITUACOES_NAO_ATIVAS, consolidarPorAluno } from '../situacoes';
 import { MOTIVO_BF_POR_CODIGO } from '../motivosBaixaFrequencia';
 import { decodeDias, maiorSequenciaFalta } from '../frequenciaDias';
+import { etapaDaTurma } from '../etapaTurma';
 
 // Data de referência oficial do INEP para distorção idade-série: 31/03.
 function calcIdadeEm31Marco(dataNasc: string, ano: number): number {
@@ -25,14 +26,6 @@ function calcIdadeEm31Marco(dataNasc: string, ano: number): number {
 function extrairSerie(nomeTurma: string): number | null {
   const m = nomeTurma.match(/^(\d)/);
   return m ? parseInt(m[1], 10) : null;
-}
-
-function etapaDaTurma(nomeTurma: string): 'Infantil' | 'Fundamental' | 'EJA' | 'AEE' {
-  const nome = nomeTurma.toUpperCase();
-  if (/^AEE\b/.test(nome)) return 'AEE';
-  if (/\bEJA\b/.test(nome)) return 'EJA';
-  if (/ETAPA/.test(nome)) return 'Infantil';
-  return 'Fundamental';
 }
 
 // Um registro de Falta com faltas=0 só representa presença real quando foi
