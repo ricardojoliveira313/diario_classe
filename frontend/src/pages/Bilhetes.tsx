@@ -51,10 +51,25 @@ function escaparHtml(valor: string) {
 function textoComQuebras(valor: string) {
   return escaparHtml(valor).replace(/\\n/g, '<br>');
 }
+// Ilustração fixa (escolinha com bandeira) — SVG embutido, sem depender de
+// nenhuma imagem externa (funciona offline, sem custo, sem chamada de IA).
+// Fica como marca d'água discreta em cada bilhete, dando o "contexto visual
+// ligado à escola" sem precisar gerar nada dinamicamente.
+const ILUSTRACAO_ESCOLA = '<svg viewBox="0 0 64 64" width="46" height="46" class="ilustracao">' +
+  '<path d="M32 6 L58 22 H6 Z" fill="#f2b233"/>' +
+  '<rect x="12" y="22" width="40" height="30" fill="#2e75b6"/>' +
+  '<rect x="27" y="36" width="10" height="16" fill="#fff"/>' +
+  '<rect x="17" y="27" width="7" height="7" fill="#fff"/>' +
+  '<rect x="40" y="27" width="7" height="7" fill="#fff"/>' +
+  '<rect x="30" y="0" width="2.5" height="8" fill="#345"/>' +
+  '<path d="M32.5 1 L44 5 L32.5 9 Z" fill="#ef4444"/>' +
+  '</svg>';
+
 function htmlImpressao(titulo: string, paginas: any[][]) {
   const secoes = paginas.map((bilhetes: any[], indice: number) => {
     const cards = bilhetes.map((b: any) => '<article class="bilhete">' +
-      '<div class="decor decor-a">✎</div><div class="decor decor-b">📚</div>' +
+      ILUSTRACAO_ESCOLA +
+      '<div class="decor decor-b">📚</div>' +
       '<div class="marca">✦ EMEIEF LUIZ GONZAGA</div>' +
       '<h2>' + escaparHtml(titulo) + '</h2>' +
       '<div class="linha"></div>' +
@@ -64,17 +79,23 @@ function htmlImpressao(titulo: string, paginas: any[][]) {
       '<div class="assinatura">Atenciosamente,<br><strong>Equipe Escolar</strong></div>' +
       '<div class="rodape">Santo André, ' + escaparHtml(b.data) + '</div>' +
       '</article>').join('');
-    return '<section class="folha"' + (indice ? ' style="page-break-before:always"' : '') + '>' + cards + '</section>';
+    // Menos de 6 bilhetes na página não pode reservar uma 2ª linha vazia
+    // (desperdiçava metade da folha em branco) — o número de linhas do grid
+    // se ajusta à quantidade real de bilhetes daquela página específica.
+    const linhas = Math.max(1, Math.ceil(bilhetes.length / 3));
+    const estiloFolha = 'grid-template-rows:repeat(' + linhas + ',1fr);height:' + (linhas * 97) + 'mm;' + (indice ? 'page-break-before:always' : '');
+    return '<section class="folha" style="' + estiloFolha + '">' + cards + '</section>';
   }).join('');
   return '<!doctype html><html><head><meta charset="utf-8"><title>' + escaparHtml(titulo) + '</title><style>' +
     // Estilo fixo de impressão em papel — não segue o tema claro/escuro do app
     // de propósito (papel é sempre branco, independente do modo da tela).
     '@page{size:A4 landscape;margin:8mm}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;color:#17365d}' +
-    '.folha{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,1fr);gap:4mm;width:100%;height:194mm}' +
+    '.folha{display:grid;grid-template-columns:repeat(3,1fr);gap:4mm;width:100%}' +
     '.bilhete{position:relative;border:1.5px solid #2e75b6;border-radius:10px;padding:8mm 7mm 6mm;background:linear-gradient(145deg,#fff 74%,#eef7ff);overflow:hidden;break-inside:avoid}' +
     '.marca{font-size:8pt;font-weight:bold;letter-spacing:.5px;color:#2e75b6}.bilhete h2{text-align:center;font-size:11pt;margin:5mm 0 2mm;color:#17365d}.linha{height:2px;background:#f2b233;margin-bottom:3mm}' +
     '.destino{font-size:9pt;margin:0 0 1mm;line-height:1.25}.meta{font-size:8pt;color:#52718f;margin:0 0 4mm}.corpo{font-size:9.5pt;line-height:1.35;min-height:28mm;white-space:normal}.assinatura{font-size:8pt;margin-top:4mm;color:#345}.rodape{font-size:7.5pt;text-align:right;margin-top:3mm;color:#52718f}' +
-    '.decor{position:absolute;opacity:.12;font-size:28px}.decor-a{right:7mm;top:5mm;color:#f2b233}.decor-b{right:5mm;bottom:4mm}' +
+    '.decor{position:absolute;opacity:.12;font-size:28px}.decor-b{right:5mm;bottom:4mm}' +
+    '.ilustracao{position:absolute;right:6mm;top:5mm;opacity:.16}' +
     '</style></head><body>' + secoes + '</body></html>';
 }
 function imprimir(titulo: string, bilhetes: any[]) {
