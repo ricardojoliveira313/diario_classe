@@ -245,7 +245,7 @@ export default function Bilhetes() {
         <div>
           <h2 style={{ color: theme.text, margin: '0 0 12px', fontSize: 18 }}>1. Escolha o modelo</h2>
           <div style={{ display: 'grid', gap: 8 }}>
-            {MODELOS.map(m => <button key={m.id} onClick={() => setModeloId(m.id)} style={{ textAlign: 'left', padding: '10px 12px', borderRadius: 9, border: '1px solid ' + (m.id === modeloId ? theme.primary : theme.border), background: m.id === modeloId ? theme.primaryBg : 'transparent', color: theme.text, cursor: 'pointer' }}><span style={{ fontSize: 20 }}>{m.icon}</span> <strong>{m.nome}</strong></button>)}
+            {MODELOS.map(m => <button key={m.id} onClick={() => setModeloId(m.id)} style={{ textAlign: 'left', padding: '10px 12px', borderRadius: 9, border: '1px solid ' + (m.id === modeloId ? theme.primary : theme.border), background: m.id === modeloId ? '#dbeafe' : 'transparent', color: m.id === modeloId ? '#17365d' : theme.text, cursor: 'pointer', fontWeight: m.id === modeloId ? 700 : 500 }}><span style={{ fontSize: 20 }}>{m.icon}</span> <strong>{m.nome}</strong></button>)}
           </div>
         </div>
 
