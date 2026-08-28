@@ -21,6 +21,10 @@ ALTER TABLE "Bilhete" ADD COLUMN IF NOT EXISTS total_bilhetes INTEGER NOT NULL D
 ALTER TABLE "Bilhete" ADD COLUMN IF NOT EXISTS criado_por TEXT NOT NULL DEFAULT '';
 ALTER TABLE "Bilhete" ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
-ALTER TABLE "Bilhete" DISABLE ROW LEVEL SECURITY;
+ALTER TABLE "Bilhete" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "permitir_app_Bilhete" ON "Bilhete";
+CREATE POLICY "permitir_app_Bilhete" ON "Bilhete"
+  FOR ALL TO anon, authenticated
+  USING (true) WITH CHECK (true);
 CREATE INDEX IF NOT EXISTS bilhete_created_at_idx ON "Bilhete" (created_at DESC);
 NOTIFY pgrst, 'reload schema';
