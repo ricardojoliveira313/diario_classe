@@ -26,7 +26,8 @@ export default function Situacoes() {
   const [alunos, setAlunos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState('');
-  const [mesInicio, setMesInicio] = useState(1);
+  // Ano letivo começa em fevereiro, não em janeiro — padrão do filtro reflete isso.
+  const [mesInicio, setMesInicio] = useState(2);
   const [mesFim, setMesFim] = useState(12);
   const [filtroSituacao, setFiltroSituacao] = useState('');
   const [filtroTurmaId, setFiltroTurmaId] = useState('');
