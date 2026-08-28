@@ -54,7 +54,7 @@ const NAV_ITEMS: { to: string; label: string; end?: boolean; badge?: boolean; ad
   { to: '/pendentes', label: '📋 Ata',                badge: true,    pageKey: 'pendentes' },
   { to: '/historico', label: '📜 Histórico',                          pageKey: 'historico' },
   { to: '/formularios', label: '📄 Formulários', pageKey: 'formularios' },
-  { to: '/bilhetes', label: '📝 Bilhetes', pageKey: 'bilhetes' },
+  { to: '/bilhetes', label: '📝 Bilhetes', pageKey: 'formularios' },
   { to: '/capa',        label: '✉️ Capa',       pageKey: 'capa' },
   { to: '/educacenso', label: '🔗 Educacenso',                       pageKey: 'educacenso' },
   { to: '/situacoes', label: '🔄 Situações',                         pageKey: 'situacoes' },
@@ -330,7 +330,7 @@ function AppShell() {
             <Route path="/pendentes" element={<ViewerRoute pageKey="pendentes"><Pendentes /></ViewerRoute>} />
             <Route path="/historico" element={<ViewerRoute pageKey="historico"><Historico /></ViewerRoute>} />
             <Route path="/formularios" element={<ViewerRoute pageKey="formularios"><Formularios /></ViewerRoute>} />
-            <Route path="/bilhetes" element={<ViewerRoute pageKey="bilhetes"><Bilhetes /></ViewerRoute>} />
+            <Route path="/bilhetes" element={<ViewerRoute pageKey="formularios"><Bilhetes /></ViewerRoute>} />
             <Route path="/capa" element={<ViewerRoute pageKey="capa"><Capa /></ViewerRoute>} />
             <Route path="/educacenso" element={<ViewerRoute pageKey="educacenso"><Educacenso /></ViewerRoute>} />
             <Route path="/situacoes" element={<ViewerRoute pageKey="situacoes"><Situacoes /></ViewerRoute>} />
