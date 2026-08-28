@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
-import { btn, card, input, label, theme, isAtivo } from '../styles';
+import { btn, card, input, label, theme, isAtivo, dedupeAlunosPorRA } from '../styles';
 import { useTheme } from '../ThemeContext';
 import { useAno } from '../AnoContext';
 import { useAuth } from '../AuthContext';
+import { etapaDaTurma } from '../etapaTurma';
+import { Loading, EmptyState } from '../components';
 
 type Escopo = 'infantil' | 'fundamental' | 'professora' | 'turma' | 'aluno';
+type Aba = 'criar' | 'historico';
 
 const MODELOS = [
   { id: 'conselho', icon: '📚', nome: 'Conselho de Ciclo', titulo: 'COMUNICADO — CONSELHO DE CICLO', texto: 'Informamos aos senhores pais ou responsáveis que, em razão do Conselho de Ciclo, os alunos do {etapa} terão horário excepcional de entrada e saída.{horarios}' },
@@ -14,6 +17,7 @@ const MODELOS = [
   { id: 'reuniao', icon: '👨‍👩‍👧', nome: 'Reunião com responsáveis', titulo: 'CONVOCAÇÃO DE RESPONSÁVEL', texto: 'Solicitamos o comparecimento do responsável pelo(a) aluno(a) {aluno} nesta Unidade Escolar, em {data}. Motivo/observação: ' },
   { id: 'documentos', icon: '📄', nome: 'Solicitação de documentos', titulo: 'SOLICITAÇÃO DE DOCUMENTOS', texto: 'Solicitamos aos senhores pais ou responsáveis que encaminhem à escola os seguintes documentos referentes ao(à) aluno(a) {aluno}: ' },
   { id: 'saude', icon: '🩺', nome: 'Orientação de saúde', titulo: 'ORIENTAÇÃO À FAMÍLIA', texto: 'Prezados pais ou responsáveis, identificamos a necessidade de atenção especial à saúde do(a) aluno(a) {aluno}. Solicitamos que verifiquem a situação e, se necessário, procurem orientação de um profissional de saúde antes do retorno à escola. Observação: ' },
+  { id: 'pediculose', icon: '🦠', nome: 'Pediculose (piolho)', titulo: 'ORIENTAÇÃO À FAMÍLIA', texto: 'Prezados pais ou responsáveis, solicitamos que observem a saúde do(a) aluno(a) {aluno}. Caso identifiquem sinais de pediculose (piolhos), pedimos que procurem orientação adequada e realizem os cuidados necessários antes do retorno à escola. A criança poderá retornar após os cuidados recomendados. Agradecemos a parceria da família.' },
   { id: 'pedagogico', icon: '🧠', nome: 'Acompanhamento pedagógico', titulo: 'COMUNICADO — ACOMPANHAMENTO PEDAGÓGICO', texto: 'Gostaríamos de conversar com os senhores pais ou responsáveis sobre o acompanhamento escolar do(a) aluno(a) {aluno}. Observação: ' },
   { id: 'avaliacao', icon: '📊', nome: 'Avaliações e atividades', titulo: 'COMUNICADO — AVALIAÇÕES', texto: 'Informamos que haverá atividade/avaliação para o(a) aluno(a) {aluno} na data de {data}. Orientações: ' },
   { id: 'passeio', icon: '🚌', nome: 'Passeio ou atividade externa', titulo: 'AUTORIZAÇÃO — ATIVIDADE ESCOLAR', texto: 'Informamos que o(a) aluno(a) {aluno} participará de uma atividade escolar. Data: {data}. Detalhes e orientações: ' },
@@ -32,8 +36,14 @@ function formatarData(valor: string) {
   if (!valor) return '';
   return new Date(valor + 'T12:00:00').toLocaleDateString('pt-BR');
 }
-function etapaDaTurma(nome: string) {
-  return /(infantil|etapa|ciclo)/i.test(nome) ? 'Educação Infantil' : 'Ensino Fundamental';
+function formatarDataHora(valor: string) {
+  if (!valor) return '';
+  return new Date(valor).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+// {etapa} no texto do bilhete é sempre em português por extenso — a
+// classificação técnica (Infantil/Fundamental/EJA/AEE) fica só na filtragem.
+function etapaTexto(nomeTurma: string): string {
+  return etapaDaTurma(nomeTurma) === 'Infantil' ? 'Educação Infantil' : 'Ensino Fundamental';
 }
 function escaparHtml(valor: string) {
   return valor.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
@@ -57,6 +67,8 @@ function htmlImpressao(titulo: string, paginas: any[][]) {
     return '<section class="folha"' + (indice ? ' style="page-break-before:always"' : '') + '>' + cards + '</section>';
   }).join('');
   return '<!doctype html><html><head><meta charset="utf-8"><title>' + escaparHtml(titulo) + '</title><style>' +
+    // Estilo fixo de impressão em papel — não segue o tema claro/escuro do app
+    // de propósito (papel é sempre branco, independente do modo da tela).
     '@page{size:A4 landscape;margin:8mm}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;color:#17365d}' +
     '.folha{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,1fr);gap:4mm;width:100%;height:194mm}' +
     '.bilhete{position:relative;border:1.5px solid #2e75b6;border-radius:10px;padding:8mm 7mm 6mm;background:linear-gradient(145deg,#fff 74%,#eef7ff);overflow:hidden;break-inside:avoid}' +
@@ -79,6 +91,7 @@ export default function Bilhetes() {
   const { theme: modo } = useTheme();
   const { ano } = useAno();
   const { username } = useAuth();
+  const [aba, setAba] = useState<Aba>('criar');
   const [turmas, setTurmas] = useState<any[]>([]);
   const [alunos, setAlunos] = useState<any[]>([]);
   const [modeloId, setModeloId] = useState('conselho');
@@ -94,16 +107,38 @@ export default function Bilhetes() {
   const [texto, setTexto] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState('');
+  const [historico, setHistorico] = useState<any[]>([]);
+  const [carregandoHistorico, setCarregandoHistorico] = useState(false);
 
   useEffect(() => {
     Promise.all([api.getTurmas(), api.getAllAlunos()]).then(([ts, as]) => {
-      setTurmas(ts); setAlunos(as.filter((a: any) => isAtivo(a)));
+      const ativos = as.filter((a: any) => isAtivo(a));
+      // Aluno de AEE tem 2 registros (turma regular + sala de recursos) — sem
+      // dedupe, ele receberia dois bilhetes impressos na mesma leva. Ordena
+      // pra sala regular vir primeiro, assim o dedupe por RA mantém sempre
+      // o registro da turma regular (a que aparece no bilhete faz mais sentido
+      // pro destinatário) em vez de qual das duas vier primeiro no banco.
+      const turmaMap = new Map(ts.map((t: any) => [t.id, t]));
+      const ordenados = [...ativos].sort((a: any, b: any) => {
+        const aeeA = etapaDaTurma(turmaMap.get(a.turmaId)?.nome ?? '') === 'AEE' ? 1 : 0;
+        const aeeB = etapaDaTurma(turmaMap.get(b.turmaId)?.nome ?? '') === 'AEE' ? 1 : 0;
+        return aeeA - aeeB;
+      });
+      setTurmas(ts); setAlunos(dedupeAlunosPorRA(ordenados));
     }).catch(e => setErro(e.message || 'Não foi possível carregar turmas e alunos.'));
   }, []);
 
+  useEffect(() => {
+    if (aba !== 'historico') return;
+    setCarregandoHistorico(true);
+    api.getBilhetes(ano).then(setHistorico)
+      .catch(e => setErro(e.message || 'Não foi possível carregar o histórico de bilhetes.'))
+      .finally(() => setCarregandoHistorico(false));
+  }, [aba, ano]);
+
   const modelo = MODELOS.find(m => m.id === modeloId) || MODELOS[0];
-  const turmasInfantil = useMemo(() => turmas.filter(t => etapaDaTurma(t.nome) === 'Educação Infantil'), [turmas]);
-  const turmasFundamental = useMemo(() => turmas.filter(t => etapaDaTurma(t.nome) === 'Ensino Fundamental' && !/^AEE/i.test(t.nome)), [turmas]);
+  const turmasInfantil = useMemo(() => turmas.filter(t => etapaDaTurma(t.nome) === 'Infantil'), [turmas]);
+  const turmasFundamental = useMemo(() => turmas.filter(t => etapaDaTurma(t.nome) === 'Fundamental'), [turmas]);
   const professoras = useMemo(() => Array.from(new Set(turmas.map(t => t.professora).filter(Boolean))).sort(), [turmas]);
   const turmasFiltradas = escopo === 'infantil' ? turmasInfantil : escopo === 'fundamental' ? turmasFundamental : turmas;
   const alunosElegiveis = useMemo(() => alunos.filter(a => {
@@ -125,16 +160,16 @@ export default function Bilhetes() {
   }, [escopo, professora, turmaId, alunoId, alunos.length]);
 
   const turmasSelecionadas = useMemo(() => turmas.filter(t => alunosElegiveis.some(a => a.turmaId === t.id)), [turmas, alunosElegiveis]);
-  const etapaTexto = turmasSelecionadas.length === 1 ? etapaDaTurma(turmasSelecionadas[0].nome) : escopo === 'infantil' ? 'Educação Infantil' : escopo === 'fundamental' ? 'Ensino Fundamental' : 'selecionados';
+  const etapaTextoAtual = turmasSelecionadas.length === 1 ? etapaTexto(turmasSelecionadas[0].nome) : escopo === 'infantil' ? 'Educação Infantil' : escopo === 'fundamental' ? 'Ensino Fundamental' : 'selecionados';
   const mensagemPreview = useMemo(() => texto
     .replaceAll('{aluno}', '{nome do aluno}')
     .replaceAll('{turma}', '{turma}')
     .replaceAll('{professora}', '{professora}')
-    .replaceAll('{etapa}', etapaTexto)
+    .replaceAll('{etapa}', etapaTextoAtual)
     .replaceAll('{data}', formatarData(data) || '___/___/______')
     .replaceAll('{horarios}', entrada || saida ? ' A entrada será às ' + (entrada || '___') + (saida ? ' e a saída às ' + saida : '') + '.' : '')
     .replaceAll('{horario}', entrada || saida ? ' Entrada: ' + (entrada || '___') + ' · Saída: ' + (saida || '___') : '')
-  , [texto, data, entrada, saida, etapaTexto]);
+  , [texto, data, entrada, saida, etapaTextoAtual]);
 
   const mensagens = useMemo(() => selecionados.map(id => {
     const a = alunos.find(x => x.id === id) || {};
@@ -143,16 +178,16 @@ export default function Bilhetes() {
       .replaceAll('{aluno}', a.nome || '')
       .replaceAll('{turma}', t.nome || '')
       .replaceAll('{professora}', t.professora || a.professora || '')
-      .replaceAll('{etapa}', etapaDaTurma(t.nome || ''))
+      .replaceAll('{etapa}', etapaTexto(t.nome || ''))
       .replaceAll('{data}', formatarData(data))
       .replaceAll('{horarios}', entrada || saida ? ' A entrada será às ' + (entrada || '___') + (saida ? ' e a saída às ' + saida : '') + '.' : '')
       .replaceAll('{horario}', entrada || saida ? ' Entrada: ' + (entrada || '___') + ' · Saída: ' + (saida || '___') : '');
     return { aluno: a.nome || '', turma: t.nome || '', professora: t.professora || a.professora || '', mensagem: body, data: formatarData(data) };
   }), [selecionados, alunos, turmas, texto, data, entrada, saida]);
 
-  const aplicarSaude = () => setTexto('Prezados pais ou responsáveis, solicitamos que observem a saúde do(a) aluno(a) {aluno}. Caso identifiquem sinais de pediculose (piolhos), pedimos que procurem orientação adequada e realizem os cuidados necessários antes do retorno à escola. A criança poderá retornar após os cuidados recomendados. Agradecemos a parceria da família.');
   const salvarEImprimir = async () => {
     if (!mensagens.length) { setErro('Selecione pelo menos um aluno.'); return; }
+    if (!window.confirm(`Confirma o registro e a impressão de ${mensagens.length} bilhete(s)?\n\nModelo: ${modelo.nome}`)) return;
     setSalvando(true); setErro('');
     try {
       await api.createBilhete({ ano, modelo: modeloId, titulo, mensagem: texto, alunos: mensagens, total_bilhetes: mensagens.length, criado_por: username || '' });
@@ -163,24 +198,55 @@ export default function Bilhetes() {
 
   const toggleAluno = (id: string) => setSelecionados(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
   const painel: React.CSSProperties = { ...card({ padding: 18 }), background: modo === 'light' ? '#fff' : theme.card };
+  const abaBtn = (v: Aba, l: string) => (
+    <button onClick={() => setAba(v)} style={{ ...btn(v === aba ? 'primary' : 'ghost', { small: true }), border: v === aba ? `2px solid ${theme.primaryHover}` : `1px solid ${theme.border}` }}>{l}</button>
+  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ ...painel, background: 'linear-gradient(135deg,#17365d,#2e75b6)', color: '#fff' }}>
+      <div style={{ ...painel, background: `linear-gradient(135deg, ${theme.primaryHover}, ${theme.primary})`, color: '#fff' }}>
         <div style={{ fontSize: 12, opacity: .8, letterSpacing: 1 }}>CENTRAL DE IMPRESSÃO</div>
         <h1 style={{ margin: '4px 0', fontSize: 27 }}>📝 Bilhetes e Comunicados</h1>
         <p style={{ margin: 0, opacity: .9 }}>Crie bilhetes personalizados e imprima seis por folha A4 em paisagem.</p>
       </div>
 
+      <div style={{ display: 'flex', gap: 8 }}>
+        {abaBtn('criar', '✏️ Criar bilhete')}
+        {abaBtn('historico', '🗂️ Histórico')}
+      </div>
+
       {erro && <div style={{ ...painel, border: '1px solid #ef4444', color: '#b91c1c', background: '#fff1f2' }}>{erro}</div>}
 
+      {aba === 'historico' && (
+        <div style={painel}>
+          <h2 style={{ color: theme.text, margin: '0 0 12px', fontSize: 18 }}>Bilhetes já registrados em {ano}</h2>
+          {carregandoHistorico && <Loading />}
+          {!carregandoHistorico && historico.length === 0 && <EmptyState icon="🗂️" message="Nenhum bilhete registrado ainda neste ano." />}
+          {!carregandoHistorico && historico.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {historico.map(h => (
+                <div key={h.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '10px 12px', border: `1px solid ${theme.border}`, borderRadius: 8, flexWrap: 'wrap' }}>
+                  <div>
+                    <strong style={{ color: theme.text }}>{h.titulo}</strong>
+                    <div style={{ fontSize: 12, color: theme.textMuted }}>
+                      {MODELOS.find(m => m.id === h.modelo)?.nome ?? h.modelo} · {h.total_bilhetes} bilhete(s) · {h.criado_por || 'desconhecido'} · {formatarDataHora(h.created_at)}
+                    </div>
+                  </div>
+                  <button onClick={() => imprimir(h.titulo, h.alunos)} style={btn('warning', { small: true, outline: true })}>🖨️ Reimprimir</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {aba === 'criar' && <>
       <div style={{ ...painel, display: 'grid', gridTemplateColumns: 'minmax(250px, .8fr) minmax(320px, 1.2fr)', gap: 20 }}>
         <div>
           <h2 style={{ color: theme.text, margin: '0 0 12px', fontSize: 18 }}>1. Escolha o modelo</h2>
           <div style={{ display: 'grid', gap: 8 }}>
-            {MODELOS.map(m => <button key={m.id} onClick={() => setModeloId(m.id)} style={{ textAlign: 'left', padding: '10px 12px', borderRadius: 9, border: '1px solid ' + (m.id === modeloId ? '#2e75b6' : theme.border), background: m.id === modeloId ? '#eef7ff' : 'transparent', color: theme.text, cursor: 'pointer' }}><span style={{ fontSize: 20 }}>{m.icon}</span> <strong>{m.nome}</strong></button>)}
+            {MODELOS.map(m => <button key={m.id} onClick={() => setModeloId(m.id)} style={{ textAlign: 'left', padding: '10px 12px', borderRadius: 9, border: '1px solid ' + (m.id === modeloId ? theme.primary : theme.border), background: m.id === modeloId ? theme.primaryBg : 'transparent', color: theme.text, cursor: 'pointer' }}><span style={{ fontSize: 20 }}>{m.icon}</span> <strong>{m.nome}</strong></button>)}
           </div>
-          {modeloId === 'saude' && <button onClick={aplicarSaude} style={{ ...btn('warning', { small: true }), marginTop: 10 }}>Usar texto sobre pediculose</button>}
         </div>
 
         <div>
@@ -208,7 +274,7 @@ export default function Bilhetes() {
             ['professora', '👩‍🏫 Por professora'],
             ['turma', '🏫 Uma turma'],
             ['aluno', '👤 Um aluno'],
-          ] as [Escopo, string][]).map(([v, l]) => <button key={v} onClick={() => setEscopo(v)} style={{ ...btn(v === escopo ? 'primary' : 'ghost', { small: true }), border: v === escopo ? '2px solid #17365d' : '1px solid ' + theme.border }}>{l}</button>)}
+          ] as [Escopo, string][]).map(([v, l]) => <button key={v} onClick={() => setEscopo(v)} style={{ ...btn(v === escopo ? 'primary' : 'ghost', { small: true }), border: v === escopo ? `2px solid ${theme.primaryHover}` : '1px solid ' + theme.border }}>{l}</button>)}
         </div>
         {escopo === 'professora' && <div><label style={label}>Professora</label><select value={professora} onChange={e => setProfessora(e.target.value)} style={input}><option value="">Selecione...</option>{professoras.map(p => <option key={p} value={p}>{p}</option>)}</select></div>}
         {escopo === 'turma' && <div><label style={label}>Turma</label><select value={turmaId} onChange={e => setTurmaId(e.target.value)} style={input}><option value="">Selecione...</option>{turmasFiltradas.map(t => <option key={t.id} value={t.id}>{t.nome} — {t.professora}</option>)}</select></div>}
@@ -227,6 +293,7 @@ export default function Bilhetes() {
         <div style={{ color: theme.textMuted, fontSize: 13 }}>A impressão será em A4 paisagem, com seis bilhetes por folha e identificação individual.</div>
         <button onClick={salvarEImprimir} disabled={salvando || !mensagens.length} style={btn('primary')}>{salvando ? 'Registrando...' : '🖨️ Registrar e imprimir bilhetes'}</button>
       </div>
+      </>}
     </div>
   );
 }
