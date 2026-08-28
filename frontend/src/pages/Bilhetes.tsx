@@ -14,6 +14,13 @@ const MODELOS = [
   { id: 'reuniao', icon: '👨‍👩‍👧', nome: 'Reunião com responsáveis', titulo: 'CONVOCAÇÃO DE RESPONSÁVEL', texto: 'Solicitamos o comparecimento do responsável pelo(a) aluno(a) {aluno} nesta Unidade Escolar, em {data}. Motivo/observação: ' },
   { id: 'documentos', icon: '📄', nome: 'Solicitação de documentos', titulo: 'SOLICITAÇÃO DE DOCUMENTOS', texto: 'Solicitamos aos senhores pais ou responsáveis que encaminhem à escola os seguintes documentos referentes ao(à) aluno(a) {aluno}: ' },
   { id: 'saude', icon: '🩺', nome: 'Orientação de saúde', titulo: 'ORIENTAÇÃO À FAMÍLIA', texto: 'Prezados pais ou responsáveis, identificamos a necessidade de atenção especial à saúde do(a) aluno(a) {aluno}. Solicitamos que verifiquem a situação e, se necessário, procurem orientação de um profissional de saúde antes do retorno à escola. Observação: ' },
+  { id: 'pedagogico', icon: '🧠', nome: 'Acompanhamento pedagógico', titulo: 'COMUNICADO — ACOMPANHAMENTO PEDAGÓGICO', texto: 'Gostaríamos de conversar com os senhores pais ou responsáveis sobre o acompanhamento escolar do(a) aluno(a) {aluno}. Observação: ' },
+  { id: 'avaliacao', icon: '📊', nome: 'Avaliações e atividades', titulo: 'COMUNICADO — AVALIAÇÕES', texto: 'Informamos que haverá atividade/avaliação para o(a) aluno(a) {aluno} na data de {data}. Orientações: ' },
+  { id: 'passeio', icon: '🚌', nome: 'Passeio ou atividade externa', titulo: 'AUTORIZAÇÃO — ATIVIDADE ESCOLAR', texto: 'Informamos que o(a) aluno(a) {aluno} participará de uma atividade escolar. Data: {data}. Detalhes e orientações: ' },
+  { id: 'material', icon: '🎒', nome: 'Material ou uniforme', titulo: 'LEMBRETE À FAMÍLIA', texto: 'Pedimos a colaboração da família para que o(a) aluno(a) {aluno} compareça à escola com o seguinte material/uniforme: ' },
+  { id: 'retirada', icon: '🚪', nome: 'Retirada antecipada', titulo: 'COMUNICADO — RETIRADA DO ALUNO', texto: 'Informamos que o(a) aluno(a) {aluno} deverá ser retirado(a) excepcionalmente no dia {data}. Horário e orientações: ' },
+  { id: 'recesso', icon: '🏫', nome: 'Recesso ou calendário', titulo: 'COMUNICADO — CALENDÁRIO ESCOLAR', texto: 'Informamos aos senhores pais ou responsáveis a seguinte alteração no calendário escolar: ' },
+  { id: 'ocorrencia', icon: '📌', nome: 'Ocorrência escolar', titulo: 'COMUNICADO À FAMÍLIA', texto: 'Informamos aos senhores pais ou responsáveis que ocorreu uma situação envolvendo o(a) aluno(a) {aluno} nesta Unidade Escolar. Relato e orientações: ' },
   { id: 'livre', icon: '✏️', nome: 'Bilhete livre', titulo: 'COMUNICADO À FAMÍLIA', texto: '' },
 ];
 
@@ -75,6 +82,7 @@ export default function Bilhetes() {
   const [turmas, setTurmas] = useState<any[]>([]);
   const [alunos, setAlunos] = useState<any[]>([]);
   const [modeloId, setModeloId] = useState('conselho');
+  const [titulo, setTitulo] = useState('COMUNICADO — CONSELHO DE CICLO');
   const [escopo, setEscopo] = useState<Escopo>('infantil');
   const [professora, setProfessora] = useState('');
   const [turmaId, setTurmaId] = useState('');
@@ -108,6 +116,7 @@ export default function Bilhetes() {
 
   useEffect(() => {
     if (modeloId !== 'livre') setTexto(modelo.texto);
+    setTitulo(modelo.titulo);
     setEntrada(''); setSaida('');
   }, [modeloId]);
 
@@ -116,7 +125,7 @@ export default function Bilhetes() {
   }, [escopo, professora, turmaId, alunoId, alunos.length]);
 
   const turmasSelecionadas = useMemo(() => turmas.filter(t => alunosElegiveis.some(a => a.turmaId === t.id)), [turmas, alunosElegiveis]);
-  const etapaTexto = turmasSelecionadas.length === 1 ? etapaDaTurma(turmasSelecionadas[0].nome) : escopo === 'infantil' ? 'da Educação Infantil' : escopo === 'fundamental' ? 'do Ensino Fundamental' : 'selecionados';
+  const etapaTexto = turmasSelecionadas.length === 1 ? etapaDaTurma(turmasSelecionadas[0].nome) : escopo === 'infantil' ? 'Educação Infantil' : escopo === 'fundamental' ? 'Ensino Fundamental' : 'selecionados';
   const mensagemPreview = useMemo(() => texto
     .replaceAll('{aluno}', '{nome do aluno}')
     .replaceAll('{turma}', '{turma}')
@@ -146,8 +155,8 @@ export default function Bilhetes() {
     if (!mensagens.length) { setErro('Selecione pelo menos um aluno.'); return; }
     setSalvando(true); setErro('');
     try {
-      await api.createBilhete({ ano, modelo: modeloId, titulo: modelo.titulo, mensagem: texto, alunos: mensagens, total_bilhetes: mensagens.length, criado_por: username || '' });
-      imprimir(modelo.titulo, mensagens);
+      await api.createBilhete({ ano, modelo: modeloId, titulo, mensagem: texto, alunos: mensagens, total_bilhetes: mensagens.length, criado_por: username || '' });
+      imprimir(titulo, mensagens);
     } catch (e: any) { setErro(e.message || 'Não foi possível registrar o bilhete.'); }
     finally { setSalvando(false); }
   };
@@ -180,7 +189,7 @@ export default function Bilhetes() {
             <div><label style={label}>Data do comunicado</label><input type="date" value={data} onChange={e => setData(e.target.value)} style={input} /></div>
             <div><label style={label}>Entrada (opcional)</label><input type="time" value={entrada} onChange={e => setEntrada(e.target.value)} style={input} /></div>
             <div><label style={label}>Saída (opcional)</label><input type="time" value={saida} onChange={e => setSaida(e.target.value)} style={input} /></div>
-            <div><label style={label}>Título</label><input value={modelo.titulo} readOnly style={{ ...input, opacity: .8 }} /></div>
+            <div><label style={label}>Título editável</label><input value={titulo} onChange={e => setTitulo(e.target.value)} style={input} /></div>
           </div>
           <label style={{ ...label, marginTop: 12 }}>Texto do bilhete — campos opcionais: {'{aluno}'}, {'{turma}'}, {'{professora}'}, {'{etapa}'}, {'{data}'}, {'{horarios}'}</label>
           <textarea value={texto} onChange={e => setTexto(e.target.value)} rows={9} style={{ ...input, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.45 }} />
