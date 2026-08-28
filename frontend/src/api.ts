@@ -135,6 +135,18 @@ export const api = {
     return count ?? 0;
   },
 
+  // --- BILHETES E COMUNICADOS IMPRESSOS ---
+  createBilhete: async (b: { ano: number; modelo: string; titulo: string; mensagem: string; alunos: any[]; total_bilhetes: number; criado_por: string }) => {
+    const { data, error } = await supabase.from('Bilhete').insert(b).select().single();
+    if (error) throw error;
+    return data;
+  },
+  getBilhetes: async (ano?: number) => todasAsPaginas((inicio, fim) => {
+    let q = supabase.from('Bilhete').select('*').order('created_at', { ascending: false }).order('id');
+    if (ano) q = q.eq('ano', ano);
+    return q.range(inicio, fim);
+  }),
+
   // --- OCORRENCIAS (faltas de servidores) ---
   getOcorrencias: async (filtros?: { servidor?: string; tipo?: string; dataInicio?: string; dataFim?: string; registrado_por?: string }) => {
     return todasAsPaginas((inicio, fim) => {
