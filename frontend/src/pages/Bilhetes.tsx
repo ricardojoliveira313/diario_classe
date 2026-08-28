@@ -34,35 +34,36 @@ function escaparHtml(valor: string) {
 function textoComQuebras(valor: string) {
   return escaparHtml(valor).replace(/\\n/g, '<br>');
 }
-function htmlImpressao(titulo: string, bilhetes: any[]) {
-  const cards = bilhetes.map((b: any) => '<article class="bilhete">' +
-    '<div class="decor decor-a">✎</div><div class="decor decor-b">📚</div>' +
-    '<div class="marca">✦ EMEIEF LUIZ GONZAGA</div>' +
-    '<h2>' + escaparHtml(titulo) + '</h2>' +
-    '<div class="linha"></div>' +
-    '<p class="destino">À família do(a) aluno(a): <strong>' + escaparHtml(b.aluno) + '</strong></p>' +
-    '<p class="meta">' + escaparHtml(b.turma) + (b.professora ? ' · Prof.ª ' + escaparHtml(b.professora) : '') + '</p>' +
-    '<div class="corpo">' + textoComQuebras(b.mensagem) + '</div>' +
-    '<div class="assinatura">Atenciosamente,<br><strong>Equipe Escolar</strong></div>' +
-    '<div class="rodape">Santo André, ' + escaparHtml(b.data) + '</div>' +
-    '</article>').join('');
+function htmlImpressao(titulo: string, paginas: any[][]) {
+  const secoes = paginas.map((bilhetes: any[], indice: number) => {
+    const cards = bilhetes.map((b: any) => '<article class="bilhete">' +
+      '<div class="decor decor-a">✎</div><div class="decor decor-b">📚</div>' +
+      '<div class="marca">✦ EMEIEF LUIZ GONZAGA</div>' +
+      '<h2>' + escaparHtml(titulo) + '</h2>' +
+      '<div class="linha"></div>' +
+      '<p class="destino">À família do(a) aluno(a): <strong>' + escaparHtml(b.aluno) + '</strong></p>' +
+      '<p class="meta">' + escaparHtml(b.turma) + (b.professora ? ' · Prof.ª ' + escaparHtml(b.professora) : '') + '</p>' +
+      '<div class="corpo">' + textoComQuebras(b.mensagem) + '</div>' +
+      '<div class="assinatura">Atenciosamente,<br><strong>Equipe Escolar</strong></div>' +
+      '<div class="rodape">Santo André, ' + escaparHtml(b.data) + '</div>' +
+      '</article>').join('');
+    return '<section class="folha"' + (indice ? ' style="page-break-before:always"' : '') + '>' + cards + '</section>';
+  }).join('');
   return '<!doctype html><html><head><meta charset="utf-8"><title>' + escaparHtml(titulo) + '</title><style>' +
     '@page{size:A4 landscape;margin:8mm}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;color:#17365d}' +
-    '.folha{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,1fr);gap:4mm;width:100%;min-height:194mm}' +
+    '.folha{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,1fr);gap:4mm;width:100%;height:194mm}' +
     '.bilhete{position:relative;border:1.5px solid #2e75b6;border-radius:10px;padding:8mm 7mm 6mm;background:linear-gradient(145deg,#fff 74%,#eef7ff);overflow:hidden;break-inside:avoid}' +
     '.marca{font-size:8pt;font-weight:bold;letter-spacing:.5px;color:#2e75b6}.bilhete h2{text-align:center;font-size:11pt;margin:5mm 0 2mm;color:#17365d}.linha{height:2px;background:#f2b233;margin-bottom:3mm}' +
     '.destino{font-size:9pt;margin:0 0 1mm;line-height:1.25}.meta{font-size:8pt;color:#52718f;margin:0 0 4mm}.corpo{font-size:9.5pt;line-height:1.35;min-height:28mm;white-space:normal}.assinatura{font-size:8pt;margin-top:4mm;color:#345}.rodape{font-size:7.5pt;text-align:right;margin-top:3mm;color:#52718f}' +
-    '.decor{position:absolute;opacity:.12;font-size:28px}.decor-a{right:7mm;top:5mm;color:#f2b233}.decor-b{right:5mm;bottom:4mm}.folha+.folha{page-break-before:always}' +
-    '</style></head><body><section class="folha">' + cards + '</section></body></html>';
+    '.decor{position:absolute;opacity:.12;font-size:28px}.decor-a{right:7mm;top:5mm;color:#f2b233}.decor-b{right:5mm;bottom:4mm}' +
+    '</style></head><body>' + secoes + '</body></html>';
 }
 function imprimir(titulo: string, bilhetes: any[]) {
-  const paginas = [];
+  const paginas: any[][] = [];
   for (let i = 0; i < bilhetes.length; i += 6) paginas.push(bilhetes.slice(i, i + 6));
-  const html = paginas.map((p: any[], i: number) => (i ? '<section class="folha">' : '') + (i ? p.map((b: any) => '<article></article>').join('') : '') + (i ? '</section>' : '')).join('');
-  const documento = htmlImpressao(titulo, bilhetes);
   const win = window.open('', '_blank');
   if (!win) return;
-  win.document.write(documento);
+  win.document.write(htmlImpressao(titulo, paginas));
   win.document.close();
   setTimeout(() => { win.print(); win.close(); }, 500);
 }
