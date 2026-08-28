@@ -41,6 +41,7 @@ export const PAGINAS_VIEWER = [
   { key: 'pendentes',  label: '📋 Ata de Resultados' },
   { key: 'historico',  label: '📜 Histórico Escolar' },
   { key: 'formularios', label: '📄 Formulários' },
+  { key: 'bilhetes',    label: '📝 Bilhetes' },
   { key: 'capa',        label: '✉️ Capa de Envelope' },
   { key: 'educacenso',  label: '🔗 Educacenso' },
   { key: 'situacoes',   label: '🔄 Situações' },
