@@ -156,18 +156,23 @@ export default function Educacenso() {
   const [erro, setErro] = useState('');
   const [filtro, setFiltro] = useState<StatusLinha | ''>('');
   const [salvoInfo, setSalvoInfo] = useState<{ por: string; em: string } | null>(null);
+  const [salvoDesatualizado, setSalvoDesatualizado] = useState(false);
 
   // Recupera o último cruzamento salvo deste ano letivo — sem isso, trocar de
   // aba (Alunos, Faltas etc.) e voltar, ou fechar o navegador, fazia o
   // resultado inteiro desaparecer (ficava só em memória do React).
   useEffect(() => {
     api.getCruzamentoEducacenso(ano).then(salvo => {
-      if (!salvo) { setResultado(null); setSalvoInfo(null); return; }
+      if (!salvo) { setResultado(null); setSalvoInfo(null); setSalvoDesatualizado(false); return; }
       setResultado(desserializarResultado(salvo.resultado));
       setNomeArquivo(salvo.nome_arquivo ?? '');
       if (salvo.data_corte) setDataCorte(salvo.data_corte);
       if (salvo.linhas_educ) setLinhasEduc(salvo.linhas_educ);
       setSalvoInfo({ por: salvo.criado_por ?? 'desconhecido', em: salvo.criado_em });
+      // Cruzamentos salvos antes da coluna "Transferência" existir não têm o
+      // campo "situacao" no aluno serializado — sem esse aviso, a coluna
+      // apareceria em branco pra todo mundo sem deixar claro o motivo.
+      setSalvoDesatualizado((salvo.resultado ?? []).some((l: any) => l.aluno && !('situacao' in l.aluno)));
     });
   }, [ano]);
 
@@ -443,6 +448,11 @@ export default function Educacenso() {
         {salvoInfo && resultado && (
           <div style={{ marginTop: 6, fontSize: 12, color: theme.textMuted }}>
             💾 Cruzamento salvo — por {salvoInfo.por}, em {new Date(salvoInfo.em).toLocaleString('pt-BR')}. Fica salvo mesmo trocando de aba ou fechando o navegador.
+          </div>
+        )}
+        {salvoDesatualizado && resultado && (
+          <div style={{ marginTop: 6, fontSize: 12, color: theme.orange, fontWeight: 600 }}>
+            ⚠️ Esse cruzamento foi salvo antes da coluna "Transferência" existir — ela vai aparecer em branco até você rodar "Cruzar SED × Educacenso" de novo.
           </div>
         )}
         {erro && <div style={{ marginTop: 10, color: theme.danger, fontSize: 13, fontWeight: 600 }}>{erro}</div>}
