@@ -29,6 +29,7 @@ import { AnoProvider, useAno } from './AnoContext';
 import { AuthProvider, useAuth } from './AuthContext';
 import type { Role, PageKey, PermKey, CapabilityKey } from './AuthContext';
 import { ErrorBoundary } from './components';
+import { existemAlteracoesNaoSalvas } from './unsavedChanges';
 
 // ─── Itens de navegação ────────────────────────────────────────────────────
 // adminOnly: true  → visível apenas para admin
@@ -203,6 +204,15 @@ function AppShell() {
     ...linkBase, background: 'rgba(255,255,255,0.15)', color: 'white', fontWeight: 700,
   };
 
+  // Clicar em outra aba é navegação interna do React Router — não passa por
+  // window.beforeunload, então precisa de um aviso próprio quando a tela
+  // atual (hoje, só Faltas) sinaliza que tem alterações não salvas.
+  const confirmarSaidaComAlteracoes = (e: React.MouseEvent) => {
+    if (existemAlteracoesNaoSalvas() && !window.confirm('Você tem alterações não salvas nesta aba. Deseja realmente sair sem salvar?')) {
+      e.preventDefault();
+    }
+  };
+
   const roleBadgeStyle: React.CSSProperties = {
     background: role === 'admin' ? 'rgba(16,185,129,0.25)' : 'rgba(251,191,36,0.25)',
     color: role === 'admin' ? '#6ee7b7' : '#fde68a',
@@ -216,7 +226,7 @@ function AppShell() {
       <div style={{ minHeight: '100vh', background: theme.bg }}>
         <nav style={navStyle}>
           <div style={innerStyle}>
-            <NavLink to="/" end style={{ color: 'white', fontWeight: 800, marginRight: 4, fontSize: 15, textDecoration: 'none', whiteSpace: 'nowrap', letterSpacing: '-0.3px' }}>
+            <NavLink to="/" end onClick={confirmarSaidaComAlteracoes} style={{ color: 'white', fontWeight: 800, marginRight: 4, fontSize: 15, textDecoration: 'none', whiteSpace: 'nowrap', letterSpacing: '-0.3px' }}>
               📚 Diário
             </NavLink>
 
@@ -225,6 +235,7 @@ function AppShell() {
               {navItems.filter(item => item.to !== '/usuarios').map(item => (
                 <NavLink
                   key={item.to} to={item.to} end={item.end}
+                  onClick={confirmarSaidaComAlteracoes}
                   style={({ isActive }) => isActive ? linkActive : linkBase}
                 >
                   {item.badge && nPendentes > 0 ? (
@@ -238,7 +249,7 @@ function AppShell() {
 
             {/* Usuários — fixo fora da área rolável para nunca ficar escondido (admin) */}
             {role === 'admin' && (
-              <NavLink to="/usuarios" title="Usuários"
+              <NavLink to="/usuarios" title="Usuários" onClick={confirmarSaidaComAlteracoes}
                 style={({ isActive }) => ({ ...(isActive ? linkActive : linkBase), flexShrink: 0 })}>
                 👥 Usuários
               </NavLink>
@@ -303,7 +314,7 @@ function AppShell() {
               {navItems.map(item => (
                 <NavLink
                   key={item.to} to={item.to} end={item.end}
-                  onClick={() => setMenuAberto(false)}
+                  onClick={e => { confirmarSaidaComAlteracoes(e); if (!e.defaultPrevented) setMenuAberto(false); }}
                   style={({ isActive }) => ({ ...linkBase, padding: '10px 12px', display: 'block', ...(isActive ? linkActive : {}) })}
                 >
                   {item.badge && nPendentes > 0 ? `${item.label} (${nPendentes})` : item.label}

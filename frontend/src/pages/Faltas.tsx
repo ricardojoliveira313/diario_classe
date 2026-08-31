@@ -7,6 +7,7 @@ import { useTheme } from '../ThemeContext';
 import { useAno } from '../AnoContext';
 import { useAuth } from '../AuthContext';
 import { MOTIVOS_BAIXA_FREQUENCIA, MOTIVO_BF_POR_CODIGO } from '../motivosBaixaFrequencia';
+import { registrarAlteracoesNaoSalvas } from '../unsavedChanges';
 
 type Status = 'P' | 'F' | 'J' | 'A';
 const CICLO: Status[] = ['P', 'F', 'J', 'A'];
@@ -114,6 +115,11 @@ export default function Faltas() {
   const [motivos, setMotivos] = useState<Record<string, string>>({});
   const [motivosMesAnterior, setMotivosMesAnterior] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState(false);
+  // Diferente de `saved` (que também fica false logo após carregar um mês,
+  // antes de qualquer edição real), este flag só vira true quando o usuário
+  // de fato mexe em algo — é o que decide se vale a pena perguntar "deseja
+  // salvar?" antes de sair da aba ou fechar a página.
+  const [alteradoSemSalvar, setAlteradoSemSalvar] = useState(false);
   const [saving, setSaving] = useState(false);
   const [controleErro, setControleErro] = useState('');
   const [loading, setLoading] = useState(true);
@@ -244,7 +250,7 @@ export default function Faltas() {
       setConfirmacoesSemFaltas(mapConfirmacoesSemFaltas);
       setMotivos(mapMotivos);
       setMotivosMesAnterior(mapMotivosAnterior);
-      setSaved(false);
+      setSaved(false); setAlteradoSemSalvar(false);
       setLoading(false);
     });
   }, [turmaId, mes, ano, numDias]);
@@ -271,7 +277,7 @@ export default function Faltas() {
       dias[diaIdx] = CICLO[(idx + 1) % CICLO.length];
       return { ...prev, [alunoId]: dias };
     });
-    setSaved(false);
+    setSaved(false); setAlteradoSemSalvar(true);
   };
 
   // ── Modo Pintura — escolhe a situação na legenda e clica pra marcar direto ──
@@ -286,7 +292,7 @@ export default function Faltas() {
       dias[schoolIdx] = status;
       return { ...prev, [alunoId]: dias };
     });
-    setSaved(false);
+    setSaved(false); setAlteradoSemSalvar(true);
   };
 
   const pintarLinha = (alunoId: string, status: Status) => {
@@ -297,7 +303,7 @@ export default function Faltas() {
       letivoIdxs.forEach(idx => { dias[idx] = status; });
       return { ...prev, [alunoId]: dias };
     });
-    setSaved(false);
+    setSaved(false); setAlteradoSemSalvar(true);
   };
 
   const pintarColuna = (schoolIdx: number, status: Status) => {
@@ -312,7 +318,7 @@ export default function Faltas() {
       });
       return next;
     });
-    setSaved(false);
+    setSaved(false); setAlteradoSemSalvar(true);
   };
 
   // ── Modo Digitação Sequencial — clique 1x no aluno/dia pra "entrar" na linha,
@@ -341,7 +347,7 @@ export default function Faltas() {
       for (let d = cur.day; d < fim; d++) dias[d] = status;
       return { ...prev, [cur.alunoId]: dias };
     });
-    setSaved(false);
+    setSaved(false); setAlteradoSemSalvar(true);
     setNumBuffer('');
     setCursor(avancarCursor(cur.alunoId, cur.day, fim - cur.day));
   };
@@ -367,14 +373,14 @@ export default function Faltas() {
       atual[tipo] = Math.max(0, Math.min(valor || 0, numDias - outrosDois));
       return { ...prev, [alunoId]: diasFromCounts(atual.F, atual.J, atual.A, numDias) };
     });
-    setSaved(false);
+    setSaved(false); setAlteradoSemSalvar(true);
   };
 
   const toggleSemFaltas = (alunoId: string) => {
     if (!podeEditar) return;
     if (semFaltas[alunoId]) {
       limparConfirmacaoSemFaltas([alunoId]);
-      setSaved(false);
+      setSaved(false); setAlteradoSemSalvar(true);
       return;
     }
     const dias = diasAluno[alunoId] ?? initDias(numDias);
@@ -387,7 +393,7 @@ export default function Faltas() {
       ...prev,
       [alunoId]: { por: username ?? 'desconhecido', em: agora },
     }));
-    setSaved(false);
+    setSaved(false); setAlteradoSemSalvar(true);
   };
 
   const setMotivo = (alunoId: string, codigo: string) => {
@@ -396,7 +402,7 @@ export default function Faltas() {
       if (codigo) next[alunoId] = codigo; else delete next[alunoId];
       return next;
     });
-    setSaved(false);
+    setSaved(false); setAlteradoSemSalvar(true);
   };
 
   const focusProximoCampo = (el: HTMLInputElement) => {
@@ -439,7 +445,7 @@ export default function Faltas() {
       setControleErro('As faltas foram salvas, mas o Controle de Lançamentos não foi atualizado. Tente salvar novamente ou avise a administração.');
     }
     setSaving(false);
-    setSaved(true);
+    setSaved(true); setAlteradoSemSalvar(false);
   };
 
   // Mantém os refs do Modo Digitação Sequencial atualizados com o render atual
@@ -455,6 +461,29 @@ export default function Faltas() {
 
   // Limpa seleção ao trocar turma ou mês
   useEffect(() => { setPaintStatus(null); setCursor(null); setNumBuffer(''); }, [turmaId, mes]);
+
+  // Avisa antes de fechar/recarregar a aba do navegador com alterações não
+  // salvas — o navegador mostra sua própria caixa de confirmação padrão
+  // (o texto customizado não é exibido por segurança dos navegadores
+  // modernos, mas o aviso de "alterações não salvas" aparece do mesmo jeito).
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (!alteradoSemSalvar) return;
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [alteradoSemSalvar]);
+
+  // Registra pro menu (main.tsx) poder perguntar antes de deixar o usuário
+  // clicar em outra aba com alterações não salvas aqui — some (registra null)
+  // quando o componente desmonta, pra não "vazar" um alerta de uma tela
+  // que o usuário já nem está mais vendo.
+  useEffect(() => {
+    registrarAlteracoesNaoSalvas(() => alteradoSemSalvar);
+    return () => registrarAlteracoesNaoSalvas(null);
+  }, [alteradoSemSalvar]);
 
   // Checklist de arquivo do Relatório Registro de Frequência — persistido localmente por turma/mês/ano
   useEffect(() => {
