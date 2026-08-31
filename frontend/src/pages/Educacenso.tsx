@@ -58,6 +58,15 @@ function formatarDataMatricula(valor: any): string {
   return texto;
 }
 
+// Resume a situação de transferência do aluno no SED — em branco quando ATIVO
+// (sem saída), ou "Transferido em dd/mm/aaaa" etc. quando teve alguma saída.
+function formatarTransferencia(aluno: any): string {
+  if (!aluno || !aluno.situacao || aluno.situacao === 'ATIVO') return '';
+  const rotulo = SITUACAO_LABEL[aluno.situacao] ?? aluno.situacao;
+  const data = formatarDataMatricula(aluno.data_movimentacao || aluno.data_fim_matricula);
+  return `${rotulo}${data ? ` em ${data}` : ''}`;
+}
+
 interface LinhaEduc {
   nome: string;
   dataNascimento: any;
@@ -110,7 +119,11 @@ function achaColuna(cabecalho: string[], termos: string[]): number {
 function serializarResultado(resultado: LinhaResultado[]) {
   return resultado.map(l => ({
     status: l.status,
-    aluno: l.aluno ? { nome: l.aluno.nome, ra: l.aluno.ra, cpf: l.aluno.cpf, turmaId: l.aluno.turmaId, data_inicio_matricula: l.aluno.data_inicio_matricula } : null,
+    aluno: l.aluno ? {
+      nome: l.aluno.nome, ra: l.aluno.ra, cpf: l.aluno.cpf, turmaId: l.aluno.turmaId,
+      data_inicio_matricula: l.aluno.data_inicio_matricula, situacao: l.aluno.situacao,
+      data_movimentacao: l.aluno.data_movimentacao, data_fim_matricula: l.aluno.data_fim_matricula,
+    } : null,
     educ: l.educ ? { nome: l.educ.nome, turmaNome: l.educ.turmaNome, identificacaoUnica: l.educ.identificacaoUnica } : null,
     divergencias: l.divergencias,
     frequenciaHint: l.frequenciaHint,
@@ -319,6 +332,7 @@ export default function Educacenso() {
       'Nome (SED)': l.aluno?.nome ?? '',
       RA: l.aluno?.ra ?? '',
       'Data de Matrícula': formatarDataMatricula(l.aluno?.data_inicio_matricula),
+      Transferência: formatarTransferencia(l.aluno),
       Turma: l.aluno?.turmaId ?? '',
       'Nome (Educacenso)': l.educ?.nome ?? '',
       'Identificação Única (Educacenso)': l.educ?.identificacaoUnica ?? '',
@@ -346,6 +360,7 @@ export default function Educacenso() {
         <td>${esc(l.aluno?.ra ? String(l.aluno.ra) : '—')}</td>
         <td>${esc(l.aluno?.nome ?? '—')}</td>
         <td>${esc(formatarDataMatricula(l.aluno?.data_inicio_matricula) || '—')}</td>
+        <td>${esc(formatarTransferencia(l.aluno) || '—')}</td>
         <td>${esc(l.educ?.nome ?? '—')}</td>
         <td>${esc(l.educ?.identificacaoUnica || '—')}</td>
         <td>${esc([...l.divergencias, l.frequenciaHint, l.contextoHistorico].filter(Boolean).join(' · '))}</td>
@@ -363,7 +378,7 @@ export default function Educacenso() {
 </style></head><body>
   <h1>Conferência Educacenso — ${ano}</h1>
   <p>Data-base do Censo (corte): ${dataCorte.split('-').reverse().join('/')} — arquivo: ${nomeArquivo || '—'}</p>
-  <table><thead><tr><th>Status</th><th>RA</th><th>Nome (SED)</th><th>Data de Matrícula</th><th>Nome (Educacenso)</th><th>Identificação Única</th><th>Detalhe</th></tr></thead>
+  <table><thead><tr><th>Status</th><th>RA</th><th>Nome (SED)</th><th>Data de Matrícula</th><th>Transferência</th><th>Nome (Educacenso)</th><th>Identificação Única</th><th>Detalhe</th></tr></thead>
   <tbody>${linhasHtml}</tbody></table>
   <script>setTimeout(()=>window.print(),400);</script>
 </body></html>`;
@@ -455,6 +470,7 @@ export default function Educacenso() {
                     <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontSize: 13 }}>RA</th>
                     <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontSize: 13 }}>Nome (SED)</th>
                     <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontSize: 13 }}>Data de Matrícula</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontSize: 13 }}>Transferência</th>
                     <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontSize: 13 }}>Nome (Educacenso)</th>
                     <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontSize: 13 }}>Identificação Única</th>
                     <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontSize: 13 }}>Detalhe</th>
@@ -473,6 +489,7 @@ export default function Educacenso() {
                         <td style={{ padding: '9px 12px', fontSize: 13, color: theme.text, fontWeight: 600 }}>{l.aluno?.ra ?? '—'}</td>
                         <td style={{ padding: '9px 12px', fontSize: 13, color: theme.text }}>{l.aluno?.nome ?? '—'}</td>
                         <td style={{ padding: '9px 12px', fontSize: 13, color: theme.text }}>{formatarDataMatricula(l.aluno?.data_inicio_matricula) || '—'}</td>
+                        <td style={{ padding: '9px 12px', fontSize: 13, color: theme.orange, fontWeight: 600 }}>{formatarTransferencia(l.aluno) || '—'}</td>
                         <td style={{ padding: '9px 12px', fontSize: 13, color: theme.text }}>{l.educ?.nome ?? '—'}</td>
                         <td style={{ padding: '9px 12px', fontSize: 13, color: theme.text }}>{l.educ?.identificacaoUnica || '—'}</td>
                         <td style={{ padding: '9px 12px', fontSize: 12.5, color: theme.textMuted }}>
