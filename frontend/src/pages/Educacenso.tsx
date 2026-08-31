@@ -269,7 +269,12 @@ export default function Educacenso() {
           const divergencias: string[] = [];
           if (educ.cpf && melhorAluno.cpf && educ.cpf !== String(melhorAluno.cpf).replace(/\D/g, '')) divergencias.push('CPF diferente');
           if (educ.corRaca && melhorAluno.cor_raca && normalizeNome(educ.corRaca) !== normalizeNome(melhorAluno.cor_raca)) divergencias.push('Cor/Raça diferente');
-          if (educ.identificacaoUnica && melhorAluno.ra && String(melhorAluno.ra) !== educ.identificacaoUnica) divergencias.push(`RA diferente da Identificação Única do Educacenso (${educ.identificacaoUnica})`);
+          // Compara só os dígitos, sem zeros à esquerda — a Identificação Única do
+          // Educacenso costuma vir com zeros à esquerda (tamanho fixo) enquanto o RA
+          // cadastrado no SED não, o que gerava divergência falsa em quase todo mundo.
+          const raSemZeros = String(melhorAluno.ra ?? '').replace(/\D/g, '').replace(/^0+/, '');
+          const idSemZeros = educ.identificacaoUnica.replace(/\D/g, '').replace(/^0+/, '');
+          if (idSemZeros && raSemZeros && idSemZeros !== raSemZeros) divergencias.push(`RA diferente da Identificação Única do Educacenso (${educ.identificacaoUnica})`);
           linhas.push({
             status: divergencias.length > 0 ? 'divergencia' : 'bate',
             aluno: melhorAluno, educ, divergencias, frequenciaHint: null, contextoHistorico: null,
