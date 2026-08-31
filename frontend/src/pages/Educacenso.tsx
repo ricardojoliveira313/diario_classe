@@ -153,6 +153,7 @@ export default function Educacenso() {
       setResultado(desserializarResultado(salvo.resultado));
       setNomeArquivo(salvo.nome_arquivo ?? '');
       if (salvo.data_corte) setDataCorte(salvo.data_corte);
+      if (salvo.linhas_educ) setLinhasEduc(salvo.linhas_educ);
       setSalvoInfo({ por: salvo.criado_por ?? 'desconhecido', em: salvo.criado_em });
     });
   }, [ano]);
@@ -306,7 +307,7 @@ export default function Educacenso() {
       });
       setResultado(linhas);
       const agora = new Date().toISOString();
-      await api.salvarCruzamentoEducacenso(ano, dataCorte, nomeArquivo, serializarResultado(linhas), username ?? 'desconhecido');
+      await api.salvarCruzamentoEducacenso(ano, dataCorte, nomeArquivo, serializarResultado(linhas), username ?? 'desconhecido', linhasEduc);
       setSalvoInfo({ por: username ?? 'desconhecido', em: agora });
     } finally {
       setCarregando(false);
