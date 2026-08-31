@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { api } from '../api';
-import { theme, btn, input, label } from '../styles';
+import { theme, btn, input, label, SITUACAO_LABEL } from '../styles';
 import { Loading, EmptyState, StatCard } from '../components';
 import { useAno } from '../AnoContext';
 import { useAuth } from '../AuthContext';
@@ -48,6 +48,16 @@ function normalizarDataDigits(d: any): string {
 }
 
 
+// A data de matrícula vem do cadastro em dd/mm/aaaa ou aaaa-mm-dd (ISO) —
+// normaliza pra exibição sempre em dd/mm/aaaa, sem quebrar se vier vazia.
+function formatarDataMatricula(valor: any): string {
+  const texto = String(valor ?? '').trim();
+  if (!texto) return '';
+  const iso = texto.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+  return texto;
+}
+
 interface LinhaEduc {
   nome: string;
   dataNascimento: any;
@@ -55,6 +65,10 @@ interface LinhaEduc {
   corRaca: string;
   turmaNome: string;
   etapa: string;
+  // "Identificação Única" — segundo o manual do Educacenso, é o mesmo número
+  // do R.A. do aluno. Serve tanto pra localizar o aluno exato (sem depender
+  // só do nome) quanto pra detectar duplicidade de Identificação Única.
+  identificacaoUnica: string;
 }
 
 type StatusLinha = 'bate' | 'so_sed' | 'so_educacenso' | 'divergencia';
@@ -65,6 +79,12 @@ interface LinhaResultado {
   educ: LinhaEduc | null;
   divergencias: string[];
   frequenciaHint: string | null;
+  // Explica uma linha "só no SED" ou "só no Educacenso": procura, entre TODOS
+  // os registros do aluno (ativos ou não), uma situação de saída (TRAN, BXTR,
+  // REMA, ABAN) que explique o motivo de ele não bater na data-base — ex.:
+  // "Foi transferido em 12/04/2026" — sem isso a linha só dizia "não achei",
+  // sem dizer pra onde o aluno foi nem quando.
+  contextoHistorico: string | null;
 }
 
 // Procura o índice da linha de cabeçalho (a planilha oficial do Educacenso tem
@@ -90,19 +110,21 @@ function achaColuna(cabecalho: string[], termos: string[]): number {
 function serializarResultado(resultado: LinhaResultado[]) {
   return resultado.map(l => ({
     status: l.status,
-    aluno: l.aluno ? { nome: l.aluno.nome, ra: l.aluno.ra, cpf: l.aluno.cpf, turmaId: l.aluno.turmaId } : null,
-    educ: l.educ ? { nome: l.educ.nome, turmaNome: l.educ.turmaNome } : null,
+    aluno: l.aluno ? { nome: l.aluno.nome, ra: l.aluno.ra, cpf: l.aluno.cpf, turmaId: l.aluno.turmaId, data_inicio_matricula: l.aluno.data_inicio_matricula } : null,
+    educ: l.educ ? { nome: l.educ.nome, turmaNome: l.educ.turmaNome, identificacaoUnica: l.educ.identificacaoUnica } : null,
     divergencias: l.divergencias,
     frequenciaHint: l.frequenciaHint,
+    contextoHistorico: l.contextoHistorico,
   }));
 }
 function desserializarResultado(resultado: any[]): LinhaResultado[] {
   return (resultado ?? []).map(l => ({
     status: l.status,
     aluno: l.aluno,
-    educ: l.educ ? { nome: l.educ.nome ?? '', dataNascimento: '', cpf: '', corRaca: '', turmaNome: l.educ.turmaNome ?? '', etapa: '' } : null,
+    educ: l.educ ? { nome: l.educ.nome ?? '', dataNascimento: '', cpf: '', corRaca: '', turmaNome: l.educ.turmaNome ?? '', etapa: '', identificacaoUnica: l.educ.identificacaoUnica ?? '' } : null,
     divergencias: l.divergencias ?? [],
     frequenciaHint: l.frequenciaHint ?? null,
+    contextoHistorico: l.contextoHistorico ?? null,
   }));
 }
 
@@ -157,6 +179,7 @@ export default function Educacenso() {
       const iCorRaca = achaColuna(cabecalho, ['cor/raça', 'cor/raca']);
       const iTurma = achaColuna(cabecalho, ['nome da turma']);
       const iEtapa = achaColuna(cabecalho, ['etapa de ensino']);
+      const iIdUnica = achaColuna(cabecalho, ['identificação única', 'identificacao unica']);
 
       const linhas: LinhaEduc[] = [];
       for (let i = idxCab + 1; i < rows.length; i++) {
@@ -169,6 +192,7 @@ export default function Educacenso() {
           corRaca: iCorRaca >= 0 ? String(r[iCorRaca] ?? '').trim() : '',
           turmaNome: iTurma >= 0 ? String(r[iTurma] ?? '').trim() : '',
           etapa: iEtapa >= 0 ? String(r[iEtapa] ?? '').trim() : '',
+          identificacaoUnica: iIdUnica >= 0 ? String(r[iIdUnica] ?? '').trim() : '',
         });
       }
       if (linhas.length === 0) {
@@ -199,6 +223,24 @@ export default function Educacenso() {
     return `✅ ${presencas} presença(s) no mês — provável CONFIRMAR.`;
   };
 
+  // Explica um "só no Educacenso" (aluno consta no arquivo oficial, mas não
+  // bateu com nenhum aluno ativo na data-base): procura, entre TODOS os
+  // registros já cadastrados dessa pessoa (ativos ou não — diferente do
+  // `alunosAtivos` usado no cruzamento principal), um registro de saída
+  // (transferido, remanejado, baixa, abandono) que explique o motivo — pra
+  // não deixar a dúvida "sumiu, mas foi pra onde?" sem resposta.
+  function explicarAusencia(todosAlunos: any[], nome: string, nascimentoDigits: string): string | null {
+    const candidatos = todosAlunos.filter(a =>
+      normalizarDataDigits(a.data_nascimento) === nascimentoDigits && matchScoreNome(a.nome, nome) >= 0.7
+    );
+    if (candidatos.length === 0) return null;
+    const comSaida = candidatos.find(a => a.situacao && a.situacao !== 'ATIVO');
+    if (!comSaida) return null;
+    const rotulo = SITUACAO_LABEL[comSaida.situacao] ?? comSaida.situacao;
+    const data = formatarDataMatricula(comSaida.data_movimentacao || comSaida.data_fim_matricula);
+    return `${rotulo}${data ? ` em ${data}` : ''} (RA ${comSaida.ra ?? '—'})`;
+  }
+
   const cruzar = async () => {
     if (!linhasEduc) return;
     setCarregando(true);
@@ -227,17 +269,19 @@ export default function Educacenso() {
           const divergencias: string[] = [];
           if (educ.cpf && melhorAluno.cpf && educ.cpf !== String(melhorAluno.cpf).replace(/\D/g, '')) divergencias.push('CPF diferente');
           if (educ.corRaca && melhorAluno.cor_raca && normalizeNome(educ.corRaca) !== normalizeNome(melhorAluno.cor_raca)) divergencias.push('Cor/Raça diferente');
+          if (educ.identificacaoUnica && melhorAluno.ra && String(melhorAluno.ra) !== educ.identificacaoUnica) divergencias.push(`RA diferente da Identificação Única do Educacenso (${educ.identificacaoUnica})`);
           linhas.push({
             status: divergencias.length > 0 ? 'divergencia' : 'bate',
-            aluno: melhorAluno, educ, divergencias, frequenciaHint: null,
+            aluno: melhorAluno, educ, divergencias, frequenciaHint: null, contextoHistorico: null,
           });
         } else {
-          linhas.push({ status: 'so_educacenso', aluno: null, educ, divergencias: [], frequenciaHint: null });
+          const contexto = explicarAusencia(todosAlunos, educ.nome, nascEduc);
+          linhas.push({ status: 'so_educacenso', aluno: null, educ, divergencias: [], frequenciaHint: null, contextoHistorico: contexto });
         }
       }
       for (const a of alunosAtivos) {
         if (!usados.has(a.id)) {
-          linhas.push({ status: 'so_sed', aluno: a, educ: null, divergencias: [], frequenciaHint: null });
+          linhas.push({ status: 'so_sed', aluno: a, educ: null, divergencias: [], frequenciaHint: null, contextoHistorico: null });
         }
       }
 
@@ -270,11 +314,14 @@ export default function Educacenso() {
       Status: { bate: 'Bate', so_sed: 'Só no SED', so_educacenso: 'Só no Educacenso', divergencia: 'Divergência' }[l.status],
       'Nome (SED)': l.aluno?.nome ?? '',
       RA: l.aluno?.ra ?? '',
+      'Data de Matrícula': formatarDataMatricula(l.aluno?.data_inicio_matricula),
       Turma: l.aluno?.turmaId ?? '',
       'Nome (Educacenso)': l.educ?.nome ?? '',
+      'Identificação Única (Educacenso)': l.educ?.identificacaoUnica ?? '',
       'Turma (Educacenso)': l.educ?.turmaNome ?? '',
       Divergências: l.divergencias.join('; '),
       'Dica de frequência': l.frequenciaHint ?? '',
+      'Motivo (histórico no SED)': l.contextoHistorico ?? '',
     }));
     const wsOut = XLSX.utils.json_to_sheet(dados);
     const wb = XLSX.utils.book_new();
@@ -292,9 +339,12 @@ export default function Educacenso() {
     const linhasHtml = resultado.map(l => `
       <tr>
         <td>${esc(BADGE_LABEL[l.status])}</td>
+        <td>${esc(l.aluno?.ra ? String(l.aluno.ra) : '—')}</td>
         <td>${esc(l.aluno?.nome ?? '—')}</td>
+        <td>${esc(formatarDataMatricula(l.aluno?.data_inicio_matricula) || '—')}</td>
         <td>${esc(l.educ?.nome ?? '—')}</td>
-        <td>${esc([...l.divergencias, l.frequenciaHint].filter(Boolean).join(' · '))}</td>
+        <td>${esc(l.educ?.identificacaoUnica || '—')}</td>
+        <td>${esc([...l.divergencias, l.frequenciaHint, l.contextoHistorico].filter(Boolean).join(' · '))}</td>
       </tr>`).join('');
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Conferência Educacenso ${ano}</title>
 <style>
@@ -309,7 +359,7 @@ export default function Educacenso() {
 </style></head><body>
   <h1>Conferência Educacenso — ${ano}</h1>
   <p>Data-base do Censo (corte): ${dataCorte.split('-').reverse().join('/')} — arquivo: ${nomeArquivo || '—'}</p>
-  <table><thead><tr><th>Status</th><th>Nome (SED)</th><th>Nome (Educacenso)</th><th>Detalhe</th></tr></thead>
+  <table><thead><tr><th>Status</th><th>RA</th><th>Nome (SED)</th><th>Data de Matrícula</th><th>Nome (Educacenso)</th><th>Identificação Única</th><th>Detalhe</th></tr></thead>
   <tbody>${linhasHtml}</tbody></table>
   <script>setTimeout(()=>window.print(),400);</script>
 </body></html>`;
@@ -398,8 +448,11 @@ export default function Educacenso() {
                 <thead>
                   <tr style={{ background: theme.primary }}>
                     <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontSize: 13 }}>Status</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontSize: 13 }}>RA</th>
                     <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontSize: 13 }}>Nome (SED)</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontSize: 13 }}>Data de Matrícula</th>
                     <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontSize: 13 }}>Nome (Educacenso)</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontSize: 13 }}>Identificação Única</th>
                     <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontSize: 13 }}>Detalhe</th>
                   </tr>
                 </thead>
@@ -413,12 +466,16 @@ export default function Educacenso() {
                             {b.label}
                           </span>
                         </td>
+                        <td style={{ padding: '9px 12px', fontSize: 13, color: theme.text, fontWeight: 600 }}>{l.aluno?.ra ?? '—'}</td>
                         <td style={{ padding: '9px 12px', fontSize: 13, color: theme.text }}>{l.aluno?.nome ?? '—'}</td>
+                        <td style={{ padding: '9px 12px', fontSize: 13, color: theme.text }}>{formatarDataMatricula(l.aluno?.data_inicio_matricula) || '—'}</td>
                         <td style={{ padding: '9px 12px', fontSize: 13, color: theme.text }}>{l.educ?.nome ?? '—'}</td>
+                        <td style={{ padding: '9px 12px', fontSize: 13, color: theme.text }}>{l.educ?.identificacaoUnica || '—'}</td>
                         <td style={{ padding: '9px 12px', fontSize: 12.5, color: theme.textMuted }}>
                           {l.divergencias.length > 0 && <div>{l.divergencias.join(' · ')}</div>}
                           {l.frequenciaHint && <div>{l.frequenciaHint}</div>}
-                          {l.status === 'so_educacenso' && !l.frequenciaHint && 'Consta no Educacenso mas não no cadastro atual — confira se foi transferido/saiu.'}
+                          {l.contextoHistorico && <div style={{ fontWeight: 600, color: theme.danger }}>{l.contextoHistorico}</div>}
+                          {l.status === 'so_educacenso' && !l.frequenciaHint && !l.contextoHistorico && 'Consta no Educacenso mas não no cadastro atual — confira se foi transferido/saiu.'}
                         </td>
                       </tr>
                     );
