@@ -4,6 +4,7 @@ import { api } from '../api';
 import { theme, btn, input, label } from '../styles';
 import { Loading, EmptyState, StatCard } from '../components';
 import { useAno } from '../AnoContext';
+import { useAuth } from '../AuthContext';
 import { estavaMatriculadoNaData } from '../educacensoCorte';
 
 type Status = 'P' | 'F' | 'J' | 'A';
@@ -83,8 +84,31 @@ function achaColuna(cabecalho: string[], termos: string[]): number {
   return cabecalho.findIndex(c => termos.some(t => c.toLowerCase().includes(t.toLowerCase())));
 }
 
+// Versão enxuta do resultado, salva no banco — guarda só o que a tela e as
+// exportações realmente usam (nome, RA, CPF, turma), não o registro Aluno
+// inteiro, pra manter o JSON leve.
+function serializarResultado(resultado: LinhaResultado[]) {
+  return resultado.map(l => ({
+    status: l.status,
+    aluno: l.aluno ? { nome: l.aluno.nome, ra: l.aluno.ra, cpf: l.aluno.cpf, turmaId: l.aluno.turmaId } : null,
+    educ: l.educ ? { nome: l.educ.nome, turmaNome: l.educ.turmaNome } : null,
+    divergencias: l.divergencias,
+    frequenciaHint: l.frequenciaHint,
+  }));
+}
+function desserializarResultado(resultado: any[]): LinhaResultado[] {
+  return (resultado ?? []).map(l => ({
+    status: l.status,
+    aluno: l.aluno,
+    educ: l.educ ? { nome: l.educ.nome ?? '', dataNascimento: '', cpf: '', corRaca: '', turmaNome: l.educ.turmaNome ?? '', etapa: '' } : null,
+    divergencias: l.divergencias ?? [],
+    frequenciaHint: l.frequenciaHint ?? null,
+  }));
+}
+
 export default function Educacenso() {
   const { ano } = useAno();
+  const { username } = useAuth();
   const [dataCorte, setDataCorte] = useState(`${ano}-05-27`);
   // Sincroniza a data-base com o ano letivo global — sem isso, trocar o ano
   // no seletor do topo sem recarregar a página deixava a data-base "presa"
@@ -96,6 +120,20 @@ export default function Educacenso() {
   const [resultado, setResultado] = useState<LinhaResultado[] | null>(null);
   const [erro, setErro] = useState('');
   const [filtro, setFiltro] = useState<StatusLinha | ''>('');
+  const [salvoInfo, setSalvoInfo] = useState<{ por: string; em: string } | null>(null);
+
+  // Recupera o último cruzamento salvo deste ano letivo — sem isso, trocar de
+  // aba (Alunos, Faltas etc.) e voltar, ou fechar o navegador, fazia o
+  // resultado inteiro desaparecer (ficava só em memória do React).
+  useEffect(() => {
+    api.getCruzamentoEducacenso(ano).then(salvo => {
+      if (!salvo) { setResultado(null); setSalvoInfo(null); return; }
+      setResultado(desserializarResultado(salvo.resultado));
+      setNomeArquivo(salvo.nome_arquivo ?? '');
+      if (salvo.data_corte) setDataCorte(salvo.data_corte);
+      setSalvoInfo({ por: salvo.criado_por ?? 'desconhecido', em: salvo.criado_em });
+    });
+  }, [ano]);
 
   const importarArquivo = async (file: File) => {
     setErro('');
@@ -218,6 +256,9 @@ export default function Educacenso() {
         return nomeA.localeCompare(nomeB, 'pt-BR');
       });
       setResultado(linhas);
+      const agora = new Date().toISOString();
+      await api.salvarCruzamentoEducacenso(ano, dataCorte, nomeArquivo, serializarResultado(linhas), username ?? 'desconhecido');
+      setSalvoInfo({ por: username ?? 'desconhecido', em: agora });
     } finally {
       setCarregando(false);
     }
@@ -239,6 +280,43 @@ export default function Educacenso() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, wsOut, 'Conferência Educacenso');
     XLSX.writeFile(wb, `Conferencia_Educacenso_${ano}.xlsx`);
+  };
+
+  const BADGE_LABEL: Record<StatusLinha, string> = {
+    bate: 'Bate', so_sed: 'Só no SED', so_educacenso: 'Só no Educacenso', divergencia: 'Divergência',
+  };
+
+  const exportarPDF = () => {
+    if (!resultado) return;
+    const esc = (v: string) => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const linhasHtml = resultado.map(l => `
+      <tr>
+        <td>${esc(BADGE_LABEL[l.status])}</td>
+        <td>${esc(l.aluno?.nome ?? '—')}</td>
+        <td>${esc(l.educ?.nome ?? '—')}</td>
+        <td>${esc([...l.divergencias, l.frequenciaHint].filter(Boolean).join(' · '))}</td>
+      </tr>`).join('');
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Conferência Educacenso ${ano}</title>
+<style>
+  @page{size:A4 landscape;margin:10mm}
+  body{font-family:Arial,sans-serif;color:#111;margin:0}
+  h1{font-size:16px;margin:0 0 4px}
+  p{font-size:11px;color:#555;margin:0 0 12px}
+  table{width:100%;border-collapse:collapse;font-size:10px}
+  th,td{border:1px solid #ccc;padding:5px 7px;text-align:left}
+  th{background:#1e40af;color:#fff}
+  tr:nth-child(even){background:#f5f5f5}
+</style></head><body>
+  <h1>Conferência Educacenso — ${ano}</h1>
+  <p>Data-base do Censo (corte): ${dataCorte.split('-').reverse().join('/')} — arquivo: ${nomeArquivo || '—'}</p>
+  <table><thead><tr><th>Status</th><th>Nome (SED)</th><th>Nome (Educacenso)</th><th>Detalhe</th></tr></thead>
+  <tbody>${linhasHtml}</tbody></table>
+  <script>setTimeout(()=>window.print(),400);</script>
+</body></html>`;
+    const win = window.open('', '_blank');
+    if (!win) { alert('Permita pop-ups no navegador para abrir o PDF.'); return; }
+    win.document.write(html);
+    win.document.close();
   };
 
   const contagem = resultado ? {
@@ -282,12 +360,20 @@ export default function Educacenso() {
             {carregando ? 'Cruzando...' : '🔍 Cruzar SED × Educacenso'}
           </button>
           {resultado && (
-            <button style={btn('success', { outline: true })} onClick={exportarExcel}>📊 Exportar Excel</button>
+            <>
+              <button style={btn('success', { outline: true })} onClick={exportarExcel}>📊 Exportar Excel</button>
+              <button style={btn('danger', { outline: true })} onClick={exportarPDF}>🖨️ Exportar PDF</button>
+            </>
           )}
         </div>
         {nomeArquivo && !erro && (
           <div style={{ marginTop: 10, fontSize: 12.5, color: theme.textMuted }}>
             📄 {nomeArquivo} — {linhasEduc?.length ?? 0} aluno(s) lido(s) do Educacenso.
+          </div>
+        )}
+        {salvoInfo && resultado && (
+          <div style={{ marginTop: 6, fontSize: 12, color: theme.textMuted }}>
+            💾 Cruzamento salvo — por {salvoInfo.por}, em {new Date(salvoInfo.em).toLocaleString('pt-BR')}. Fica salvo mesmo trocando de aba ou fechando o navegador.
           </div>
         )}
         {erro && <div style={{ marginTop: 10, color: theme.danger, fontSize: 13, fontWeight: 600 }}>{erro}</div>}
