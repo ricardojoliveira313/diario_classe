@@ -215,6 +215,31 @@ export const api = {
     }
   },
 
+  // --- CRUZAMENTO SED × EDUCACENSO (aba Educacenso) ---
+  // Tolerante a falha de propósito: se a tabela ainda não existir (migração
+  // não rodada), o cruzamento em si continua funcionando normalmente na
+  // tela — só não fica salvo pra sobreviver a trocar de aba/fechar o navegador.
+  salvarCruzamentoEducacenso: async (ano: number, dataCorte: string, nomeArquivo: string, resultado: any[], criadoPor: string) => {
+    const { error } = await supabase.from('CruzamentoEducacenso').upsert({
+      ano,
+      data_corte: dataCorte,
+      nome_arquivo: nomeArquivo,
+      resultado,
+      criado_por: criadoPor,
+      criado_em: new Date().toISOString(),
+    }, { onConflict: 'ano' });
+    if (error) console.error('Não foi possível salvar o cruzamento Educacenso:', error);
+  },
+  getCruzamentoEducacenso: async (ano: number): Promise<{ data_corte: string; nome_arquivo: string; resultado: any[]; criado_por: string; criado_em: string } | null> => {
+    try {
+      const { data, error } = await supabase.from('CruzamentoEducacenso').select('*').eq('ano', ano).maybeSingle();
+      if (error) return null;
+      return data ?? null;
+    } catch {
+      return null;
+    }
+  },
+
   getUsuarios: async () => todasAsPaginas((inicio, fim) => supabase
     .from('Usuario')
     .select('id, nome, perfil, ativo, turma_id, permissoes')
