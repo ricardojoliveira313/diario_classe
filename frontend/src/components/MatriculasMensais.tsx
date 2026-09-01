@@ -83,7 +83,8 @@ export default function MatriculasMensais({
 }) {
   const hoje = useMemo(() => new Date(), []);
   const ultimoMesDisponivel = ano === hoje.getFullYear() ? hoje.getMonth() + 1 : 12;
-  const [mesInicio, setMesInicio] = useState(1);
+  // Ano letivo começa em fevereiro, não em janeiro — padrão do filtro reflete isso.
+  const [mesInicio, setMesInicio] = useState(2);
   const [mesFim, setMesFim] = useState(ultimoMesDisponivel);
   const [tipoEnsino, setTipoEnsino] = useState<TipoEnsino>('');
   const [serie, setSerie] = useState('');
@@ -98,7 +99,7 @@ export default function MatriculasMensais({
   const [mensagemEducacenso, setMensagemEducacenso] = useState('');
 
   useEffect(() => {
-    setMesInicio(1);
+    setMesInicio(2);
     setMesFim(ultimoMesDisponivel);
   }, [ano, ultimoMesDisponivel]);
 
@@ -607,7 +608,7 @@ export default function MatriculasMensais({
               {turmasDisponiveis.map(turma => <option key={turma.id} value={turma.id}>{turma.nome}</option>)}
             </select>
           </label>
-          <button type="button" onClick={() => { setTipoEnsino(''); setSerie(''); setTurmaId(''); setMesInicio(1); setMesFim(ultimoMesDisponivel); }}
+          <button type="button" onClick={() => { setTipoEnsino(''); setSerie(''); setTurmaId(''); setMesInicio(2); setMesFim(ultimoMesDisponivel); }}
             className="report-action report-action-neutral" style={{ alignSelf: 'end', width: '100%' }}>
             🧹 Limpar filtros
           </button>
