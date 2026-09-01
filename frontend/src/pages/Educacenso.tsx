@@ -6,6 +6,7 @@ import { Loading, EmptyState, StatCard } from '../components';
 import { useAno } from '../AnoContext';
 import { useAuth } from '../AuthContext';
 import { estavaMatriculadoNaData } from '../educacensoCorte';
+import { parseData } from '../situacoes';
 
 type Status = 'P' | 'F' | 'J' | 'A';
 const CICLO: Status[] = ['P', 'F', 'J', 'A'];
@@ -284,10 +285,27 @@ export default function Educacenso() {
     if (saidaReal) {
       const rotulo = SITUACAO_LABEL[saidaReal.situacao] ?? saidaReal.situacao;
       const data = formatarDataMatricula(saidaReal.data_movimentacao || saidaReal.data_fim_matricula);
+      // A data de início DESSE registro pode não ser o início real do vínculo —
+      // um remanejamento (REMA) gera um novo registro cujo "data_inicio_matricula"
+      // é a data do remanejamento, não a matrícula original (ex.: aluno começou
+      // 07/02, foi remanejado internamente em 01/06 e só depois saiu de vez em
+      // 22/06 — o registro da saída, isolado, "começa" em 01/06). Por isso, usa
+      // o início mais antigo entre TODOS os registros dessa pessoa (cadeia
+      // completa, incluindo REMA) pra decidir corretamente se ela estava
+      // matriculada na data-base.
+      const inicioMaisAntigo = candidatos.reduce((maisAntigo: Date | null, a) => {
+        const data = parseData(a.data_inicio_matricula);
+        if (!data) return maisAntigo;
+        return !maisAntigo || data.getTime() < maisAntigo.getTime() ? data : maisAntigo;
+      }, null);
+      const inicioMaisAntigoIso = inicioMaisAntigo
+        ? `${inicioMaisAntigo.getFullYear()}-${String(inicioMaisAntigo.getMonth() + 1).padStart(2, '0')}-${String(inicioMaisAntigo.getDate()).padStart(2, '0')}`
+        : saidaReal.data_inicio_matricula;
+      const registroParaChecagem = { ...saidaReal, data_inicio_matricula: inicioMaisAntigoIso };
       // Regra do manual: se a saída ocorreu DEPOIS da data-base, o aluno ainda
       // era nosso nela (pertence à nossa escola no Censo); se ocorreu antes
       // (ou na própria data-base), já pertencia à outra escola.
-      const pertenceEscola = estavaMatriculadoNaData(saidaReal, dataCorteDate) ? 'sim' : 'nao';
+      const pertenceEscola = estavaMatriculadoNaData(registroParaChecagem, dataCorteDate) ? 'sim' : 'nao';
       return { texto: `${rotulo}${data ? ` em ${data}` : ''} (RA ${saidaReal.ra ?? '—'})`, pertenceEscola };
     }
     const remanejado = candidatos.find(a => a.situacao === 'REMA');
