@@ -337,7 +337,12 @@ export default function Educacenso() {
           const contexto = explicarAusencia(todosAlunos, educ.nome, nascEduc, dataCorteDate);
           linhas.push({
             status: 'so_educacenso', aluno: null, educ, divergencias: [], frequenciaHint: null,
-            contextoHistorico: contexto?.texto ?? null, pertenceEscola: contexto?.pertenceEscola ?? null,
+            // Sem nenhum registro dessa pessoa no SED (nem ativo, nem com saída) —
+            // não dá pra saber se ela já foi nossa aluna algum dia. Precisa dizer
+            // isso explicitamente, senão a linha fica muda e parece que o sistema
+            // simplesmente não olhou o caso (achado real: caso da Ernanda, ago/2026).
+            contextoHistorico: contexto?.texto ?? 'Não há nenhum registro desse aluno no cadastro do SED (nem ativo, nem com saída) — confira manualmente se ele já foi matriculado aqui.',
+            pertenceEscola: contexto?.pertenceEscola ?? null,
           });
         }
       }
