@@ -296,6 +296,37 @@ export default function MatriculasMensais({
     }
   };
 
+  // Define manualmente o sexo de quem não teve correspondência confirmada com
+  // o Educacenso (Somente SED/app ou Ambíguo do lado SED) — sem isso, esses
+  // alunos ficavam contados em "Ainda não definidos" sem nenhum jeito de
+  // resolver a partir do próprio quadro de cruzamento.
+  const definirSexoManual = async (id: string, sexo: 'M' | 'F') => {
+    if (somenteConsulta || !resultadoEducacenso) return;
+    setSalvandoSexo(`cruzamento-${id}`);
+    setErroSexo('');
+    try {
+      await onAtualizarSexo([id], sexo);
+      setResultadoEducacenso(atual => {
+        if (!atual) return atual;
+        const item = atual.somenteSED.find(i => i.id === id) ?? atual.ambiguos.find(i => i.id === id);
+        if (!item) return atual;
+        return {
+          ...atual,
+          somenteSED: atual.somenteSED.filter(i => i.id !== id),
+          ambiguos: atual.ambiguos.filter(i => i.id !== id),
+          encontrados: [...atual.encontrados, { id, nome: item.nome, turma: 'turma' in item ? item.turma : '', sexo }],
+          masculino: atual.masculino + (sexo === 'M' ? 1 : 0),
+          feminino: atual.feminino + (sexo === 'F' ? 1 : 0),
+          naoInformado: atual.naoInformado - 1,
+        };
+      });
+    } catch (erro: any) {
+      setErroSexo(`Não foi possível salvar: ${erro?.message ?? erro}`);
+    } finally {
+      setSalvandoSexo('');
+    }
+  };
+
   const nomeTipoSelecionado = tipoEnsino ? TIPO_LABEL[tipoEnsino] : 'Todos — matrícula regular';
   const nomeTurmaSelecionada = turmaId
     ? String(turmas.find(turma => turma.id === turmaId)?.nome ?? 'Turma não encontrada')
@@ -537,9 +568,19 @@ export default function MatriculasMensais({
                 <details style={{ marginTop: 9, color: theme.textSecondary, fontSize: 12 }}>
                   <summary style={{ cursor: 'pointer', fontWeight: 800, color: 'var(--report-orange)' }}>⚠️ Ver divergências antes de concluir</summary>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8, marginTop: 8, maxHeight: 260, overflowY: 'auto' }}>
-                    <ListaDivergencia titulo="Somente na SED/app" itens={resultadoEducacenso.somenteSED} />
+                    <ListaDivergencia
+                      titulo="Somente na SED/app"
+                      itens={resultadoEducacenso.somenteSED}
+                      onDefinir={somenteConsulta ? undefined : definirSexoManual}
+                      salvando={salvandoSexo}
+                    />
                     <ListaDivergencia titulo="Somente no Educacenso" itens={resultadoEducacenso.somenteEducacenso} />
-                    <ListaDivergencia titulo="Correspondência ambígua" itens={resultadoEducacenso.ambiguos.map(item => ({ nome: item.nome, turma: item.origem }))} />
+                    <ListaDivergencia
+                      titulo="Correspondência ambígua"
+                      itens={resultadoEducacenso.ambiguos.map(item => ({ id: item.id, nome: item.nome, turma: item.origem }))}
+                      onDefinir={somenteConsulta ? undefined : definirSexoManual}
+                      salvando={salvandoSexo}
+                    />
                   </div>
                 </details>
               )}
@@ -794,18 +835,46 @@ function Resumo({ label, valor, cor }: { label: string; valor: number; cor: stri
   );
 }
 
-function ListaDivergencia({ titulo, itens }: { titulo: string; itens: Array<{ nome: string; turma: string }> }) {
+function ListaDivergencia({ titulo, itens, onDefinir, salvando }: {
+  titulo: string;
+  itens: Array<{ id?: string; nome: string; turma: string }>;
+  // Só passado pra listas do lado SED (Somente SED/app, Ambíguo-SED) — dá pra
+  // definir o sexo na hora, sem precisar esperar um novo arquivo do Educacenso
+  // bater certinho com esse aluno.
+  onDefinir?: (id: string, sexo: 'M' | 'F') => void;
+  salvando?: string;
+}) {
   return (
     <div style={{ border: `1px solid ${theme.borderLight}`, borderRadius: theme.radius, background: theme.card, padding: 8 }}>
       <div style={{ color: theme.text, fontWeight: 850, marginBottom: 5 }}>{titulo} ({itens.length})</div>
       {itens.length === 0
         ? <div style={{ color: theme.textSecondary }}>Nenhuma divergência.</div>
-        : itens.map((item, indice) => (
-          <div key={`${item.nome}-${item.turma}-${indice}`} style={{ padding: '4px 0', borderBottom: indice < itens.length - 1 ? `1px solid ${theme.borderLight}` : undefined }}>
-            <div style={{ color: theme.text, fontWeight: 650 }}>{item.nome}</div>
-            {item.turma && <div style={{ color: theme.textSecondary, fontSize: 11 }}>{item.turma}</div>}
-          </div>
-        ))}
+        : itens.map((item, indice) => {
+          const salvandoEste = salvando === `cruzamento-${item.id}`;
+          return (
+            <div key={`${item.nome}-${item.turma}-${indice}`} style={{
+              padding: '4px 0', borderBottom: indice < itens.length - 1 ? `1px solid ${theme.borderLight}` : undefined,
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6, flexWrap: 'wrap',
+            }}>
+              <div>
+                <div style={{ color: theme.text, fontWeight: 650 }}>{item.nome}</div>
+                {item.turma && <div style={{ color: theme.textSecondary, fontSize: 11 }}>{item.turma}</div>}
+              </div>
+              {onDefinir && item.id && (
+                <div style={{ display: 'flex', gap: 4 }}>
+                  <button type="button" disabled={!!salvando} onClick={() => onDefinir(item.id!, 'M')}
+                    className="report-action report-action-primary" style={{ padding: '2px 7px', fontSize: 11 }}>
+                    {salvandoEste ? '…' : 'Menino'}
+                  </button>
+                  <button type="button" disabled={!!salvando} onClick={() => onDefinir(item.id!, 'F')}
+                    className="report-action report-action-pink" style={{ padding: '2px 7px', fontSize: 11 }}>
+                    {salvandoEste ? '…' : 'Menina'}
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
     </div>
   );
 }
