@@ -70,6 +70,10 @@ function formatarPertenceEscola(v: 'sim' | 'nao' | null): string {
 // (sem saída), ou "Transferido em dd/mm/aaaa" etc. quando teve alguma saída.
 function formatarTransferencia(aluno: any): string {
   if (!aluno || !aluno.situacao || aluno.situacao === 'ATIVO') return '';
+  // REMA não é uma saída pra outra escola, é uma reorganização interna (ex.:
+  // troca de turma) dentro da própria EMEIEF Luiz Gonzaga — não pode ser
+  // rotulado igual a uma transferência de verdade (TRAN/BXTR/ABAN/N COM).
+  if (aluno.situacao === 'REMA') return 'Remanejado internamente (mesma escola)';
   const rotulo = SITUACAO_LABEL[aluno.situacao] ?? aluno.situacao;
   const data = formatarDataMatricula(aluno.data_movimentacao || aluno.data_fim_matricula);
   return `${rotulo}${data ? ` em ${data}` : ''}`;
@@ -271,15 +275,26 @@ export default function Educacenso() {
       normalizarDataDigits(a.data_nascimento) === nascimentoDigits && matchScoreNome(a.nome, nome) >= 0.7
     );
     if (candidatos.length === 0) return null;
-    const comSaida = candidatos.find(a => a.situacao && a.situacao !== 'ATIVO');
-    if (!comSaida) return null;
-    const rotulo = SITUACAO_LABEL[comSaida.situacao] ?? comSaida.situacao;
-    const data = formatarDataMatricula(comSaida.data_movimentacao || comSaida.data_fim_matricula);
-    // Regra do manual: se a saída ocorreu DEPOIS da data-base, o aluno ainda
-    // era nosso nela (pertence à nossa escola no Censo); se ocorreu antes (ou
-    // na própria data-base), já pertencia à outra escola.
-    const pertenceEscola = estavaMatriculadoNaData(comSaida, dataCorteDate) ? 'sim' : 'nao';
-    return { texto: `${rotulo}${data ? ` em ${data}` : ''} (RA ${comSaida.ra ?? '—'})`, pertenceEscola };
+    // REMA (remanejado) não é uma saída pra outra escola — é uma reorganização
+    // interna (ex.: troca de turma) dentro da própria EMEIEF Luiz Gonzaga; a
+    // regra de negócio já trata REMA (origem) + ATIVO (destino) como o mesmo
+    // aluno, contando só o ATIVO. Por isso, uma saída de verdade (TRAN, BXTR,
+    // ABAN, N COM) tem prioridade sobre um REMA pra explicar a ausência.
+    const saidaReal = candidatos.find(a => a.situacao && a.situacao !== 'ATIVO' && a.situacao !== 'REMA');
+    if (saidaReal) {
+      const rotulo = SITUACAO_LABEL[saidaReal.situacao] ?? saidaReal.situacao;
+      const data = formatarDataMatricula(saidaReal.data_movimentacao || saidaReal.data_fim_matricula);
+      // Regra do manual: se a saída ocorreu DEPOIS da data-base, o aluno ainda
+      // era nosso nela (pertence à nossa escola no Censo); se ocorreu antes
+      // (ou na própria data-base), já pertencia à outra escola.
+      const pertenceEscola = estavaMatriculadoNaData(saidaReal, dataCorteDate) ? 'sim' : 'nao';
+      return { texto: `${rotulo}${data ? ` em ${data}` : ''} (RA ${saidaReal.ra ?? '—'})`, pertenceEscola };
+    }
+    const remanejado = candidatos.find(a => a.situacao === 'REMA');
+    if (remanejado) {
+      return { texto: `Remanejado internamente (RA ${remanejado.ra ?? '—'}) — continua na EMEIEF Luiz Gonzaga`, pertenceEscola: 'sim' };
+    }
+    return null;
   }
 
   const cruzar = async () => {
