@@ -62,7 +62,7 @@ function formatarDataMatricula(valor: any): string {
 // Rótulo do veredito "pertence à escola na data-base" — a resposta direta
 // que a Diretora pedia pra bater o olho e já saber de quem é o aluno.
 function formatarPertenceEscola(v: 'sim' | 'nao' | null): string {
-  if (v === 'sim') return '✅ EMEF Gonzaga';
+  if (v === 'sim') return '✅ EMEIEF Luiz Gonzaga';
   if (v === 'nao') return '❌ Outra escola';
   return '—';
 }
