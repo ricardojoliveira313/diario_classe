@@ -58,6 +58,14 @@ function formatarDataMatricula(valor: any): string {
   return texto;
 }
 
+// Rótulo do veredito "pertence à escola na data-base" — a resposta direta
+// que a Diretora pedia pra bater o olho e já saber de quem é o aluno.
+function formatarPertenceEscola(v: 'sim' | 'nao' | null): string {
+  if (v === 'sim') return '✅ EMEF Gonzaga';
+  if (v === 'nao') return '❌ Outra escola';
+  return '—';
+}
+
 // Resume a situação de transferência do aluno no SED — em branco quando ATIVO
 // (sem saída), ou "Transferido em dd/mm/aaaa" etc. quando teve alguma saída.
 function formatarTransferencia(aluno: any): string {
@@ -94,6 +102,12 @@ interface LinhaResultado {
   // "Foi transferido em 12/04/2026" — sem isso a linha só dizia "não achei",
   // sem dizer pra onde o aluno foi nem quando.
   contextoHistorico: string | null;
+  // Veredito objetivo de a quem o aluno pertencia NA DATA-BASE do Censo — a
+  // mesma regra do manual que a Diretora já usava na planilha manual: se a
+  // transferência ocorreu DEPOIS da data-base, o aluno ainda era nosso nela;
+  // se ocorreu ANTES (ou na própria data-base), já pertencia à outra escola.
+  // 'sim' = era nosso, 'nao' = já era de outra escola, null = sem dado pra decidir.
+  pertenceEscola: 'sim' | 'nao' | null;
 }
 
 // Procura o índice da linha de cabeçalho (a planilha oficial do Educacenso tem
@@ -128,6 +142,7 @@ function serializarResultado(resultado: LinhaResultado[]) {
     divergencias: l.divergencias,
     frequenciaHint: l.frequenciaHint,
     contextoHistorico: l.contextoHistorico,
+    pertenceEscola: l.pertenceEscola,
   }));
 }
 function desserializarResultado(resultado: any[]): LinhaResultado[] {
@@ -138,6 +153,7 @@ function desserializarResultado(resultado: any[]): LinhaResultado[] {
     divergencias: l.divergencias ?? [],
     frequenciaHint: l.frequenciaHint ?? null,
     contextoHistorico: l.contextoHistorico ?? null,
+    pertenceEscola: l.pertenceEscola ?? (l.aluno ? 'sim' : null),
   }));
 }
 
@@ -169,10 +185,12 @@ export default function Educacenso() {
       if (salvo.data_corte) setDataCorte(salvo.data_corte);
       if (salvo.linhas_educ) setLinhasEduc(salvo.linhas_educ);
       setSalvoInfo({ por: salvo.criado_por ?? 'desconhecido', em: salvo.criado_em });
-      // Cruzamentos salvos antes da coluna "Transferência" existir não têm o
-      // campo "situacao" no aluno serializado — sem esse aviso, a coluna
-      // apareceria em branco pra todo mundo sem deixar claro o motivo.
-      setSalvoDesatualizado((salvo.resultado ?? []).some((l: any) => l.aluno && !('situacao' in l.aluno)));
+      // Cruzamentos salvos antes das colunas "Transferência"/"Pertence à
+      // Escola" existirem não têm esses campos no resultado serializado —
+      // sem esse aviso, elas apareceriam em branco sem deixar claro o motivo.
+      setSalvoDesatualizado((salvo.resultado ?? []).some((l: any) =>
+        (l.aluno && !('situacao' in l.aluno)) || (l.status === 'so_educacenso' && !('pertenceEscola' in l))
+      ));
     });
   }, [ano]);
 
@@ -248,7 +266,7 @@ export default function Educacenso() {
   // `alunosAtivos` usado no cruzamento principal), um registro de saída
   // (transferido, remanejado, baixa, abandono) que explique o motivo — pra
   // não deixar a dúvida "sumiu, mas foi pra onde?" sem resposta.
-  function explicarAusencia(todosAlunos: any[], nome: string, nascimentoDigits: string): string | null {
+  function explicarAusencia(todosAlunos: any[], nome: string, nascimentoDigits: string, dataCorteDate: Date): { texto: string; pertenceEscola: 'sim' | 'nao' } | null {
     const candidatos = todosAlunos.filter(a =>
       normalizarDataDigits(a.data_nascimento) === nascimentoDigits && matchScoreNome(a.nome, nome) >= 0.7
     );
@@ -257,7 +275,11 @@ export default function Educacenso() {
     if (!comSaida) return null;
     const rotulo = SITUACAO_LABEL[comSaida.situacao] ?? comSaida.situacao;
     const data = formatarDataMatricula(comSaida.data_movimentacao || comSaida.data_fim_matricula);
-    return `${rotulo}${data ? ` em ${data}` : ''} (RA ${comSaida.ra ?? '—'})`;
+    // Regra do manual: se a saída ocorreu DEPOIS da data-base, o aluno ainda
+    // era nosso nela (pertence à nossa escola no Censo); se ocorreu antes (ou
+    // na própria data-base), já pertencia à outra escola.
+    const pertenceEscola = estavaMatriculadoNaData(comSaida, dataCorteDate) ? 'sim' : 'nao';
+    return { texto: `${rotulo}${data ? ` em ${data}` : ''} (RA ${comSaida.ra ?? '—'})`, pertenceEscola };
   }
 
   const cruzar = async () => {
@@ -294,16 +316,19 @@ export default function Educacenso() {
           // exibida como informação de apoio, nunca usada pra apontar divergência.
           linhas.push({
             status: divergencias.length > 0 ? 'divergencia' : 'bate',
-            aluno: melhorAluno, educ, divergencias, frequenciaHint: null, contextoHistorico: null,
+            aluno: melhorAluno, educ, divergencias, frequenciaHint: null, contextoHistorico: null, pertenceEscola: 'sim',
           });
         } else {
-          const contexto = explicarAusencia(todosAlunos, educ.nome, nascEduc);
-          linhas.push({ status: 'so_educacenso', aluno: null, educ, divergencias: [], frequenciaHint: null, contextoHistorico: contexto });
+          const contexto = explicarAusencia(todosAlunos, educ.nome, nascEduc, dataCorteDate);
+          linhas.push({
+            status: 'so_educacenso', aluno: null, educ, divergencias: [], frequenciaHint: null,
+            contextoHistorico: contexto?.texto ?? null, pertenceEscola: contexto?.pertenceEscola ?? null,
+          });
         }
       }
       for (const a of alunosAtivos) {
         if (!usados.has(a.id)) {
-          linhas.push({ status: 'so_sed', aluno: a, educ: null, divergencias: [], frequenciaHint: null, contextoHistorico: null });
+          linhas.push({ status: 'so_sed', aluno: a, educ: null, divergencias: [], frequenciaHint: null, contextoHistorico: null, pertenceEscola: 'sim' });
         }
       }
 
@@ -338,6 +363,7 @@ export default function Educacenso() {
       RA: l.aluno?.ra ?? '',
       'Data de Matrícula': formatarDataMatricula(l.aluno?.data_inicio_matricula),
       Transferência: formatarTransferencia(l.aluno),
+      'Pertence à Escola (na data-base)': formatarPertenceEscola(l.pertenceEscola),
       Turma: l.aluno?.turmaId ?? '',
       'Nome (Educacenso)': l.educ?.nome ?? '',
       'Identificação Única (Educacenso)': l.educ?.identificacaoUnica ?? '',
@@ -366,6 +392,7 @@ export default function Educacenso() {
         <td>${esc(l.aluno?.nome ?? '—')}</td>
         <td>${esc(formatarDataMatricula(l.aluno?.data_inicio_matricula) || '—')}</td>
         <td>${esc(formatarTransferencia(l.aluno) || '—')}</td>
+        <td>${esc(formatarPertenceEscola(l.pertenceEscola))}</td>
         <td>${esc(l.educ?.nome ?? '—')}</td>
         <td>${esc(l.educ?.identificacaoUnica || '—')}</td>
         <td>${esc([...l.divergencias, l.frequenciaHint, l.contextoHistorico].filter(Boolean).join(' · '))}</td>
@@ -383,7 +410,7 @@ export default function Educacenso() {
 </style></head><body>
   <h1>Conferência Educacenso — ${ano}</h1>
   <p>Data-base do Censo (corte): ${dataCorte.split('-').reverse().join('/')} — arquivo: ${nomeArquivo || '—'}</p>
-  <table><thead><tr><th>Status</th><th>RA</th><th>Nome (SED)</th><th>Data de Matrícula</th><th>Transferência</th><th>Nome (Educacenso)</th><th>Identificação Única</th><th>Detalhe</th></tr></thead>
+  <table><thead><tr><th>Status</th><th>RA</th><th>Nome (SED)</th><th>Data de Matrícula</th><th>Transferência</th><th>Pertence à Escola</th><th>Nome (Educacenso)</th><th>Identificação Única</th><th>Detalhe</th></tr></thead>
   <tbody>${linhasHtml}</tbody></table>
   <script>setTimeout(()=>window.print(),400);</script>
 </body></html>`;
@@ -481,6 +508,7 @@ export default function Educacenso() {
                     <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontSize: 13 }}>Nome (SED)</th>
                     <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontSize: 13 }}>Data de Matrícula</th>
                     <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontSize: 13 }}>Transferência</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontSize: 13 }}>Pertence à Escola</th>
                     <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontSize: 13 }}>Nome (Educacenso)</th>
                     <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontSize: 13 }}>Identificação Única</th>
                     <th style={{ padding: '10px 12px', textAlign: 'left', color: '#fff', fontSize: 13 }}>Detalhe</th>
@@ -500,6 +528,9 @@ export default function Educacenso() {
                         <td style={{ padding: '9px 12px', fontSize: 13, color: theme.text }}>{l.aluno?.nome ?? '—'}</td>
                         <td style={{ padding: '9px 12px', fontSize: 13, color: theme.text }}>{formatarDataMatricula(l.aluno?.data_inicio_matricula) || '—'}</td>
                         <td style={{ padding: '9px 12px', fontSize: 13, color: theme.orange, fontWeight: 600 }}>{formatarTransferencia(l.aluno) || '—'}</td>
+                        <td style={{ padding: '9px 12px', fontSize: 13, fontWeight: 700, color: l.pertenceEscola === 'sim' ? theme.success : l.pertenceEscola === 'nao' ? theme.danger : theme.textMuted }}>
+                          {formatarPertenceEscola(l.pertenceEscola)}
+                        </td>
                         <td style={{ padding: '9px 12px', fontSize: 13, color: theme.text }}>{l.educ?.nome ?? '—'}</td>
                         <td style={{ padding: '9px 12px', fontSize: 13, color: theme.text }}>{l.educ?.identificacaoUnica || '—'}</td>
                         <td style={{ padding: '9px 12px', fontSize: 12.5, color: theme.textMuted }}>
