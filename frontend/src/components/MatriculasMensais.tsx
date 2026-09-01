@@ -11,7 +11,7 @@ type TipoEnsino = '' | 'INFANTIL' | 'FUNDAMENTAL' | 'EJA' | 'AEE';
 interface LinhaConsolidada {
   chave: string;
   label: string;
-  nivel: 'tipo' | 'serie';
+  nivel: 'tipo' | 'serie' | 'turma';
   contagem: ContagemSexo;
 }
 
@@ -179,6 +179,20 @@ export default function MatriculasMensais({
           nivel: 'serie',
           contagem: resumoDasTurmas(turmasDaSerie, tipo === 'AEE'),
         });
+        // Abre por sala (turma) dentro da série/ano — só quando há mais de uma
+        // turma na mesma série, senão repetiria a mesma linha à toa.
+        if (turmasDaSerie.length > 1) {
+          const turmasOrdenadas = [...turmasDaSerie].sort((a, b) =>
+            String(a.nome).localeCompare(String(b.nome), 'pt-BR', { numeric: true }));
+          for (const turma of turmasOrdenadas) {
+            linhas.push({
+              chave: `${tipo}-${nomeSerie}-${turma.id}`,
+              label: turma.nome,
+              nivel: 'turma',
+              contagem: resumoDasTurmas([turma], tipo === 'AEE'),
+            });
+          }
+        }
       }
     }
     return linhas;
@@ -294,7 +308,7 @@ export default function MatriculasMensais({
   const montarRelatorioHtml = () => {
     const consolidado = linhasConsolidadas.map(linha => `
       <tr class="${linha.nivel}">
-        <td>${linha.nivel === 'serie' ? '&nbsp;&nbsp;↳ ' : ''}${escaparHtml(linha.label)}</td>
+        <td>${linha.nivel === 'serie' ? '&nbsp;&nbsp;↳ ' : linha.nivel === 'turma' ? '&nbsp;&nbsp;&nbsp;&nbsp;· ' : ''}${escaparHtml(linha.label)}</td>
         ${celulasRelatorio(linha.contagem)}
       </tr>`).join('');
     const mensal = resumo.meses.map(linha => `
@@ -324,7 +338,7 @@ export default function MatriculasMensais({
         .subtitulo{color:#536179;margin-bottom:12px}.filtros{display:grid;grid-template-columns:repeat(2,1fr);gap:5px 18px;padding:10px;border:1px solid #cbd5e1;background:#f8fafc}
         .resumo{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin:10px 0}.card{border:1px solid #b7c5df;padding:8px;text-align:center}.card strong{display:block;font-size:18px;color:#173b8f}
         table{width:100%;border-collapse:collapse;page-break-inside:auto}thead{display:table-header-group}tr{page-break-inside:avoid}
-        th,td{border:1px solid #aebbd0;padding:5px;text-align:center}th{background:#2448b8;color:white}.esquerda,td:first-child{text-align:left}.tipo td{font-weight:bold;background:#eaf0ff}.serie td:first-child{padding-left:14px}
+        th,td{border:1px solid #aebbd0;padding:5px;text-align:center}th{background:#2448b8;color:white}.esquerda,td:first-child{text-align:left}.tipo td{font-weight:bold;background:#eaf0ff}.serie td:first-child{padding-left:14px}.turma td:first-child{padding-left:26px;color:#536179;font-weight:normal}.turma td{font-size:9.5px}
         tfoot td{font-weight:bold;background:#e8edf7}.aviso{border:1px solid #d97706;background:#fff7ed;color:#9a3412;padding:8px;margin:10px 0}.ok{border:1px solid #16a34a;background:#f0fdf4;color:#166534;padding:8px;margin:10px 0}
         .nota{font-size:9px;color:#64748b;margin-top:6px}.assinatura{margin-top:28px;text-align:center}.linha{display:inline-block;width:280px;border-top:1px solid #333;padding-top:5px}
       </style></head><body>
@@ -381,7 +395,7 @@ export default function MatriculasMensais({
       [],
       ['Ensino / ciclo / ano', 'Meninos', 'Meninas', 'N/I', 'Total'],
       ...linhasConsolidadas.map(linha => [
-        `${linha.nivel === 'serie' ? '   ↳ ' : ''}${linha.label}`,
+        `${linha.nivel === 'serie' ? '   ↳ ' : linha.nivel === 'turma' ? '      · ' : ''}${linha.label}`,
         linha.contagem.masculino,
         linha.contagem.feminino,
         linha.contagem.naoInformado,
@@ -701,11 +715,12 @@ export default function MatriculasMensais({
                   borderBottom: `1px solid ${theme.borderLight}`,
                 }}>
                   <td style={{
-                    padding: linha.nivel === 'tipo' ? '9px 12px' : '7px 12px 7px 30px',
-                    color: theme.text,
-                    fontWeight: linha.nivel === 'tipo' ? 800 : 600,
+                    padding: linha.nivel === 'tipo' ? '9px 12px' : linha.nivel === 'turma' ? '6px 12px 6px 46px' : '7px 12px 7px 30px',
+                    color: linha.nivel === 'turma' ? theme.textSecondary : theme.text,
+                    fontWeight: linha.nivel === 'tipo' ? 800 : linha.nivel === 'turma' ? 500 : 600,
+                    fontSize: linha.nivel === 'turma' ? 12 : undefined,
                   }}>
-                    {linha.nivel === 'serie' ? '↳ ' : ''}{linha.label}
+                    {linha.nivel === 'serie' ? '↳ ' : linha.nivel === 'turma' ? '· ' : ''}{linha.label}
                   </td>
                   <td style={numero('var(--report-blue)')}>{linha.contagem.masculino}</td>
                   <td style={numero('var(--report-pink)')}>{linha.contagem.feminino}</td>
