@@ -48,6 +48,21 @@ function chaveNomeData(nome: unknown, data: unknown): string {
   return `${nomeNormalizado(nome)}|${dataNormalizada(data)}`;
 }
 
+// Pontua a semelhança entre dois nomes pela interseção de palavras — mesma
+// lógica já validada na Conferência Educacenso, usada aqui como 2ª tentativa
+// (a 1ª exige nome normalizado idêntico, que quebra com qualquer diferença de
+// sobrenome/grafia entre a base do app e o arquivo oficial do Educacenso).
+function palavras(valor: unknown): string[] {
+  return texto(valor).toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^A-Z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
+}
+function matchScoreNome(a: unknown, b: unknown): number {
+  const pa = palavras(a), pb = palavras(b);
+  if (pa.length === 0 || pb.length === 0) return 0;
+  const intersecao = pa.filter(palavra => pb.includes(palavra)).length;
+  return intersecao / Math.max(pa.length, pb.length);
+}
+
 export function cruzarSEDComEducacenso(alunos: any[], turmas: any[], educacenso: LinhaEducacenso[]): ResultadoCruzamentoEducacenso {
   const turmaMap = new Map(turmas.map(turma => [String(turma.id), turma]));
   const regularesAtivos = alunos.filter(aluno => {
@@ -75,8 +90,8 @@ export function cruzarSEDComEducacenso(alunos: any[], turmas: any[], educacenso:
 
   const usados = new Set<number>();
   const encontrados: AlunoCruzadoEducacenso[] = [];
-  const somenteSED: Array<{ nome: string; turma: string }> = [];
   const ambiguos: Array<{ nome: string; origem: 'SED' | 'Educacenso' }> = [];
+  const pendentes: Array<{ id: string; nome: string; turma: string; dataNascimento: unknown }> = [];
 
   for (const grupo of pessoasSED.values()) {
     const aluno = grupo.find(item => !item.situacao || item.situacao === 'ATIVO') ?? grupo[0];
@@ -92,7 +107,31 @@ export function cruzarSEDComEducacenso(alunos: any[], turmas: any[], educacenso:
     } else if (disponiveis.length > 1) {
       ambiguos.push({ nome: texto(aluno.nome), origem: 'SED' });
     } else {
-      somenteSED.push({ nome: texto(aluno.nome), turma });
+      // Não bateu por CPF nem por nome+nascimento IDÊNTICOS — antes de dar como
+      // "somente SED", tenta pelo nome parecido (2ª tentativa, ver abaixo).
+      pendentes.push({ id: String(aluno.id), nome: texto(aluno.nome), turma, dataNascimento: aluno.data_nascimento });
+    }
+  }
+
+  // 2ª tentativa: nome parecido (mesma técnica da Conferência Educacenso) +
+  // mesma data de nascimento — cobre diferenças de sobrenome/grafia entre a
+  // base do app e o arquivo oficial que a comparação exata não tolerava.
+  const somenteSED: Array<{ nome: string; turma: string }> = [];
+  for (const pendente of pendentes) {
+    const nascPendente = dataNormalizada(pendente.dataNascimento);
+    let melhorIndice = -1;
+    let melhorScore = 0;
+    educacenso.forEach((linha, indice) => {
+      if (usados.has(indice)) return;
+      if (nascPendente && dataNormalizada(linha.dataNascimento) !== nascPendente) return;
+      const score = matchScoreNome(pendente.nome, linha.nome);
+      if (score > melhorScore) { melhorScore = score; melhorIndice = indice; }
+    });
+    if (melhorIndice >= 0 && melhorScore >= 0.7) {
+      usados.add(melhorIndice);
+      encontrados.push({ id: pendente.id, nome: pendente.nome, turma: pendente.turma, sexo: educacenso[melhorIndice].sexo });
+    } else {
+      somenteSED.push({ nome: pendente.nome, turma: pendente.turma });
     }
   }
 
