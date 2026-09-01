@@ -11,9 +11,12 @@ export interface ResultadoCruzamentoEducacenso {
   totalSED: number;
   totalEducacenso: number;
   encontrados: AlunoCruzadoEducacenso[];
-  somenteSED: Array<{ nome: string; turma: string }>;
+  // "id" só existe do lado SED (é o registro do nosso cadastro) — permite
+  // oferecer um botão de definir Menino/Menina manualmente pra quem não
+  // teve correspondência confirmada com o Educacenso.
+  somenteSED: Array<{ id: string; nome: string; turma: string }>;
   somenteEducacenso: Array<{ nome: string; turma: string }>;
-  ambiguos: Array<{ nome: string; origem: 'SED' | 'Educacenso' }>;
+  ambiguos: Array<{ id?: string; nome: string; origem: 'SED' | 'Educacenso' }>;
   masculino: number;
   feminino: number;
   naoInformado: number;
@@ -90,7 +93,7 @@ export function cruzarSEDComEducacenso(alunos: any[], turmas: any[], educacenso:
 
   const usados = new Set<number>();
   const encontrados: AlunoCruzadoEducacenso[] = [];
-  const ambiguos: Array<{ nome: string; origem: 'SED' | 'Educacenso' }> = [];
+  const ambiguos: Array<{ id?: string; nome: string; origem: 'SED' | 'Educacenso' }> = [];
   const pendentes: Array<{ id: string; nome: string; turma: string; dataNascimento: unknown }> = [];
 
   for (const grupo of pessoasSED.values()) {
@@ -105,7 +108,7 @@ export function cruzarSEDComEducacenso(alunos: any[], turmas: any[], educacenso:
       usados.add(indice);
       encontrados.push({ id: String(aluno.id), nome: texto(aluno.nome), turma, sexo: educacenso[indice].sexo });
     } else if (disponiveis.length > 1) {
-      ambiguos.push({ nome: texto(aluno.nome), origem: 'SED' });
+      ambiguos.push({ id: String(aluno.id), nome: texto(aluno.nome), origem: 'SED' });
     } else {
       // Não bateu por CPF nem por nome+nascimento IDÊNTICOS — antes de dar como
       // "somente SED", tenta pelo nome parecido (2ª tentativa, ver abaixo).
@@ -116,7 +119,7 @@ export function cruzarSEDComEducacenso(alunos: any[], turmas: any[], educacenso:
   // 2ª tentativa: nome parecido (mesma técnica da Conferência Educacenso) +
   // mesma data de nascimento — cobre diferenças de sobrenome/grafia entre a
   // base do app e o arquivo oficial que a comparação exata não tolerava.
-  const somenteSED: Array<{ nome: string; turma: string }> = [];
+  const somenteSED: Array<{ id: string; nome: string; turma: string }> = [];
   for (const pendente of pendentes) {
     const nascPendente = dataNormalizada(pendente.dataNascimento);
     let melhorIndice = -1;
@@ -131,7 +134,7 @@ export function cruzarSEDComEducacenso(alunos: any[], turmas: any[], educacenso:
       usados.add(melhorIndice);
       encontrados.push({ id: pendente.id, nome: pendente.nome, turma: pendente.turma, sexo: educacenso[melhorIndice].sexo });
     } else {
-      somenteSED.push({ nome: pendente.nome, turma: pendente.turma });
+      somenteSED.push({ id: pendente.id, nome: pendente.nome, turma: pendente.turma });
     }
   }
 
