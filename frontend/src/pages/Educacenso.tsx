@@ -482,6 +482,28 @@ export default function Educacenso() {
           Cruza o cadastro de alunos do app (SED) com o export oficial "Relação de Alunos" do Educacenso, por nome + data de
           nascimento — sem precisar montar a comparação manualmente linha a linha.
         </p>
+        {(() => {
+          // Segundo o manual do Educacenso: a data-base do Censo é em maio, mas a
+          // "Confirmação de Matrícula"/conferência oficial no site do INEP só abre
+          // depois, indo até meados de outubro (em 2022 o prazo final foi 14/10) —
+          // fora dessa janela, o site do governo costuma dar erro ao tentar gerar
+          // relatórios, como já aconteceu (achado de set/2026).
+          const hoje = new Date();
+          const mes = hoje.getMonth(); // 0 = janeiro
+          const dia = hoje.getDate();
+          const aberto = mes === 8 || (mes === 9 && dia <= 14); // setembro inteiro até 14/10
+          return (
+            <div style={{
+              marginBottom: 16, padding: '10px 14px', borderRadius: theme.radius, fontSize: 12.5,
+              background: aberto ? `${theme.success}12` : `${theme.orange}12`,
+              border: `1px solid ${aberto ? theme.success : theme.orange}55`, color: theme.textMuted,
+            }}>
+              {aberto
+                ? <><strong>📅 Período de conferência do Educacenso:</strong> geralmente vai de setembro a meados de outubro — é a janela pra confirmar/corrigir matrículas em duplicidade e outras pendências direto no site do INEP.</>
+                : <><strong>📅 Fora do período oficial de conferência do Educacenso:</strong> a "Confirmação de Matrícula" no site do INEP normalmente só abre em setembro (indo até meados de outubro) — fora dessa janela o site do governo pode dar erro ao tentar gerar relatórios lá. O cruzamento aqui no app funciona o ano todo, independente disso.</>}
+            </div>
+          );
+        })()}
         <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div>
             <label style={label}>Arquivo oficial "Relação de Alunos" (.xlsx)</label>
