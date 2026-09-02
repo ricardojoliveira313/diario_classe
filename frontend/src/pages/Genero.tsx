@@ -1,17 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api, supabase } from '../api';
 import { Loading } from '../components';
 import MatriculasMensais from '../components/MatriculasMensais';
 import { useAno } from '../AnoContext';
 import { sortTurmasPedagogico, theme } from '../styles';
 import { useAuth } from '../AuthContext';
+import { sugerirSexoPeloNome } from '../nomesGenero';
 
 export default function Genero() {
-  const { role } = useAuth();
+  const { role, username } = useAuth();
   const { ano, setAno } = useAno();
   const [turmas, setTurmas] = useState<any[]>([]);
   const [alunos, setAlunos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [corrigindoSuspeito, setCorrigindoSuspeito] = useState('');
 
   useEffect(() => {
     Promise.all([api.getTurmas(), api.getAllAlunos()])
@@ -40,6 +42,30 @@ export default function Genero() {
     setAlunos(atuais => atuais.map(aluno => idsFinais.has(String(aluno.id)) ? { ...aluno, sexo } : aluno));
   };
 
+  // Achado real (ago/2026): um clique errado na conferência em lote deixou uma
+  // "Alice" marcada como menino, sem nenhum jeito de perceber depois. Cruza o
+  // sexo já salvo com a sugestão pelo primeiro nome (mesma lista curada usada
+  // na conferência em lote) e avisa quando os dois batem em direções opostas —
+  // não corrige sozinho, só aponta pra conferência.
+  const suspeitosSexoTrocado = useMemo(() => {
+    const turmaMap = new Map(turmas.map(turma => [turma.id, turma.nome]));
+    return alunos
+      .filter(aluno => (!aluno.situacao || aluno.situacao === 'ATIVO') && (aluno.sexo === 'M' || aluno.sexo === 'F'))
+      .map(aluno => ({ aluno, sugestao: sugerirSexoPeloNome(aluno.nome) }))
+      .filter(({ aluno, sugestao }) => sugestao && sugestao !== aluno.sexo)
+      .map(({ aluno, sugestao }) => ({ id: String(aluno.id), nome: aluno.nome, ra: aluno.ra, turma: turmaMap.get(aluno.turmaId) ?? 'Sem turma', atual: aluno.sexo as 'M' | 'F', sugestao: sugestao as 'M' | 'F' }))
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  }, [alunos, turmas]);
+
+  const corrigirSuspeito = async (id: string, sexo: 'M' | 'F') => {
+    setCorrigindoSuspeito(id);
+    try {
+      await atualizarSexo([id], sexo);
+    } finally {
+      setCorrigindoSuspeito('');
+    }
+  };
+
   if (loading) return <Loading />;
 
   return (
@@ -58,6 +84,38 @@ export default function Genero() {
           </>}
         </div>
       </div>
+      {suspeitosSexoTrocado.length > 0 && (
+        <div style={{ marginBottom: 16, border: `1px solid ${theme.orange}88`, borderRadius: theme.radius, overflow: 'hidden' }}>
+          <div style={{ padding: '10px 14px', background: `${theme.orange}12`, borderBottom: `1px solid ${theme.orange}55` }}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: theme.text }}>⚠️ Confira: sexo pode estar trocado ({suspeitosSexoTrocado.length})</div>
+            <div style={{ marginTop: 3, fontSize: 12, color: theme.textSecondary }}>
+              O sexo salvo para estes alunos não bate com o que o primeiro nome costuma indicar (ex.: "Alice" marcada como menino). Não corrige sozinho — confira e clique no que estiver certo.
+            </div>
+          </div>
+          <div style={{ maxHeight: 260, overflowY: 'auto' }}>
+            {suspeitosSexoTrocado.map((item, indice) => (
+              <div key={item.id} style={{
+                display: 'grid', gridTemplateColumns: 'minmax(210px, 1fr) minmax(120px, .45fr) auto',
+                alignItems: 'center', gap: 10, padding: '8px 12px',
+                background: indice % 2 === 0 ? 'transparent' : theme.bg,
+                borderBottom: `1px solid ${theme.borderLight}`,
+              }}>
+                <div>
+                  <div style={{ color: theme.text, fontWeight: 700 }}>{item.nome}</div>
+                  <div style={{ color: theme.textSecondary, fontSize: 11.5 }}>RA: {item.ra || 'não informado'} · salvo como {item.atual === 'M' ? 'menino' : 'menina'}</div>
+                </div>
+                <div style={{ color: theme.textSecondary, fontSize: 12, fontWeight: 600 }}>{item.turma}</div>
+                {role === 'admin' ? (
+                  <button type="button" disabled={!!corrigindoSuspeito} onClick={() => corrigirSuspeito(item.id, item.sugestao)}
+                    className="report-action report-action-warning">
+                    {corrigindoSuspeito === item.id ? 'Salvando…' : `Corrigir para ${item.sugestao === 'M' ? 'menino' : 'menina'}`}
+                  </button>
+                ) : <span />}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <MatriculasMensais
         alunos={alunos}
         turmas={turmas}
@@ -65,6 +123,7 @@ export default function Genero() {
         onAnoChange={setAno}
         onAtualizarSexo={atualizarSexo}
         somenteConsulta={role !== 'admin'}
+        username={username}
       />
     </div>
   );
