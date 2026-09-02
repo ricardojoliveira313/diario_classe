@@ -5,6 +5,7 @@ import { calcularMatriculasMensais, ContagemSexo } from '../matriculasMensais';
 import { sugerirSexoPeloNome } from '../nomesGenero';
 import { extrairLinhasEducacenso } from '../educacenso';
 import { cruzarSEDComEducacenso, type ResultadoCruzamentoEducacenso } from '../cruzamentoEducacenso';
+import { api } from '../api';
 
 type TipoEnsino = '' | 'INFANTIL' | 'FUNDAMENTAL' | 'EJA' | 'AEE';
 
@@ -73,6 +74,7 @@ export default function MatriculasMensais({
   onAnoChange,
   onAtualizarSexo,
   somenteConsulta = false,
+  username,
 }: {
   alunos: any[];
   turmas: any[];
@@ -80,6 +82,7 @@ export default function MatriculasMensais({
   onAnoChange: (ano: number) => void;
   onAtualizarSexo: (ids: string[], sexo: 'M' | 'F') => Promise<void>;
   somenteConsulta?: boolean;
+  username?: string | null;
 }) {
   const hoje = useMemo(() => new Date(), []);
   const ultimoMesDisponivel = ano === hoje.getFullYear() ? hoje.getMonth() + 1 : 12;
@@ -97,11 +100,33 @@ export default function MatriculasMensais({
   const [analisandoEducacenso, setAnalisandoEducacenso] = useState(false);
   const [aplicandoEducacenso, setAplicandoEducacenso] = useState(false);
   const [mensagemEducacenso, setMensagemEducacenso] = useState('');
+  const [salvoGeneroInfo, setSalvoGeneroInfo] = useState<{ por: string; em: string } | null>(null);
 
   useEffect(() => {
     setMesInicio(2);
     setMesFim(ultimoMesDisponivel);
   }, [ano, ultimoMesDisponivel]);
+
+  // Recupera o cruzamento SED × Educacenso salvo deste ano letivo — sem isso,
+  // reimportar o mesmo arquivo do Educacenso a cada visita era a única forma
+  // de ver as mesmas divergências pendentes de novo.
+  useEffect(() => {
+    setResultadoEducacenso(null);
+    setArquivoEducacenso('');
+    setSalvoGeneroInfo(null);
+    api.getCruzamentoGenero(ano).then(salvo => {
+      if (!salvo) return;
+      setResultadoEducacenso(salvo.resultado);
+      setArquivoEducacenso(salvo.nome_arquivo ?? '');
+      setSalvoGeneroInfo({ por: salvo.criado_por ?? 'desconhecido', em: salvo.criado_em });
+    });
+  }, [ano]);
+
+  const salvarCruzamentoGenero = (resultado: ResultadoCruzamentoEducacenso, nomeArquivo: string) => {
+    const agora = new Date().toISOString();
+    api.salvarCruzamentoGenero(ano, nomeArquivo, resultado, username ?? 'desconhecido');
+    setSalvoGeneroInfo({ por: username ?? 'desconhecido', em: agora });
+  };
 
   const turmasDoTipo = useMemo(
     () => turmas.filter(turma => !tipoEnsino || tipoEnsinoDaTurma(turma) === tipoEnsino),
@@ -271,6 +296,7 @@ export default function MatriculasMensais({
       if (comSexo.length === 0) throw new Error('O relatório foi reconhecido, mas a coluna Sexo está vazia.');
       const resultado = cruzarSEDComEducacenso(alunos, turmas, linhas);
       setResultadoEducacenso(resultado);
+      salvarCruzamentoGenero(resultado, arquivo.name);
       setMensagemEducacenso(`Arquivo reconhecido: ${linhas.length} registro(s) oficiais analisados.`);
     } catch (erro: any) {
       setMensagemEducacenso(`Erro na análise: ${erro?.message ?? erro}`);
@@ -310,7 +336,7 @@ export default function MatriculasMensais({
         if (!atual) return atual;
         const item = atual.somenteSED.find(i => i.id === id) ?? atual.ambiguos.find(i => i.id === id);
         if (!item) return atual;
-        return {
+        const novoResultado: ResultadoCruzamentoEducacenso = {
           ...atual,
           somenteSED: atual.somenteSED.filter(i => i.id !== id),
           ambiguos: atual.ambiguos.filter(i => i.id !== id),
@@ -319,6 +345,8 @@ export default function MatriculasMensais({
           feminino: atual.feminino + (sexo === 'F' ? 1 : 0),
           naoInformado: atual.naoInformado - 1,
         };
+        salvarCruzamentoGenero(novoResultado, arquivoEducacenso);
+        return novoResultado;
       });
     } catch (erro: any) {
       setErroSexo(`Não foi possível salvar: ${erro?.message ?? erro}`);
@@ -543,6 +571,11 @@ export default function MatriculasMensais({
             </label>
           </div>
           {arquivoEducacenso && <div style={{ color: theme.textSecondary, fontSize: 11.5, marginTop: 7 }}>Arquivo: {arquivoEducacenso}</div>}
+          {salvoGeneroInfo && resultadoEducacenso && (
+            <div style={{ marginTop: 6, fontSize: 12, color: theme.textSecondary }}>
+              💾 Cruzamento salvo — por {salvoGeneroInfo.por}, em {new Date(salvoGeneroInfo.em).toLocaleString('pt-BR')}. Fica salvo mesmo trocando de aba ou fechando o navegador.
+            </div>
+          )}
           {mensagemEducacenso && <div style={{ color: mensagemEducacenso.startsWith('Erro') || mensagemEducacenso.startsWith('Não') ? 'var(--report-danger)' : 'var(--report-green)', fontSize: 12, fontWeight: 700, marginTop: 7 }}>{mensagemEducacenso}</div>}
 
           {resultadoEducacenso && (

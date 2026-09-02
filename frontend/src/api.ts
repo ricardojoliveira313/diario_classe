@@ -250,6 +250,26 @@ export const api = {
     }
   },
 
+  salvarCruzamentoGenero: async (ano: number, nomeArquivo: string, resultado: any, criadoPor: string) => {
+    const { error } = await supabase.from('CruzamentoGenero').upsert({
+      ano,
+      nome_arquivo: nomeArquivo,
+      resultado,
+      criado_por: criadoPor,
+      criado_em: new Date().toISOString(),
+    }, { onConflict: 'ano' });
+    if (error) console.error('Não foi possível salvar o cruzamento de Gênero:', error);
+  },
+  getCruzamentoGenero: async (ano: number): Promise<{ nome_arquivo: string; resultado: any; criado_por: string; criado_em: string } | null> => {
+    try {
+      const { data, error } = await supabase.from('CruzamentoGenero').select('*').eq('ano', ano).maybeSingle();
+      if (error) return null;
+      return data ?? null;
+    } catch {
+      return null;
+    }
+  },
+
   getUsuarios: async () => todasAsPaginas((inicio, fim) => supabase
     .from('Usuario')
     .select('id, nome, perfil, ativo, turma_id, permissoes')
