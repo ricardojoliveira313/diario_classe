@@ -51,9 +51,9 @@ try {
   assert.equal(cruzamento.encontrados.length, 2, 'deve cruzar primeiro por CPF e depois por nome+nascimento');
   assert.equal(cruzamento.masculino, 1);
   assert.equal(cruzamento.feminino, 1);
-  assert.equal(cruzamento.somenteSED.length, 2);
-  assert.equal(cruzamento.totalSED, 4,
-    'deve contar somente ATIVO: transferido, REMA e situação vazia ficam fora; destino ATIVO entra uma vez');
+  assert.equal(cruzamento.somenteSED.length, 3);
+  assert.equal(cruzamento.totalSED, 5,
+    'deve contar ATIVO e situação vazia (mesma regra do Dashboard/Alunos/Faltas): transferido e REMA ficam fora; destino ATIVO entra uma vez');
 
   if (process.argv[2]) {
     const wb = XLSX.readFile(process.argv[2], { cellDates: true });

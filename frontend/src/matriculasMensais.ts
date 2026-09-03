@@ -104,10 +104,12 @@ function contarSexos(sexos: Iterable<SexoContagem>): ContagemSexo {
 /**
  * Fotografia atual da escola.
  *
- * Só um vínculo explicitamente ATIVO representa matrícula atual. Registros
- * REMA são a origem histórica de um remanejamento; o aluno entra na contagem
- * pelo ATIVO de destino, uma única vez por RA. Situações vazias ou diferentes
- * de ATIVO não são presumidas como matrícula atual.
+ * Um vínculo ATIVO — ou situação vazia/nula, tratada como ATIVO em todo o
+ * app (Dashboard, Alunos, Faltas; ver regra em CLAUDE.md) — representa
+ * matrícula atual. Registros REMA são a origem histórica de um
+ * remanejamento; o aluno entra na contagem pelo ATIVO de destino, uma única
+ * vez por RA. Só situações explicitamente diferentes de ATIVO (TRAN, BXTR,
+ * N COM, ABAN, REMA) não são presumidas como matrícula atual.
  */
 export function calcularMatriculasAtuais(
   alunos: any[],
@@ -119,7 +121,7 @@ export function calcularMatriculasAtuais(
     const turma = turmaMap.get(String(aluno.turmaId));
     const turmaAEE = turma?.tipo === 'AEE' || /^AEE\b/i.test(turma?.nome ?? '');
     const situacao = String(aluno.situacao ?? '').trim().toUpperCase();
-    return situacao === 'ATIVO' && (incluirAEE || (aluno.aee !== true && !turmaAEE));
+    return (situacao === '' || situacao === 'ATIVO') && (incluirAEE || (aluno.aee !== true && !turmaAEE));
   });
 
   const grupos = new Map<string, any[]>();
@@ -244,7 +246,10 @@ export function calcularMatriculasMensais(
   // sem esse filtro, alunos já transferidos voltavam a pedir conferência de
   // sexo toda vez que a tela recarregava.
   const pessoasAtivas = pessoas.filter(pessoa =>
-    pessoa.registros.some(registro => String(registro.situacao ?? '').trim().toUpperCase() === 'ATIVO'));
+    pessoa.registros.some(registro => {
+      const situacao = String(registro.situacao ?? '').trim().toUpperCase();
+      return situacao === '' || situacao === 'ATIVO';
+    }));
 
   return {
     meses,
@@ -258,9 +263,10 @@ export function calcularMatriculasMensais(
     pendentesSexo: pessoasAtivas
       .filter(pessoa => pessoa.sexo === 'NI')
       .map(pessoa => {
-        const representante = pessoa.registros.find(registro =>
-          String(registro.situacao ?? '').trim().toUpperCase() === 'ATIVO')
-          ?? pessoa.registros[0];
+        const representante = pessoa.registros.find(registro => {
+          const situacao = String(registro.situacao ?? '').trim().toUpperCase();
+          return situacao === '' || situacao === 'ATIVO';
+        }) ?? pessoa.registros[0];
         return {
           chave: pessoa.chave,
           ids: pessoa.registros.map(registro => String(registro.id)).filter(Boolean),
