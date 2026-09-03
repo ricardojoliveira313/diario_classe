@@ -121,6 +121,20 @@ export default function MatriculasMensais({
     return mapa;
   }, [alunos]);
 
+  // Tira da lista/contador quem já tem sexo confirmado — essa tela é sobre
+  // gênero, então quem já está correto não deve poluir a conferência com uma
+  // divergência de identidade (nome/CPF/nascimento) que não tem mais nada a
+  // ver com sexo pendente. Pedido direto do usuário (set/2026): "mostrar só o
+  // que apontar erro, o que estiver correto não precisa aparecer".
+  const somenteSEDPendente = useMemo(
+    () => resultadoEducacenso?.somenteSED.filter(item => !sexoConfirmadoPorId.has(item.id)) ?? [],
+    [resultadoEducacenso, sexoConfirmadoPorId],
+  );
+  const ambiguosPendentes = useMemo(
+    () => resultadoEducacenso?.ambiguos.filter(item => !(item.id && sexoConfirmadoPorId.has(item.id))) ?? [],
+    [resultadoEducacenso, sexoConfirmadoPorId],
+  );
+
   // Recupera o cruzamento SED × Educacenso salvo deste ano letivo — sem isso,
   // reimportar o mesmo arquivo do Educacenso a cada visita era a única forma
   // de ver as mesmas divergências pendentes de novo.
@@ -640,27 +654,25 @@ export default function MatriculasMensais({
                   {aplicandoEducacenso ? 'Aplicando…' : `✅ Aplicar sexo oficial (${resultadoEducacenso.masculino + resultadoEducacenso.feminino})`}
                 </button>
                 <span style={{ color: theme.textSecondary, fontSize: 12 }}>
-                  Somente SED: {resultadoEducacenso.somenteSED.length} · Somente Educacenso: {resultadoEducacenso.somenteEducacenso.length} · Ambíguos: {resultadoEducacenso.ambiguos.length}
+                  Somente SED: {somenteSEDPendente.length} · Somente Educacenso: {resultadoEducacenso.somenteEducacenso.length} · Ambíguos: {ambiguosPendentes.length}
                 </span>
               </div>
-              {(resultadoEducacenso.somenteSED.length > 0 || resultadoEducacenso.somenteEducacenso.length > 0 || resultadoEducacenso.ambiguos.length > 0) && (
+              {(somenteSEDPendente.length > 0 || resultadoEducacenso.somenteEducacenso.length > 0 || ambiguosPendentes.length > 0) && (
                 <details style={{ marginTop: 9, color: theme.textSecondary, fontSize: 12 }}>
                   <summary style={{ cursor: 'pointer', fontWeight: 800, color: 'var(--report-orange)' }}>⚠️ Ver divergências antes de concluir</summary>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8, marginTop: 8, maxHeight: 260, overflowY: 'auto' }}>
                     <ListaDivergencia
                       titulo="Somente na SED/app"
-                      itens={resultadoEducacenso.somenteSED}
+                      itens={somenteSEDPendente}
                       onDefinir={somenteConsulta ? undefined : definirSexoManual}
                       salvando={salvandoSexo}
-                      sexoConfirmado={sexoConfirmadoPorId}
                     />
                     <ListaDivergencia titulo="Somente no Educacenso" itens={resultadoEducacenso.somenteEducacenso} />
                     <ListaDivergencia
                       titulo="Correspondência ambígua"
-                      itens={resultadoEducacenso.ambiguos.map(item => ({ id: item.id, nome: item.nome, turma: item.origem }))}
+                      itens={ambiguosPendentes.map(item => ({ id: item.id, nome: item.nome, turma: item.origem }))}
                       onDefinir={somenteConsulta ? undefined : definirSexoManual}
                       salvando={salvandoSexo}
-                      sexoConfirmado={sexoConfirmadoPorId}
                     />
                   </div>
                 </details>
