@@ -4,7 +4,7 @@ import { theme, MESES, input } from '../styles';
 import { calcularMatriculasMensais, ContagemSexo } from '../matriculasMensais';
 import { sugerirSexoPeloNome } from '../nomesGenero';
 import { extrairLinhasEducacenso } from '../educacenso';
-import { cruzarSEDComEducacenso, type ResultadoCruzamentoEducacenso } from '../cruzamentoEducacenso';
+import { cruzarSEDComEducacenso, type ResultadoCruzamentoEducacenso, type CandidatoDivergente } from '../cruzamentoEducacenso';
 import { api } from '../api';
 
 type TipoEnsino = '' | 'INFANTIL' | 'FUNDAMENTAL' | 'EJA' | 'AEE';
@@ -873,7 +873,7 @@ function Resumo({ label, valor, cor }: { label: string; valor: number; cor: stri
 
 function ListaDivergencia({ titulo, itens, onDefinir, salvando }: {
   titulo: string;
-  itens: Array<{ id?: string; nome: string; turma: string }>;
+  itens: Array<{ id?: string; nome: string; turma: string; candidato?: CandidatoDivergente }>;
   // Só passado pra listas do lado SED (Somente SED/app, Ambíguo-SED) — dá pra
   // definir o sexo na hora, sem precisar esperar um novo arquivo do Educacenso
   // bater certinho com esse aluno.
@@ -895,6 +895,13 @@ function ListaDivergencia({ titulo, itens, onDefinir, salvando }: {
               <div>
                 <div style={{ color: theme.text, fontWeight: 650 }}>{item.nome}</div>
                 {item.turma && <div style={{ color: theme.textSecondary, fontSize: 11 }}>{item.turma}</div>}
+                {item.candidato && (
+                  <div style={{ color: 'var(--report-orange)', fontSize: 11, marginTop: 2 }}>
+                    🔎 {item.candidato.motivo === 'nome parecido, nascimento diferente'
+                      ? <>Educacenso tem "{item.candidato.nome}" com nascimento diferente: SED {item.candidato.dataNascimentoSED || '—'} × Educacenso {item.candidato.dataNascimentoEducacenso || '—'} — confira se é a mesma criança.</>
+                      : <>Educacenso tem "{item.candidato.nome}" com o mesmo nascimento ({item.candidato.dataNascimentoEducacenso}), mas nome bem diferente — confira antes de assumir que é a mesma criança.</>}
+                  </div>
+                )}
               </div>
               {onDefinir && item.id && (
                 <div style={{ display: 'flex', gap: 4 }}>
