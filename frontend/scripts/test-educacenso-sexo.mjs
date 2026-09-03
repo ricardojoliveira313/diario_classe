@@ -43,11 +43,17 @@ try {
     { id: 'a1', ra: 1, nome: 'ALUNO TESTE', data_nascimento: '01/02/2017', cpf: '12345678901', turmaId: 't1', situacao: 'ATIVO' },
     { id: 'a2', ra: 2, nome: 'ALUNA TESTE', data_nascimento: '02/03/2017', cpf: '', turmaId: 't1', situacao: 'ATIVO' },
     { id: 'a3', ra: 3, nome: 'SOMENTE SED', data_nascimento: '03/04/2017', cpf: '', turmaId: 't1', situacao: 'ATIVO' },
+    { id: 'a4', ra: 4, nome: 'TRANSFERIDO', data_nascimento: '04/05/2017', cpf: '', turmaId: 't1', situacao: 'TRAN' },
+    { id: 'a5', ra: 5, nome: 'SITUACAO VAZIA', data_nascimento: '05/06/2017', cpf: '', turmaId: 't1', situacao: '' },
+    { id: 'a6', ra: 6, nome: 'REMANEJADO', data_nascimento: '06/07/2017', cpf: '', turmaId: 't1', situacao: 'REMA' },
+    { id: 'a7', ra: 6, nome: 'REMANEJADO', data_nascimento: '06/07/2017', cpf: '', turmaId: 't1', situacao: 'ATIVO' },
   ], [{ id: 't1', nome: '2º ANO B', tipo: 'REGULAR' }], linhas);
   assert.equal(cruzamento.encontrados.length, 2, 'deve cruzar primeiro por CPF e depois por nome+nascimento');
   assert.equal(cruzamento.masculino, 1);
   assert.equal(cruzamento.feminino, 1);
-  assert.equal(cruzamento.somenteSED.length, 1);
+  assert.equal(cruzamento.somenteSED.length, 2);
+  assert.equal(cruzamento.totalSED, 4,
+    'deve contar somente ATIVO: transferido, REMA e situação vazia ficam fora; destino ATIVO entra uma vez');
 
   if (process.argv[2]) {
     const wb = XLSX.readFile(process.argv[2], { cellDates: true });
