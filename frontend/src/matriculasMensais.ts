@@ -16,6 +16,7 @@ export interface LinhaMatriculasMes {
 
 export interface ResumoMatriculasMensais {
   meses: LinhaMatriculasMes[];
+  totalAtual: ContagemSexo;
   totalPeriodo: ContagemSexo;
   totalEntradas: ContagemSexo;
   totalSaidas: ContagemSexo;
@@ -100,6 +101,37 @@ function contarSexos(sexos: Iterable<SexoContagem>): ContagemSexo {
   return contagem;
 }
 
+/**
+ * Fotografia atual da escola.
+ *
+ * Só um vínculo explicitamente ATIVO representa matrícula atual. Registros
+ * REMA são a origem histórica de um remanejamento; o aluno entra na contagem
+ * pelo ATIVO de destino, uma única vez por RA. Situações vazias ou diferentes
+ * de ATIVO não são presumidas como matrícula atual.
+ */
+export function calcularMatriculasAtuais(
+  alunos: any[],
+  turmas: any[],
+  incluirAEE = false,
+): ContagemSexo {
+  const turmaMap = new Map(turmas.map(t => [String(t.id), t]));
+  const ativos = alunos.filter(aluno => {
+    const turma = turmaMap.get(String(aluno.turmaId));
+    const turmaAEE = turma?.tipo === 'AEE' || /^AEE\b/i.test(turma?.nome ?? '');
+    const situacao = String(aluno.situacao ?? '').trim().toUpperCase();
+    return situacao === 'ATIVO' && (incluirAEE || (aluno.aee !== true && !turmaAEE));
+  });
+
+  const grupos = new Map<string, any[]>();
+  for (const aluno of ativos) {
+    const chave = chavePessoa(aluno);
+    if (!grupos.has(chave)) grupos.set(chave, []);
+    grupos.get(chave)!.push(aluno);
+  }
+
+  return contarSexos([...grupos.values()].map(sexoDoGrupo));
+}
+
 export function calcularMatriculasMensais(
   alunos: any[],
   turmas: any[],
@@ -115,6 +147,7 @@ export function calcularMatriculasMensais(
     const turmaAEE = turma?.tipo === 'AEE' || /^AEE\b/i.test(turma?.nome ?? '');
     return incluirAEE || (aluno.aee !== true && !turmaAEE);
   });
+  const totalAtual = calcularMatriculasAtuais(alunos, turmas, incluirAEE);
 
   const grupos = new Map<string, any[]>();
   for (const aluno of regulares) {
@@ -172,7 +205,17 @@ export function calcularMatriculasMensais(
     const inicioMesCorreto = new Date(ano, mes - 1, 1);
     const fimMesCompleto = new Date(ano, mes, 0, 23, 59, 59, 999);
     const fimMes = mes === mesFim ? fimPeriodo : fimMesCompleto;
-    const matriculados = pessoas.filter(pessoa => sobrepoe(pessoa, inicioMesCorreto, fimMes));
+    // A coluna mensal é uma fotografia no fim do mês, não "qualquer pessoa que
+    // passou por aqui em algum dia do mês". Isso impede que uma transferência
+    // seja contada simultaneamente na escola de origem e na escola de destino.
+    // No mês corrente, a situação ATIVO da última SED é a fonte da verdade e
+    // também inclui o caso que precisa de correção de data de início.
+    const mesAtual = ano === hoje.getFullYear() && mes === hoje.getMonth() + 1;
+    const matriculados = mesAtual
+      ? null
+      : pessoas.filter(pessoa => pessoa.periodos.some(periodo => periodo.inicio
+        && periodo.inicio <= fimMes
+        && (!periodo.fim || periodo.fim >= fimMes)));
     const entradas = pessoas.filter(pessoa => pessoa.primeiraEntrada
       && pessoa.primeiraEntrada >= inicioMesCorreto
       && pessoa.primeiraEntrada <= fimMes);
@@ -181,7 +224,7 @@ export function calcularMatriculasMensais(
       && pessoa.ultimaSaida <= fimMes);
     return {
       mes,
-      matriculados: contarSexos(matriculados.map(p => p.sexo)),
+      matriculados: mesAtual ? totalAtual : contarSexos(matriculados!.map(p => p.sexo)),
       entradas: contarSexos(entradas.map(p => p.sexo)),
       saidas: contarSexos(saidas.map(p => p.sexo)),
     };
@@ -200,21 +243,23 @@ export function calcularMatriculasMensais(
   // totais do período e no cálculo de saídas acima. Achado real (set/2026):
   // sem esse filtro, alunos já transferidos voltavam a pedir conferência de
   // sexo toda vez que a tela recarregava.
-  const pessoasAtivasNoPeriodo = pessoasDoPeriodo.filter(pessoa =>
-    pessoa.registros.some(registro => !registro.situacao || registro.situacao === 'ATIVO'));
+  const pessoasAtivas = pessoas.filter(pessoa =>
+    pessoa.registros.some(registro => String(registro.situacao ?? '').trim().toUpperCase() === 'ATIVO'));
 
   return {
     meses,
+    totalAtual,
     totalPeriodo: contarSexos(pessoasDoPeriodo.map(p => p.sexo)),
     totalEntradas: contarSexos(entradasPeriodo.map(p => p.sexo)),
     totalSaidas: contarSexos(saidasPeriodo.map(p => p.sexo)),
-    semSexo: pessoasAtivasNoPeriodo.filter(p => p.sexo === 'NI').length,
+    semSexo: pessoasAtivas.filter(p => p.sexo === 'NI').length,
     semDataInicio: pessoas.filter(p => !p.primeiraEntrada).length,
     semDataSaida: pessoas.filter(pessoa => pessoa.periodos.some(periodo => periodo.saidaSemData)).length,
-    pendentesSexo: pessoasAtivasNoPeriodo
+    pendentesSexo: pessoasAtivas
       .filter(pessoa => pessoa.sexo === 'NI')
       .map(pessoa => {
-        const representante = pessoa.registros.find(registro => !registro.situacao || registro.situacao === 'ATIVO')
+        const representante = pessoa.registros.find(registro =>
+          String(registro.situacao ?? '').trim().toUpperCase() === 'ATIVO')
           ?? pessoa.registros[0];
         return {
           chave: pessoa.chave,
