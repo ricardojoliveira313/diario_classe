@@ -145,12 +145,15 @@ export default function MatriculasMensais({
     [turmasDisponiveis, turmaId],
   );
   const alunosFiltrados = useMemo(() => {
-    // Mesma regra de negócio usada nas telas Dashboard e Alunos:
-    // situação vazia nos registros antigos também representa matrícula ativa.
-    const ativos = alunos.filter(aluno => !aluno.situacao || aluno.situacao === 'ATIVO');
-    if (!tipoEnsino && !serie && !turmaId) return ativos;
+    // Aqui NÃO filtramos para "só ATIVO" como em Dashboard/Alunos: calcularMatriculasMensais
+    // precisa dos registros TRAN/BXTR/N COM/ABAN (com sua data de saída) para conseguir
+    // calcular corretamente "Saídas no mês" e a matrícula histórica dos meses anteriores à
+    // saída. Só o REMA é descartado aqui — ele é o registro de origem do remanejamento e a
+    // regra de negócio manda contar apenas o ATIVO de destino (mesmo RA, mesma pessoa).
+    const consideraveis = alunos.filter(aluno => aluno.situacao !== 'REMA');
+    if (!tipoEnsino && !serie && !turmaId) return consideraveis;
     const ids = new Set(turmasFiltradas.map(turma => turma.id));
-    return ativos.filter(aluno => ids.has(aluno.turmaId));
+    return consideraveis.filter(aluno => ids.has(aluno.turmaId));
   }, [alunos, turmasFiltradas, tipoEnsino, serie, turmaId]);
   const resumo = useMemo(
     () => calcularMatriculasMensais(
