@@ -83,6 +83,33 @@ try {
   assert.equal(setembro.meses[0].matriculados.total, 3,
     'mês corrente deve reproduzir a fotografia ATIVO/vazio, inclusive ativo sem data de início');
 
+  const maio = calcularMatriculasMensais(fotografia, turmas, 2026, 5, 5, new Date(2026, 8, 3));
+  assert.equal(maio.totalEntradas.total, 0,
+    'ATIVO de destino não pode virar nova entrada quando o mesmo RA tem REMA de origem');
+  assert.equal(maio.totalSaidas.total, 0,
+    'REMA é movimentação interna e não pode virar saída da escola');
+
+  const trocaComTotalIgual = calcularMatriculasMensais([
+    {
+      id: 'menino-saiu', ra: 901, nome: 'MENINO SAIU', turmaId: 'regular', sexo: 'M',
+      situacao: 'TRAN', data_inicio_matricula: '04/02/2026', data_fim_matricula: '28/08/2026',
+    },
+    {
+      id: 'menina-permaneceu', ra: 902, nome: 'MENINA PERMANECEU', turmaId: 'regular', sexo: 'F',
+      situacao: 'ATIVO', data_inicio_matricula: '04/02/2026', data_fim_matricula: '18/12/2026',
+    },
+    {
+      id: 'menina-entrou', ra: 903, nome: 'MENINA ENTROU', turmaId: 'regular', sexo: 'F',
+      situacao: 'ATIVO', data_inicio_matricula: '29/08/2026', data_fim_matricula: '18/12/2026',
+    },
+  ], turmas, 2026, 8, 8, new Date(2026, 8, 31));
+  assert.equal(trocaComTotalIgual.totalAtual.total, 2,
+    'o total atual pode permanecer igual mesmo com troca na composição');
+  assert.deepEqual(trocaComTotalIgual.totalEntradas, { masculino: 0, feminino: 1, naoInformado: 0, total: 1 },
+    'a nova coluna deve revelar a entrada de uma menina');
+  assert.deepEqual(trocaComTotalIgual.totalSaidas, { masculino: 1, feminino: 0, naoInformado: 0, total: 1 },
+    'a nova coluna deve revelar a saída de um menino');
+
   const transferenciaNoMes = calcularMatriculasMensais([{
     id: 'saiu-no-mes', ra: 800, nome: 'SAIU NO MÊS', turmaId: 'regular', sexo: 'M',
     situacao: 'TRAN', data_inicio_matricula: '04/02/2026', data_fim_matricula: '10/08/2026',

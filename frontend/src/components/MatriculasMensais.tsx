@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import * as XLSX from 'xlsx';
 import { theme, MESES, input } from '../styles';
-import { calcularMatriculasAtuais, calcularMatriculasMensais, ContagemSexo } from '../matriculasMensais';
+import { calcularMatriculasMensais, ContagemSexo } from '../matriculasMensais';
 import { sugerirSexoPeloNome } from '../nomesGenero';
 import { extrairLinhasEducacenso } from '../educacenso';
 import { cruzarSEDComEducacenso, type ResultadoCruzamentoEducacenso, type CandidatoDivergente } from '../cruzamentoEducacenso';
@@ -14,6 +14,8 @@ interface LinhaConsolidada {
   label: string;
   nivel: 'tipo' | 'serie' | 'turma';
   contagem: ContagemSexo;
+  entradas: ContagemSexo;
+  saidas: ContagemSexo;
 }
 
 function tipoEnsinoDaTurma(turma: any): Exclude<TipoEnsino, ''> {
@@ -50,6 +52,18 @@ function CelulasContagem({ valor }: { valor: ContagemSexo }) {
   );
 }
 
+function CelulaMovimentacao({ valor, tipo }: { valor: ContagemSexo; tipo: 'entrada' | 'saida' }) {
+  const sinal = tipo === 'entrada' ? '+' : '−';
+  const cor = tipo === 'entrada' ? 'var(--report-green)' : 'var(--report-danger)';
+  const detalhes = `M ${valor.masculino} · F ${valor.feminino}${valor.naoInformado > 0 ? ` · N/I ${valor.naoInformado}` : ''}`;
+  return (
+    <td style={{ ...numero(cor), minWidth: 112 }} title={`${detalhes} · Total ${valor.total}`}>
+      <div style={{ fontWeight: 900 }}>${sinal}{valor.total}</div>
+      <div style={{ marginTop: 1, color: theme.textSecondary, fontSize: 10.5, fontWeight: 600 }}>{detalhes}</div>
+    </td>
+  );
+}
+
 function numero(cor: string): CSSProperties {
   return { textAlign: 'center', padding: '8px 7px', color: cor, fontWeight: 700, whiteSpace: 'nowrap' };
 }
@@ -65,6 +79,11 @@ function escaparHtml(valor: unknown): string {
 
 function celulasRelatorio(valor: ContagemSexo): string {
   return `<td>${valor.masculino}</td><td>${valor.feminino}</td><td>${valor.naoInformado}</td><td><strong>${valor.total}</strong></td>`;
+}
+
+function celulaMovimentacaoRelatorio(valor: ContagemSexo, sinal: '+' | '−'): string {
+  const ni = valor.naoInformado > 0 ? ` / N/I ${valor.naoInformado}` : '';
+  return `<td><strong>${sinal}${valor.total}</strong><br><small>M ${valor.masculino} / F ${valor.feminino}${ni}</small></td>`;
 }
 
 export default function MatriculasMensais({
@@ -173,15 +192,12 @@ export default function MatriculasMensais({
     [turmasDisponiveis, turmaId],
   );
   const alunosFiltrados = useMemo(() => {
-    // Aqui NÃO filtramos para "só ATIVO" como em Dashboard/Alunos: calcularMatriculasMensais
-    // precisa dos registros TRAN/BXTR/N COM/ABAN (com sua data de saída) para conseguir
-    // calcular corretamente "Saídas no mês" e a matrícula histórica dos meses anteriores à
-    // saída. Só o REMA é descartado aqui — ele é o registro de origem do remanejamento e a
-    // regra de negócio manda contar apenas o ATIVO de destino (mesmo RA, mesma pessoa).
-    const consideraveis = alunos.filter(aluno => aluno.situacao !== 'REMA');
-    if (!tipoEnsino && !serie && !turmaId) return consideraveis;
+    // O histórico precisa também dos registros REMA: eles permitem reconhecer que
+    // o ATIVO de destino é remanejamento interno, e não uma nova entrada na escola.
+    // A fotografia atual já ignora REMA e conta somente o ATIVO de destino por RA.
+    if (!tipoEnsino && !serie && !turmaId) return alunos;
     const ids = new Set(turmasFiltradas.map(turma => turma.id));
-    return consideraveis.filter(aluno => ids.has(aluno.turmaId));
+    return alunos.filter(aluno => ids.has(aluno.turmaId));
   }, [alunos, turmasFiltradas, tipoEnsino, serie, turmaId]);
   const resumo = useMemo(
     () => calcularMatriculasMensais(
@@ -204,7 +220,20 @@ export default function MatriculasMensais({
     const resumoDasTurmas = (grupoTurmas: any[], incluirAEE: boolean) => {
       const ids = new Set(grupoTurmas.map(turma => turma.id));
       const grupoAlunos = alunosFiltrados.filter(aluno => ids.has(aluno.turmaId));
-      return calcularMatriculasAtuais(grupoAlunos, grupoTurmas, incluirAEE);
+      const resumoGrupo = calcularMatriculasMensais(
+        grupoAlunos,
+        grupoTurmas,
+        ano,
+        mesInicio,
+        mesFim,
+        hoje,
+        incluirAEE,
+      );
+      return {
+        contagem: resumoGrupo.totalAtual,
+        entradas: resumoGrupo.totalEntradas,
+        saidas: resumoGrupo.totalSaidas,
+      };
     };
 
     for (const tipo of tipos) {
@@ -214,7 +243,7 @@ export default function MatriculasMensais({
         chave: tipo,
         label: TIPO_LABEL[tipo],
         nivel: 'tipo',
-        contagem: resumoDasTurmas(grupoTurmas, tipo === 'AEE'),
+        ...resumoDasTurmas(grupoTurmas, tipo === 'AEE'),
       });
 
       const seriesDoGrupo = [...new Set(grupoTurmas.map(serieDaTurma))]
@@ -226,7 +255,7 @@ export default function MatriculasMensais({
           chave: `${tipo}-${nomeSerie}`,
           label: nomeSerie,
           nivel: 'serie',
-          contagem: resumoDasTurmas(turmasDaSerie, tipo === 'AEE'),
+          ...resumoDasTurmas(turmasDaSerie, tipo === 'AEE'),
         });
         // Abre por sala (turma) dentro da série/ano — só quando há mais de uma
         // turma na mesma série, senão repetiria a mesma linha à toa.
@@ -238,14 +267,14 @@ export default function MatriculasMensais({
               chave: `${tipo}-${nomeSerie}-${turma.id}`,
               label: turma.nome,
               nivel: 'turma',
-              contagem: resumoDasTurmas([turma], tipo === 'AEE'),
+              ...resumoDasTurmas([turma], tipo === 'AEE'),
             });
           }
         }
       }
     }
     return linhas;
-  }, [alunosFiltrados, turmasFiltradas, tipoEnsino]);
+  }, [alunosFiltrados, turmasFiltradas, tipoEnsino, ano, mesInicio, mesFim, hoje]);
   const pendentesSexoOrdenados = useMemo(() => {
     const turmaMap = new Map(turmas.map(turma => [turma.id, turma.nome]));
     return resumo.pendentesSexo
@@ -423,6 +452,8 @@ export default function MatriculasMensais({
       <tr class="${linha.nivel}">
         <td>${linha.nivel === 'serie' ? '&nbsp;&nbsp;↳ ' : linha.nivel === 'turma' ? '&nbsp;&nbsp;&nbsp;&nbsp;· ' : ''}${escaparHtml(linha.label)}</td>
         ${celulasRelatorio(linha.contagem)}
+        ${celulaMovimentacaoRelatorio(linha.entradas, '+')}
+        ${celulaMovimentacaoRelatorio(linha.saidas, '−')}
       </tr>`).join('');
     const mensal = resumo.meses.map(linha => `
       <tr>
@@ -470,8 +501,8 @@ export default function MatriculasMensais({
       ${aviso}
       ${auditoriaEducacenso}
       <h2>Consolidado por ensino e ciclo/ano</h2>
-      <table><thead><tr><th class="esquerda">Ensino / ciclo / ano</th><th>Meninos</th><th>Meninas</th><th>N/I</th><th>Total</th></tr></thead>
-        <tbody>${consolidado}</tbody><tfoot><tr><td>TOTAL ATIVO ATUAL</td>${celulasRelatorio(resumo.totalAtual)}</tr></tfoot></table>
+      <table><thead><tr><th class="esquerda">Ensino / ciclo / ano</th><th>Meninos</th><th>Meninas</th><th>N/I</th><th>Total atual</th><th>Entradas no período</th><th>Saídas no período</th></tr></thead>
+        <tbody>${consolidado}</tbody><tfoot><tr><td>TOTAL / MOVIMENTAÇÃO DO PERÍODO</td>${celulasRelatorio(resumo.totalAtual)}${celulaMovimentacaoRelatorio(resumo.totalEntradas, '+')}${celulaMovimentacaoRelatorio(resumo.totalSaidas, '−')}</tr></tfoot></table>
       <h2>Movimentação mensal</h2>
       <table><thead><tr><th rowspan="2">Mês</th><th colspan="4">Matrículas existentes</th><th colspan="4">Entradas no mês</th><th colspan="4">Saídas no mês</th></tr>
         <tr>${['Alunos', 'Alunas', 'N/I', 'Total'].map(label => `<th>${label}</th>`).join('').repeat(3)}</tr></thead>
@@ -506,15 +537,26 @@ export default function MatriculasMensais({
       ['Turma', nomeTurmaSelecionada, '', '', ''],
       ['Gerado em', new Date().toLocaleString('pt-BR'), '', '', ''],
       [],
-      ['Ensino / ciclo / ano', 'Meninos', 'Meninas', 'N/I', 'Total'],
+      ['Ensino / ciclo / ano', 'Meninos', 'Meninas', 'N/I', 'Total atual',
+        'Entradas — Meninos', 'Entradas — Meninas', 'Entradas — Total',
+        'Saídas — Meninos', 'Saídas — Meninas', 'Saídas — Total'],
       ...linhasConsolidadas.map(linha => [
         `${linha.nivel === 'serie' ? '   ↳ ' : linha.nivel === 'turma' ? '      · ' : ''}${linha.label}`,
         linha.contagem.masculino,
         linha.contagem.feminino,
         linha.contagem.naoInformado,
         linha.contagem.total,
+        linha.entradas.masculino,
+        linha.entradas.feminino,
+        linha.entradas.total,
+        linha.saidas.masculino,
+        linha.saidas.feminino,
+        linha.saidas.total,
       ]),
-      ['TOTAL ATIVO ATUAL', resumo.totalAtual.masculino, resumo.totalAtual.feminino, resumo.totalAtual.naoInformado, resumo.totalAtual.total],
+      ['TOTAL / MOVIMENTAÇÃO DO PERÍODO',
+        resumo.totalAtual.masculino, resumo.totalAtual.feminino, resumo.totalAtual.naoInformado, resumo.totalAtual.total,
+        resumo.totalEntradas.masculino, resumo.totalEntradas.feminino, resumo.totalEntradas.total,
+        resumo.totalSaidas.masculino, resumo.totalSaidas.feminino, resumo.totalSaidas.total],
     ];
     if (resumo.semSexo > 0) {
       resumoExcel.push([], ['CONFERÊNCIA NECESSÁRIA NA SED', `${resumo.semSexo} estudante(s) com sexo não informado`, '', '', '']);
@@ -539,8 +581,8 @@ export default function MatriculasMensais({
 
     const wb = XLSX.utils.book_new();
     const wsResumo = XLSX.utils.aoa_to_sheet(resumoExcel);
-    wsResumo['!cols'] = [{ wch: 48 }, { wch: 22 }, { wch: 15 }, { wch: 15 }, { wch: 15 }];
-    wsResumo['!merges'] = [XLSX.utils.decode_range('A1:E1')];
+    wsResumo['!cols'] = [{ wch: 48 }, ...Array.from({ length: 10 }, () => ({ wch: 18 }))];
+    wsResumo['!merges'] = [XLSX.utils.decode_range('A1:K1')];
     const wsMensal = XLSX.utils.aoa_to_sheet(mensalExcel);
     wsMensal['!cols'] = [{ wch: 18 }, ...Array.from({ length: 12 }, () => ({ wch: 20 }))];
     wsMensal['!autofilter'] = { ref: `A1:M${mensalExcel.length}` };
@@ -822,18 +864,20 @@ export default function MatriculasMensais({
         <div style={{ padding: '10px 12px', background: theme.bg, borderBottom: `1px solid ${theme.borderLight}` }}>
           <div style={{ fontSize: 14, fontWeight: 800, color: theme.text }}>📊 Consolidado por ensino e ciclo/ano</div>
           <div style={{ marginTop: 3, fontSize: 11.5, color: theme.textSecondary }}>
-            Fotografia atual: somente situação ATIVO, uma vez por RA. REMA é a origem do remanejamento; conta apenas o ATIVO da turma de destino. O período abaixo afeta somente o histórico mensal.
+            Fotografia atual: somente situação ATIVO, uma vez por RA. Entradas e saídas usam o período selecionado e mostram a composição por sexo. REMA é movimentação interna e não duplica o total regular.
           </div>
         </div>
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', minWidth: 560, borderCollapse: 'collapse', fontSize: 12.5 }}>
+          <table style={{ width: '100%', minWidth: 820, borderCollapse: 'collapse', fontSize: 12.5 }}>
             <thead>
               <tr style={{ background: theme.primary, color: 'white' }}>
                 <th style={{ padding: '8px 12px', textAlign: 'left' }}>Ensino / ciclo / ano</th>
                 <th style={{ padding: '8px 7px', textAlign: 'center' }}>Meninos</th>
                 <th style={{ padding: '8px 7px', textAlign: 'center' }}>Meninas</th>
                 <th style={{ padding: '8px 7px', textAlign: 'center' }} title="Sexo não informado">N/I</th>
-                <th style={{ padding: '8px 7px', textAlign: 'center' }}>Total</th>
+                <th style={{ padding: '8px 7px', textAlign: 'center' }}>Total atual</th>
+                <th style={{ padding: '8px 7px', textAlign: 'center' }}>Entradas no período</th>
+                <th style={{ padding: '8px 7px', textAlign: 'center' }}>Saídas no período</th>
               </tr>
             </thead>
             <tbody>
@@ -854,6 +898,8 @@ export default function MatriculasMensais({
                   <td style={numero('var(--report-pink)')}>{linha.contagem.feminino}</td>
                   <td style={numero(linha.contagem.naoInformado > 0 ? 'var(--report-orange)' : theme.textSecondary)}>{linha.contagem.naoInformado}</td>
                   <td style={{ ...numero(theme.text), fontWeight: 800 }}>{linha.contagem.total}</td>
+                  <CelulaMovimentacao valor={linha.entradas} tipo="entrada" />
+                  <CelulaMovimentacao valor={linha.saidas} tipo="saida" />
                 </tr>
               ))}
             </tbody>
@@ -864,6 +910,8 @@ export default function MatriculasMensais({
                 <td style={numero('var(--report-pink)')}>{resumo.totalAtual.feminino}</td>
                 <td style={numero(resumo.totalAtual.naoInformado > 0 ? 'var(--report-orange)' : theme.textSecondary)}>{resumo.totalAtual.naoInformado}</td>
                 <td style={{ ...numero(theme.text), fontWeight: 900 }}>{resumo.totalAtual.total}</td>
+                <CelulaMovimentacao valor={resumo.totalEntradas} tipo="entrada" />
+                <CelulaMovimentacao valor={resumo.totalSaidas} tipo="saida" />
               </tr>
             </tfoot>
           </table>
