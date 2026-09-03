@@ -75,13 +75,13 @@ try {
   ];
 
   const atual = calcularMatriculasAtuais(fotografia, turmas);
-  assert.deepEqual(atual, { masculino: 1, feminino: 1, naoInformado: 0, total: 2 },
-    'fotografia atual deve contar só os dois RAs com vínculo ATIVO');
+  assert.deepEqual(atual, { masculino: 1, feminino: 2, naoInformado: 0, total: 3 },
+    'fotografia atual deve contar ATIVO e situação vazia (mesma regra do Dashboard/Alunos/Faltas), ignorando as situações de saída');
 
   const setembro = calcularMatriculasMensais(fotografia, turmas, 2026, 9, 9, new Date(2026, 8, 3));
-  assert.equal(setembro.totalAtual.total, 2, 'total atual deve ignorar todas as situações de saída');
-  assert.equal(setembro.meses[0].matriculados.total, 2,
-    'mês corrente deve reproduzir a fotografia ATIVO, inclusive ativo sem data de início');
+  assert.equal(setembro.totalAtual.total, 3, 'total atual deve ignorar todas as situações de saída');
+  assert.equal(setembro.meses[0].matriculados.total, 3,
+    'mês corrente deve reproduzir a fotografia ATIVO/vazio, inclusive ativo sem data de início');
 
   const transferenciaNoMes = calcularMatriculasMensais([{
     id: 'saiu-no-mes', ra: 800, nome: 'SAIU NO MÊS', turmaId: 'regular', sexo: 'M',

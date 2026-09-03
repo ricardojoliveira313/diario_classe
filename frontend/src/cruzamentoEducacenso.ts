@@ -88,10 +88,12 @@ function matchScoreNome(a: unknown, b: unknown): number {
 export function cruzarSEDComEducacenso(alunos: any[], turmas: any[], educacenso: LinhaEducacenso[]): ResultadoCruzamentoEducacenso {
   const turmaMap = new Map(turmas.map(turma => [String(turma.id), turma]));
   const regularesAtivos = alunos.filter(aluno => {
-    // A fotografia atual exige situação explicitamente ATIVO. Vazio não é
-    // presumido como ativo e REMA só representa a turma de origem; quando o
-    // remanejamento foi concluído, o mesmo RA aparece como ATIVO no destino.
-    if (String(aluno.situacao ?? '').trim().toUpperCase() !== 'ATIVO') return false;
+    // A fotografia atual exige ATIVO — ou situação vazia/nula, tratada como
+    // ATIVO em todo o app (Dashboard, Alunos, Faltas; regra em CLAUDE.md).
+    // REMA só representa a turma de origem; quando o remanejamento foi
+    // concluído, o mesmo RA aparece como ATIVO (ou vazio) no destino.
+    const situacao = String(aluno.situacao ?? '').trim().toUpperCase();
+    if (situacao !== '' && situacao !== 'ATIVO') return false;
     const turma = turmaMap.get(String(aluno.turmaId));
     const nomeTurma = texto(turma?.nome).toUpperCase();
     return aluno.aee !== true && turma?.tipo !== 'AEE' && !/^AEE\b/.test(nomeTurma);
