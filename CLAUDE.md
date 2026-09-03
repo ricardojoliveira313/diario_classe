@@ -64,6 +64,35 @@ Confirmar sempre que o merge foi feito e o sistema está actualizado.
 - Se o bug é em X, ler X até o fim, mapear o fluxo completo, depois corrigir
 - Uma análise completa no início vale mais do que dez tentativas erradas
 
+### Verificação preventiva de números/telas (aprendizado real — set/2026)
+
+Em set/2026, revisei "Genero.tsx"/"MatriculasMensais.tsx" a pedido do utilizador
+e não encontrei o bug: um filtro em `alunosFiltrados` descartava TRAN/BXTR/N COM/ABAN
+*antes* de chegar em `calcularMatriculasMensais`, deixando a coluna "Saídas no mês"
+matematicamente travada em zero em todos os meses — só descobri isso quando o
+utilizador colou os números reais da tela e a coluna Saídas apareceu zerada em 8
+meses seguidos com 855 matrículas, algo implausível. Lendo o código isoladamente,
+cada função parecia correta; o bug só existia na integração entre duas delas.
+
+Esta escola atende alunos com deficiência e depende deste app para dados reais —
+um número errado não é cosmético. Por isso, sempre que for pedido para "verificar
+se algo está funcionando/correto" numa tela de números, painel ou relatório:
+
+1. **Não me contentar em ler o código e concluir "parece certo".** Ler o código
+   prova que a lógica existe; não prova que ela é alimentada com os dados certos.
+2. **Pedir (ou, se possível, obter sozinho) um valor real da tela/BD para
+   comparar com o esperado**, especialmente colunas que deveriam variar com o
+   tempo (entradas, saídas, movimentação) — se algo que deveria mudar aparece
+   sempre zerado/igual, é sinal de alerta, não coincidência.
+3. **Rodar o app localmente (Playwright/dev server) com dados de teste
+   quando isso for viável**, em vez de confiar só em leitura estática de código,
+   principalmente antes de responder "está tudo certo" a uma pergunta sobre
+   dados educacionais reais.
+4. **Ao corrigir esse tipo de bug, considerar adicionar um teste automatizado**
+   para a função de cálculo afetada (ex.: `matriculasMensais.ts` não tem testes
+   hoje) — evita que o mesmo tipo de regressão silenciosa volte a passar
+   despercebida numa próxima alteração.
+
 ---
 
 ### Regras de negócio importantes
