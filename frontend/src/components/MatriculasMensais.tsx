@@ -80,7 +80,7 @@ export default function MatriculasMensais({
   turmas: any[];
   ano: number;
   onAnoChange: (ano: number) => void;
-  onAtualizarSexo: (ids: string[], sexo: 'M' | 'F') => Promise<void>;
+  onAtualizarSexo: (ids: string[], sexo: 'M' | 'F', manual?: boolean) => Promise<void>;
   somenteConsulta?: boolean;
   username?: string | null;
 }) {
@@ -313,11 +313,25 @@ export default function MatriculasMensais({
     setAplicandoEducacenso(true);
     setMensagemEducacenso('');
     try {
-      const idsM = resultadoEducacenso.encontrados.filter(item => item.sexo === 'M').map(item => item.id);
-      const idsF = resultadoEducacenso.encontrados.filter(item => item.sexo === 'F').map(item => item.id);
-      if (idsM.length > 0) await onAtualizarSexo(idsM, 'M');
-      if (idsF.length > 0) await onAtualizarSexo(idsF, 'F');
-      setMensagemEducacenso(`Sexo oficial aplicado em ${idsM.length + idsF.length} aluno(s) encontrado(s). Divergências permanecem separadas para conferência.`);
+      // Nunca sobrescreve quem já teve o sexo confirmado por um humano (conferência
+      // avulsa, alerta de sexo trocado, ou divergência definida na mão) — achado real
+      // (set/2026): reaplicar o Educacenso trocou de volta correções certas usando um
+      // dado oficial errado do governo pra alguns alunos específicos.
+      const idsConfirmadosManualmente = new Set(
+        alunos.filter(aluno => aluno.sexo_confirmado_manual).map(aluno => String(aluno.id)),
+      );
+      const encontradosAplicaveis = resultadoEducacenso.encontrados.filter(
+        item => !idsConfirmadosManualmente.has(String(item.id)),
+      );
+      const puladosPorConfirmacaoManual = resultadoEducacenso.encontrados.length - encontradosAplicaveis.length;
+      const idsM = encontradosAplicaveis.filter(item => item.sexo === 'M').map(item => item.id);
+      const idsF = encontradosAplicaveis.filter(item => item.sexo === 'F').map(item => item.id);
+      if (idsM.length > 0) await onAtualizarSexo(idsM, 'M', false);
+      if (idsF.length > 0) await onAtualizarSexo(idsF, 'F', false);
+      const avisoPulados = puladosPorConfirmacaoManual > 0
+        ? ` ${puladosPorConfirmacaoManual} aluno(s) não foram alterados porque já têm sexo confirmado manualmente — use os botões individuais se quiser trocar mesmo assim.`
+        : '';
+      setMensagemEducacenso(`Sexo oficial aplicado em ${idsM.length + idsF.length} aluno(s) encontrado(s). Divergências permanecem separadas para conferência.${avisoPulados}`);
     } catch (erro: any) {
       setMensagemEducacenso(`Não foi possível aplicar os dados: ${erro?.message ?? erro}`);
     } finally {

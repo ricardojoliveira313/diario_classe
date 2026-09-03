@@ -24,7 +24,12 @@ export default function Genero() {
       .finally(() => setLoading(false));
   }, []);
 
-  const atualizarSexo = async (ids: string[], sexo: 'M' | 'F') => {
+  // manual=true (padrão): veio de um clique humano de conferência — marca
+  // sexo_confirmado_manual pra blindar contra "Aplicar sexo oficial" do
+  // Educacenso sobrescrever de novo numa próxima importação. manual=false é
+  // usado só pelo próprio "Aplicar sexo oficial" (aplicação em lote do
+  // cruzamento), que não deve contar como confirmação humana.
+  const atualizarSexo = async (ids: string[], sexo: 'M' | 'F', manual = true) => {
     const idsFinais = new Set(ids.map(String));
     const ras = new Set(
       alunos
@@ -35,11 +40,12 @@ export default function Genero() {
       if (aluno.ra && ras.has(String(aluno.ra))) idsFinais.add(String(aluno.id));
     });
     const lista = [...idsFinais];
+    const payload: Record<string, unknown> = manual ? { sexo, sexo_confirmado_manual: true } : { sexo };
     for (let i = 0; i < lista.length; i += 100) {
-      const { error } = await supabase.from('Aluno').update({ sexo }).in('id', lista.slice(i, i + 100));
+      const { error } = await supabase.from('Aluno').update(payload).in('id', lista.slice(i, i + 100));
       if (error) throw error;
     }
-    setAlunos(atuais => atuais.map(aluno => idsFinais.has(String(aluno.id)) ? { ...aluno, sexo } : aluno));
+    setAlunos(atuais => atuais.map(aluno => idsFinais.has(String(aluno.id)) ? { ...aluno, ...payload } : aluno));
   };
 
   // Achado real (ago/2026): um clique errado na conferência em lote deixou uma
