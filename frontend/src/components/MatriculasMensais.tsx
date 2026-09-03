@@ -480,7 +480,7 @@ export default function MatriculasMensais({
         @page{size:landscape;margin:12mm}body{font-family:Arial,sans-serif;color:#172033;margin:20px;font-size:10.5px}
         h1{font-size:20px;margin:0 0 4px;color:#173b8f}h2{font-size:14px;margin:18px 0 7px;color:#173b8f}
         .subtitulo{color:#536179;margin-bottom:12px}.filtros{display:grid;grid-template-columns:repeat(2,1fr);gap:5px 18px;padding:10px;border:1px solid #cbd5e1;background:#f8fafc}
-        .resumo{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin:10px 0}.card{border:1px solid #b7c5df;padding:8px;text-align:center}.card strong{display:block;font-size:18px;color:#173b8f}
+        .resumo{display:grid;grid-template-columns:repeat(6,1fr);gap:7px;margin:10px 0}.card{border:1px solid #b7c5df;padding:8px;text-align:center}.card strong{display:block;font-size:18px;color:#173b8f}.card small{display:block;margin-top:2px;color:#536179;font-size:8.5px}
         table{width:100%;border-collapse:collapse;page-break-inside:auto}thead{display:table-header-group}tr{page-break-inside:avoid}
         th,td{border:1px solid #aebbd0;padding:5px;text-align:center}th{background:#2448b8;color:white}.esquerda,td:first-child{text-align:left}.tipo td{font-weight:bold;background:#eaf0ff}.serie td:first-child{padding-left:14px}.turma td:first-child{padding-left:26px;color:#536179;font-weight:normal}.turma td{font-size:9.5px}
         tfoot td{font-weight:bold;background:#e8edf7}.aviso{border:1px solid #d97706;background:#fff7ed;color:#9a3412;padding:8px;margin:10px 0}.ok{border:1px solid #16a34a;background:#f0fdf4;color:#166534;padding:8px;margin:10px 0}
@@ -497,6 +497,8 @@ export default function MatriculasMensais({
         <div class="card">Meninas ativas agora<strong>${resumo.totalAtual.feminino}</strong></div>
         <div class="card">Sexo não informado — ativos<strong>${resumo.totalAtual.naoInformado}</strong></div>
         <div class="card">Total ativo atual<strong>${resumo.totalAtual.total}</strong></div>
+        <div class="card">Entradas no período<strong>+${resumo.totalEntradas.total}</strong><small>Meninos: ${resumo.totalEntradas.masculino} · Meninas: ${resumo.totalEntradas.feminino}</small></div>
+        <div class="card">Saídas no período<strong>−${resumo.totalSaidas.total}</strong><small>Meninos: ${resumo.totalSaidas.masculino} · Meninas: ${resumo.totalSaidas.feminino}</small></div>
       </div>
       ${aviso}
       ${auditoriaEducacenso}
@@ -789,6 +791,20 @@ export default function MatriculasMensais({
         <Resumo label="Alunas ativas agora" valor={resumo.totalAtual.feminino} cor="var(--report-pink)" />
         <Resumo label="Sexo não informado — ativos" valor={resumo.totalAtual.naoInformado} cor="var(--report-orange)" />
         <Resumo label="Total ativo atual" valor={resumo.totalAtual.total} cor="var(--report-blue)" />
+        <Resumo
+          label="Entradas no período"
+          valor={resumo.totalEntradas.total}
+          cor="var(--report-green)"
+          prefixo="+"
+          detalhe={`Meninos: ${resumo.totalEntradas.masculino} · Meninas: ${resumo.totalEntradas.feminino}`}
+        />
+        <Resumo
+          label="Saídas no período"
+          valor={resumo.totalSaidas.total}
+          cor="var(--report-danger)"
+          prefixo="−"
+          detalhe={`Meninos: ${resumo.totalSaidas.masculino} · Meninas: ${resumo.totalSaidas.feminino}`}
+        />
       </div>
 
       {(resumo.semSexo > 0 || resumo.semDataInicio > 0 || resumo.semDataSaida > 0) && (
@@ -960,11 +976,24 @@ export default function MatriculasMensais({
   );
 }
 
-function Resumo({ label, valor, cor }: { label: string; valor: number; cor: string }) {
+function Resumo({
+  label,
+  valor,
+  cor,
+  prefixo = '',
+  detalhe,
+}: {
+  label: string;
+  valor: number;
+  cor: string;
+  prefixo?: string;
+  detalhe?: string;
+}) {
   return (
     <div style={{ border: `1px solid ${cor}44`, borderRadius: theme.radius, padding: '9px 12px', background: `${cor}0d` }}>
       <div style={{ fontSize: 11.5, color: theme.textSecondary }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 800, color: cor }}>{valor}</div>
+      <div style={{ fontSize: 22, fontWeight: 800, color: cor }}>{prefixo}{valor}</div>
+      {detalhe && <div style={{ marginTop: 1, fontSize: 10.5, fontWeight: 600, color: theme.textSecondary }}>{detalhe}</div>}
     </div>
   );
 }
