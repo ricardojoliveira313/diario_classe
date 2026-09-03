@@ -1,5 +1,16 @@
 import type { LinhaEducacenso, SexoEducacenso } from './educacenso';
 
+// Mostrado na lista "Somente SED/app" quando existe um candidato parecido no
+// Educacenso que não bateu — poupa o admin de abrir os dois arquivos na mão
+// pra descobrir se é diferença de grafia (fácil) ou nascimento divergente
+// (precisa decidir se é a mesma criança com dado errado num dos dois lados).
+export interface CandidatoDivergente {
+  nome: string;
+  dataNascimentoSED: string;
+  dataNascimentoEducacenso: string;
+  motivo: 'nome parecido, nascimento diferente' | 'nascimento igual, nome muito diferente';
+}
+
 export interface AlunoCruzadoEducacenso {
   id: string;
   nome: string;
@@ -14,7 +25,7 @@ export interface ResultadoCruzamentoEducacenso {
   // "id" só existe do lado SED (é o registro do nosso cadastro) — permite
   // oferecer um botão de definir Menino/Menina manualmente pra quem não
   // teve correspondência confirmada com o Educacenso.
-  somenteSED: Array<{ id: string; nome: string; turma: string }>;
+  somenteSED: Array<{ id: string; nome: string; turma: string; candidato?: CandidatoDivergente }>;
   somenteEducacenso: Array<{ nome: string; turma: string }>;
   ambiguos: Array<{ id?: string; nome: string; origem: 'SED' | 'Educacenso' }>;
   masculino: number;
@@ -40,6 +51,14 @@ function dataNormalizada(valor: unknown): string {
   const iso = bruto.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (iso) return `${iso[1]}${iso[2]}${iso[3]}`;
   return bruto.replace(/\D/g, '');
+}
+
+// YYYYMMDD (formato interno de comparação) → DD/MM/YYYY (formato de leitura,
+// usado só na exibição da divergência pro admin comparar de relance).
+function dataParaExibicao(valor: unknown): string {
+  const normalizada = dataNormalizada(valor);
+  const m = normalizada.match(/^(\d{4})(\d{2})(\d{2})$/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : texto(valor);
 }
 
 function cpfNormalizado(valor: unknown): string {
@@ -119,7 +138,7 @@ export function cruzarSEDComEducacenso(alunos: any[], turmas: any[], educacenso:
   // 2ª tentativa: nome parecido (mesma técnica da Conferência Educacenso) +
   // mesma data de nascimento — cobre diferenças de sobrenome/grafia entre a
   // base do app e o arquivo oficial que a comparação exata não tolerava.
-  const somenteSED: Array<{ id: string; nome: string; turma: string }> = [];
+  const somenteSED: Array<{ id: string; nome: string; turma: string; candidato?: CandidatoDivergente }> = [];
   for (const pendente of pendentes) {
     const nascPendente = dataNormalizada(pendente.dataNascimento);
     let melhorIndice = -1;
@@ -133,9 +152,44 @@ export function cruzarSEDComEducacenso(alunos: any[], turmas: any[], educacenso:
     if (melhorIndice >= 0 && melhorScore >= 0.7) {
       usados.add(melhorIndice);
       encontrados.push({ id: pendente.id, nome: pendente.nome, turma: pendente.turma, sexo: educacenso[melhorIndice].sexo });
-    } else {
-      somenteSED.push({ id: pendente.id, nome: pendente.nome, turma: pendente.turma });
+      continue;
     }
+
+    // Não achou respeitando a MESMA data — antes de desistir, procura o melhor
+    // candidato IGNORANDO a data (nome idêntico/parecido mas nascimento
+    // diferente é o caso real mais comum: erro de digitação num dos dois
+    // sistemas). Mostra a divergência pronta na tela em vez de fazer o admin
+    // caçar os dois arquivos na mão pra descobrir isso.
+    let melhorIndiceSemData = -1;
+    let melhorScoreSemData = 0;
+    educacenso.forEach((linha, indice) => {
+      if (usados.has(indice)) return;
+      const score = matchScoreNome(pendente.nome, linha.nome);
+      if (score > melhorScoreSemData) { melhorScoreSemData = score; melhorIndiceSemData = indice; }
+    });
+    let candidato: CandidatoDivergente | undefined;
+    if (melhorIndiceSemData >= 0 && melhorScoreSemData >= 0.7) {
+      candidato = {
+        nome: texto(educacenso[melhorIndiceSemData].nome),
+        dataNascimentoSED: dataParaExibicao(pendente.dataNascimento),
+        dataNascimentoEducacenso: dataParaExibicao(educacenso[melhorIndiceSemData].dataNascimento),
+        motivo: 'nome parecido, nascimento diferente',
+      };
+    } else if (nascPendente) {
+      // Nome não bateu, mas existe alguém com a MESMA data de nascimento —
+      // pode ser homônimo real ou nome digitado muito diferente; vale conferir.
+      const candidatoData = educacenso.findIndex((linha, indice) =>
+        !usados.has(indice) && dataNormalizada(linha.dataNascimento) === nascPendente);
+      if (candidatoData >= 0) {
+        candidato = {
+          nome: texto(educacenso[candidatoData].nome),
+          dataNascimentoSED: dataParaExibicao(pendente.dataNascimento),
+          dataNascimentoEducacenso: dataParaExibicao(educacenso[candidatoData].dataNascimento),
+          motivo: 'nascimento igual, nome muito diferente',
+        };
+      }
+    }
+    somenteSED.push({ id: pendente.id, nome: pendente.nome, turma: pendente.turma, candidato });
   }
 
   const somenteEducacenso: Array<{ nome: string; turma: string }> = [];
