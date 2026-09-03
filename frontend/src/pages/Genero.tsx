@@ -56,8 +56,10 @@ export default function Genero() {
   const suspeitosSexoTrocado = useMemo(() => {
     const turmaMap = new Map(turmas.map(turma => [turma.id, turma.nome]));
     return alunos
-      .filter(aluno => String(aluno.situacao ?? '').trim().toUpperCase() === 'ATIVO'
-        && (aluno.sexo === 'M' || aluno.sexo === 'F'))
+      .filter(aluno => {
+        const situacao = String(aluno.situacao ?? '').trim().toUpperCase();
+        return (situacao === '' || situacao === 'ATIVO') && (aluno.sexo === 'M' || aluno.sexo === 'F');
+      })
       .map(aluno => ({ aluno, sugestao: sugerirSexoPeloNome(aluno.nome) }))
       .filter(({ aluno, sugestao }) => sugestao && sugestao !== aluno.sexo)
       .map(({ aluno, sugestao }) => ({ id: String(aluno.id), nome: aluno.nome, ra: aluno.ra, turma: turmaMap.get(aluno.turmaId) ?? 'Sem turma', atual: aluno.sexo as 'M' | 'F', sugestao: sugestao as 'M' | 'F' }))
