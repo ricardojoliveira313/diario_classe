@@ -107,6 +107,20 @@ export default function MatriculasMensais({
     setMesFim(ultimoMesDisponivel);
   }, [ano, ultimoMesDisponivel]);
 
+  // O banco é a fonte da verdade sobre quem já teve o sexo confirmado por um
+  // humano — não recalcula por identidade/nome a cada reabertura da tela.
+  // Usado tanto pra não sobrescrever no "Aplicar sexo oficial" quanto pra
+  // mostrar "já confirmado" em vez dos botões nas listas de divergência.
+  const sexoConfirmadoPorId = useMemo(() => {
+    const mapa = new Map<string, 'M' | 'F'>();
+    for (const aluno of alunos) {
+      if (aluno.sexo_confirmado_manual && (aluno.sexo === 'M' || aluno.sexo === 'F')) {
+        mapa.set(String(aluno.id), aluno.sexo);
+      }
+    }
+    return mapa;
+  }, [alunos]);
+
   // Recupera o cruzamento SED × Educacenso salvo deste ano letivo — sem isso,
   // reimportar o mesmo arquivo do Educacenso a cada visita era a única forma
   // de ver as mesmas divergências pendentes de novo.
@@ -327,11 +341,8 @@ export default function MatriculasMensais({
       // avulsa, alerta de sexo trocado, ou divergência definida na mão) — achado real
       // (set/2026): reaplicar o Educacenso trocou de volta correções certas usando um
       // dado oficial errado do governo pra alguns alunos específicos.
-      const idsConfirmadosManualmente = new Set(
-        alunos.filter(aluno => aluno.sexo_confirmado_manual).map(aluno => String(aluno.id)),
-      );
       const encontradosAplicaveis = resultadoEducacenso.encontrados.filter(
-        item => !idsConfirmadosManualmente.has(String(item.id)),
+        item => !sexoConfirmadoPorId.has(String(item.id)),
       );
       const puladosPorConfirmacaoManual = resultadoEducacenso.encontrados.length - encontradosAplicaveis.length;
       const idsM = encontradosAplicaveis.filter(item => item.sexo === 'M').map(item => item.id);
@@ -641,6 +652,7 @@ export default function MatriculasMensais({
                       itens={resultadoEducacenso.somenteSED}
                       onDefinir={somenteConsulta ? undefined : definirSexoManual}
                       salvando={salvandoSexo}
+                      sexoConfirmado={sexoConfirmadoPorId}
                     />
                     <ListaDivergencia titulo="Somente no Educacenso" itens={resultadoEducacenso.somenteEducacenso} />
                     <ListaDivergencia
@@ -648,6 +660,7 @@ export default function MatriculasMensais({
                       itens={resultadoEducacenso.ambiguos.map(item => ({ id: item.id, nome: item.nome, turma: item.origem }))}
                       onDefinir={somenteConsulta ? undefined : definirSexoManual}
                       salvando={salvandoSexo}
+                      sexoConfirmado={sexoConfirmadoPorId}
                     />
                   </div>
                 </details>
@@ -903,7 +916,7 @@ function Resumo({ label, valor, cor }: { label: string; valor: number; cor: stri
   );
 }
 
-function ListaDivergencia({ titulo, itens, onDefinir, salvando }: {
+function ListaDivergencia({ titulo, itens, onDefinir, salvando, sexoConfirmado }: {
   titulo: string;
   itens: Array<{ id?: string; nome: string; turma: string; candidato?: CandidatoDivergente }>;
   // Só passado pra listas do lado SED (Somente SED/app, Ambíguo-SED) — dá pra
@@ -911,6 +924,12 @@ function ListaDivergencia({ titulo, itens, onDefinir, salvando }: {
   // bater certinho com esse aluno.
   onDefinir?: (id: string, sexo: 'M' | 'F') => void;
   salvando?: string;
+  // Id → sexo já confirmado manualmente no banco. Essa divergência é só sobre
+  // IDENTIDADE (nome/CPF/nascimento não bateu no Educacenso) — se o sexo já
+  // foi confirmado por um humano, mostra isso em vez de pedir de novo: reenviar
+  // o Educacenso recalcula a divergência do zero, mas o sexo já resolvido não
+  // deve voltar a parecer pendente.
+  sexoConfirmado?: Map<string, 'M' | 'F'>;
 }) {
   return (
     <div style={{ border: `1px solid ${theme.borderLight}`, borderRadius: theme.radius, background: theme.card, padding: 8 }}>
@@ -919,6 +938,7 @@ function ListaDivergencia({ titulo, itens, onDefinir, salvando }: {
         ? <div style={{ color: theme.textSecondary }}>Nenhuma divergência.</div>
         : itens.map((item, indice) => {
           const salvandoEste = salvando === `cruzamento-${item.id}`;
+          const jaConfirmado = item.id ? sexoConfirmado?.get(item.id) : undefined;
           return (
             <div key={`${item.nome}-${item.turma}-${indice}`} style={{
               padding: '4px 0', borderBottom: indice < itens.length - 1 ? `1px solid ${theme.borderLight}` : undefined,
@@ -935,7 +955,11 @@ function ListaDivergencia({ titulo, itens, onDefinir, salvando }: {
                   </div>
                 )}
               </div>
-              {onDefinir && item.id && (
+              {jaConfirmado ? (
+                <span style={{ color: 'var(--report-green)', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                  ✓ Sexo já confirmado ({jaConfirmado === 'M' ? 'menino' : 'menina'})
+                </span>
+              ) : onDefinir && item.id && (
                 <div style={{ display: 'flex', gap: 4 }}>
                   <button type="button" disabled={!!salvando} onClick={() => onDefinir(item.id!, 'M')}
                     className="report-action report-action-primary" style={{ padding: '2px 7px', fontSize: 11 }}>

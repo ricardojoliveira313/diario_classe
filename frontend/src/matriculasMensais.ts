@@ -194,15 +194,24 @@ export function calcularMatriculasMensais(
     && pessoa.ultimaSaida >= inicioPeriodo
     && pessoa.ultimaSaida <= fimPeriodo);
 
+  // A conferência de sexo só faz sentido pra quem ainda está matriculado —
+  // quem já foi transferido/evadido (TRAN/BXTR/N COM/ABAN, sem nenhum
+  // registro ATIVO) não precisa mais dessa conferência, mesmo aparecendo nos
+  // totais do período e no cálculo de saídas acima. Achado real (set/2026):
+  // sem esse filtro, alunos já transferidos voltavam a pedir conferência de
+  // sexo toda vez que a tela recarregava.
+  const pessoasAtivasNoPeriodo = pessoasDoPeriodo.filter(pessoa =>
+    pessoa.registros.some(registro => !registro.situacao || registro.situacao === 'ATIVO'));
+
   return {
     meses,
     totalPeriodo: contarSexos(pessoasDoPeriodo.map(p => p.sexo)),
     totalEntradas: contarSexos(entradasPeriodo.map(p => p.sexo)),
     totalSaidas: contarSexos(saidasPeriodo.map(p => p.sexo)),
-    semSexo: pessoasDoPeriodo.filter(p => p.sexo === 'NI').length,
+    semSexo: pessoasAtivasNoPeriodo.filter(p => p.sexo === 'NI').length,
     semDataInicio: pessoas.filter(p => !p.primeiraEntrada).length,
     semDataSaida: pessoas.filter(pessoa => pessoa.periodos.some(periodo => periodo.saidaSemData)).length,
-    pendentesSexo: pessoasDoPeriodo
+    pendentesSexo: pessoasAtivasNoPeriodo
       .filter(pessoa => pessoa.sexo === 'NI')
       .map(pessoa => {
         const representante = pessoa.registros.find(registro => !registro.situacao || registro.situacao === 'ATIVO')
