@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import * as XLSX from 'xlsx';
 import { theme, MESES, input } from '../styles';
-import { calcularMatriculasMensais, ContagemSexo } from '../matriculasMensais';
+import { calcularMatriculasAtuais, calcularMatriculasMensais, ContagemSexo } from '../matriculasMensais';
 import { sugerirSexoPeloNome } from '../nomesGenero';
 import { extrairLinhasEducacenso } from '../educacenso';
 import { cruzarSEDComEducacenso, type ResultadoCruzamentoEducacenso, type CandidatoDivergente } from '../cruzamentoEducacenso';
@@ -204,15 +204,7 @@ export default function MatriculasMensais({
     const resumoDasTurmas = (grupoTurmas: any[], incluirAEE: boolean) => {
       const ids = new Set(grupoTurmas.map(turma => turma.id));
       const grupoAlunos = alunosFiltrados.filter(aluno => ids.has(aluno.turmaId));
-      return calcularMatriculasMensais(
-        grupoAlunos,
-        grupoTurmas,
-        ano,
-        mesInicio,
-        mesFim,
-        hoje,
-        incluirAEE,
-      ).totalPeriodo;
+      return calcularMatriculasAtuais(grupoAlunos, grupoTurmas, incluirAEE);
     };
 
     for (const tipo of tipos) {
@@ -253,7 +245,7 @@ export default function MatriculasMensais({
       }
     }
     return linhas;
-  }, [alunosFiltrados, turmasFiltradas, ano, mesInicio, mesFim, hoje, tipoEnsino]);
+  }, [alunosFiltrados, turmasFiltradas, tipoEnsino]);
   const pendentesSexoOrdenados = useMemo(() => {
     const turmaMap = new Map(turmas.map(turma => [turma.id, turma.nome]));
     return resumo.pendentesSexo
@@ -424,6 +416,7 @@ export default function MatriculasMensais({
       ? ` — dados até ${hoje.toLocaleDateString('pt-BR')}`
       : ''
   }`;
+  const posicaoFimPeriodo = resumo.meses[resumo.meses.length - 1]?.matriculados ?? resumo.totalAtual;
 
   const montarRelatorioHtml = () => {
     const consolidado = linhasConsolidadas.map(linha => `
@@ -449,7 +442,7 @@ export default function MatriculasMensais({
     const auditoriaEducacenso = resultadoEducacenso ? `
       <h2>Cruzamento SED x Educacenso</h2>
       <table><thead><tr><th>Ativos SED/app</th><th>Educacenso</th><th>Encontrados</th><th>Somente SED</th><th>Somente Educacenso</th><th>Ambíguos</th></tr></thead>
-      <tbody><tr><td>${resultadoEducacenso.totalSED}</td><td>${resultadoEducacenso.totalEducacenso}</td><td>${resultadoEducacenso.encontrados.length}</td><td>${resultadoEducacenso.somenteSED.length}</td><td>${resultadoEducacenso.somenteEducacenso.length}</td><td>${resultadoEducacenso.ambiguos.length}</td></tr></tbody></table>` : '';
+      <tbody><tr><td>${resultadoEducacenso.totalSED}</td><td>${resultadoEducacenso.totalEducacenso}</td><td>${resultadoEducacenso.encontrados.length}</td><td>${somenteSEDPendente.length}</td><td>${resultadoEducacenso.somenteEducacenso.length}</td><td>${ambiguosPendentes.length}</td></tr></tbody></table>` : '';
 
     return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Relatório de matrículas — ${ano}</title>
       <style>
@@ -469,21 +462,21 @@ export default function MatriculasMensais({
         <div><strong>Série/ciclo:</strong> ${escaparHtml(serie || 'Todas as séries')}</div><div><strong>Turma:</strong> ${escaparHtml(nomeTurmaSelecionada)}</div>
       </div>
       <div class="resumo">
-        <div class="card">Meninos<strong>${resumo.totalPeriodo.masculino}</strong></div>
-        <div class="card">Meninas<strong>${resumo.totalPeriodo.feminino}</strong></div>
-        <div class="card">Sexo não informado<strong>${resumo.totalPeriodo.naoInformado}</strong></div>
-        <div class="card">Total único<strong>${resumo.totalPeriodo.total}</strong></div>
+        <div class="card">Meninos ativos agora<strong>${resumo.totalAtual.masculino}</strong></div>
+        <div class="card">Meninas ativas agora<strong>${resumo.totalAtual.feminino}</strong></div>
+        <div class="card">Sexo não informado — ativos<strong>${resumo.totalAtual.naoInformado}</strong></div>
+        <div class="card">Total ativo atual<strong>${resumo.totalAtual.total}</strong></div>
       </div>
       ${aviso}
       ${auditoriaEducacenso}
       <h2>Consolidado por ensino e ciclo/ano</h2>
       <table><thead><tr><th class="esquerda">Ensino / ciclo / ano</th><th>Meninos</th><th>Meninas</th><th>N/I</th><th>Total</th></tr></thead>
-        <tbody>${consolidado}</tbody><tfoot><tr><td>TOTAL ÚNICO CONSOLIDADO</td>${celulasRelatorio(resumo.totalPeriodo)}</tr></tfoot></table>
+        <tbody>${consolidado}</tbody><tfoot><tr><td>TOTAL ATIVO ATUAL</td>${celulasRelatorio(resumo.totalAtual)}</tr></tfoot></table>
       <h2>Movimentação mensal</h2>
       <table><thead><tr><th rowspan="2">Mês</th><th colspan="4">Matrículas existentes</th><th colspan="4">Entradas no mês</th><th colspan="4">Saídas no mês</th></tr>
         <tr>${['Alunos', 'Alunas', 'N/I', 'Total'].map(label => `<th>${label}</th>`).join('').repeat(3)}</tr></thead>
-        <tbody>${mensal}</tbody><tfoot><tr><td>TOTAL DO PERÍODO*</td>${celulasRelatorio(resumo.totalPeriodo)}${celulasRelatorio(resumo.totalEntradas)}${celulasRelatorio(resumo.totalSaidas)}</tr></tfoot></table>
-      <div class="nota">* Em matrículas existentes, o total representa pessoas únicas no período selecionado e não a soma dos meses. AEE e remanejamentos não duplicam a matrícula regular.</div>
+        <tbody>${mensal}</tbody><tfoot><tr><td>POSIÇÃO NO FIM DO PERÍODO*</td>${celulasRelatorio(posicaoFimPeriodo)}${celulasRelatorio(resumo.totalEntradas)}${celulasRelatorio(resumo.totalSaidas)}</tr></tfoot></table>
+      <div class="nota">* Matrículas existentes são a posição no fechamento de cada mês; no mês corrente, a posição atual da SED. Entradas e saídas preservam o histórico. AEE e REMA não duplicam a matrícula regular.</div>
       <div class="assinatura"><span class="linha">Responsável pela conferência</span></div>
       </body></html>`;
   };
@@ -505,7 +498,7 @@ export default function MatriculasMensais({
 
   const exportarExcel = () => {
     const resumoExcel: Array<Array<string | number>> = [
-      ['RELATÓRIO DE MATRÍCULAS ATIVAS POR SEXO E PERÍODO', '', '', '', ''],
+      ['RELATÓRIO DE MATRÍCULAS ATIVAS — POSIÇÃO ATUAL', '', '', '', ''],
       ['Escola', 'EMEIEF Luiz Gonzaga', '', '', ''],
       ['Período', periodoDescricao, '', '', ''],
       ['Tipo de ensino', nomeTipoSelecionado, '', '', ''],
@@ -521,7 +514,7 @@ export default function MatriculasMensais({
         linha.contagem.naoInformado,
         linha.contagem.total,
       ]),
-      ['TOTAL ÚNICO CONSOLIDADO', resumo.totalPeriodo.masculino, resumo.totalPeriodo.feminino, resumo.totalPeriodo.naoInformado, resumo.totalPeriodo.total],
+      ['TOTAL ATIVO ATUAL', resumo.totalAtual.masculino, resumo.totalAtual.feminino, resumo.totalAtual.naoInformado, resumo.totalAtual.total],
     ];
     if (resumo.semSexo > 0) {
       resumoExcel.push([], ['CONFERÊNCIA NECESSÁRIA NA SED', `${resumo.semSexo} estudante(s) com sexo não informado`, '', '', '']);
@@ -538,8 +531,8 @@ export default function MatriculasMensais({
         linha.entradas.masculino, linha.entradas.feminino, linha.entradas.naoInformado, linha.entradas.total,
         linha.saidas.masculino, linha.saidas.feminino, linha.saidas.naoInformado, linha.saidas.total,
       ]),
-      ['TOTAL DO PERÍODO',
-        resumo.totalPeriodo.masculino, resumo.totalPeriodo.feminino, resumo.totalPeriodo.naoInformado, resumo.totalPeriodo.total,
+      ['POSIÇÃO NO FIM DO PERÍODO',
+        posicaoFimPeriodo.masculino, posicaoFimPeriodo.feminino, posicaoFimPeriodo.naoInformado, posicaoFimPeriodo.total,
         resumo.totalEntradas.masculino, resumo.totalEntradas.feminino, resumo.totalEntradas.naoInformado, resumo.totalEntradas.total,
         resumo.totalSaidas.masculino, resumo.totalSaidas.feminino, resumo.totalSaidas.naoInformado, resumo.totalSaidas.total],
     ];
@@ -561,18 +554,18 @@ export default function MatriculasMensais({
         ['Correspondências confirmadas', resultadoEducacenso.encontrados.length],
         ['Meninos oficiais encontrados', resultadoEducacenso.masculino],
         ['Meninas oficiais encontradas', resultadoEducacenso.feminino],
-        ['Somente na SED/app', resultadoEducacenso.somenteSED.length],
+        ['Somente na SED/app', somenteSEDPendente.length],
         ['Somente no Educacenso', resultadoEducacenso.somenteEducacenso.length],
-        ['Correspondências ambíguas', resultadoEducacenso.ambiguos.length],
+        ['Correspondências ambíguas', ambiguosPendentes.length],
       ];
       const wsCruzamento = XLSX.utils.aoa_to_sheet(resumoCruzamento);
       wsCruzamento['!cols'] = [{ wch: 38 }, { wch: 16 }];
       XLSX.utils.book_append_sheet(wb, wsCruzamento, 'Cruzamento');
 
       const divergencias = [
-        ...resultadoEducacenso.somenteSED.map(item => ({ Origem: 'Somente SED/app', Nome: item.nome, Turma: item.turma })),
+        ...somenteSEDPendente.map(item => ({ Origem: 'Somente SED/app', Nome: item.nome, Turma: item.turma })),
         ...resultadoEducacenso.somenteEducacenso.map(item => ({ Origem: 'Somente Educacenso', Nome: item.nome, Turma: item.turma })),
-        ...resultadoEducacenso.ambiguos.map(item => ({ Origem: `Ambíguo — ${item.origem}`, Nome: item.nome, Turma: '' })),
+        ...ambiguosPendentes.map(item => ({ Origem: `Ambíguo — ${item.origem}`, Nome: item.nome, Turma: '' })),
       ];
       if (divergencias.length > 0) {
         const wsDivergencias = XLSX.utils.json_to_sheet(divergencias);
@@ -596,7 +589,7 @@ export default function MatriculasMensais({
       <div style={{ padding: '14px 16px', borderBottom: `1px solid ${theme.borderLight}` }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
           <h2 id="titulo-matriculas-mensais" style={{ margin: 0, fontSize: 17, color: theme.text }}>
-            📅 Matrículas por mês — {ano}
+            📅 Matrículas atuais e movimentação — {ano}
           </h2>
           {somenteConsulta && (
             <span style={{ padding: '4px 8px', borderRadius: 999, background: 'var(--ghost-bg)', color: theme.textSecondary, fontSize: 11.5, fontWeight: 800 }}>
@@ -613,7 +606,7 @@ export default function MatriculasMensais({
           </div>
         </div>
         <p style={{ margin: '5px 0 0', color: theme.textSecondary, fontSize: 12.5 }}>
-          Somente matrículas ativas. Cada pessoa é contada uma única vez por RA; remanejamentos e AEE não duplicam o total.
+          O quadro principal mostra somente quem está ATIVO agora. O histórico mensal preserva entradas e saídas sem manter transferidos na contagem atual. Cada pessoa é contada uma única vez por RA; REMA e AEE não duplicam o total regular.
         </p>
         {!somenteConsulta && <div style={{ marginTop: 12, border: `1px solid ${theme.primary}55`, borderRadius: theme.radius, background: `${theme.primary}08`, padding: 11 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -750,10 +743,10 @@ export default function MatriculasMensais({
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, padding: '12px 16px' }}>
-        <Resumo label="Alunos no período" valor={resumo.totalPeriodo.masculino} cor="var(--report-blue)" />
-        <Resumo label="Alunas no período" valor={resumo.totalPeriodo.feminino} cor="var(--report-pink)" />
-        <Resumo label="Sexo não informado" valor={resumo.totalPeriodo.naoInformado} cor="var(--report-orange)" />
-        <Resumo label="Total único do período" valor={resumo.totalPeriodo.total} cor="var(--report-blue)" />
+        <Resumo label="Alunos ativos agora" valor={resumo.totalAtual.masculino} cor="var(--report-blue)" />
+        <Resumo label="Alunas ativas agora" valor={resumo.totalAtual.feminino} cor="var(--report-pink)" />
+        <Resumo label="Sexo não informado — ativos" valor={resumo.totalAtual.naoInformado} cor="var(--report-orange)" />
+        <Resumo label="Total ativo atual" valor={resumo.totalAtual.total} cor="var(--report-blue)" />
       </div>
 
       {(resumo.semSexo > 0 || resumo.semDataInicio > 0 || resumo.semDataSaida > 0) && (
@@ -829,7 +822,7 @@ export default function MatriculasMensais({
         <div style={{ padding: '10px 12px', background: theme.bg, borderBottom: `1px solid ${theme.borderLight}` }}>
           <div style={{ fontSize: 14, fontWeight: 800, color: theme.text }}>📊 Consolidado por ensino e ciclo/ano</div>
           <div style={{ marginTop: 3, fontSize: 11.5, color: theme.textSecondary }}>
-            Totais únicos no período selecionado. O AEE aparece somente quando escolhido no filtro, evitando duplicidade com a matrícula regular.
+            Fotografia atual: somente situação ATIVO, uma vez por RA. REMA é a origem do remanejamento; conta apenas o ATIVO da turma de destino. O período abaixo afeta somente o histórico mensal.
           </div>
         </div>
         <div style={{ overflowX: 'auto' }}>
@@ -866,11 +859,11 @@ export default function MatriculasMensais({
             </tbody>
             <tfoot>
               <tr style={{ background: 'var(--footer-row)', borderTop: `2px solid ${theme.primary}55` }}>
-                <td style={{ padding: '9px 12px', color: theme.text, fontWeight: 900 }}>TOTAL ÚNICO CONSOLIDADO</td>
-                <td style={numero('var(--report-blue)')}>{resumo.totalPeriodo.masculino}</td>
-                <td style={numero('var(--report-pink)')}>{resumo.totalPeriodo.feminino}</td>
-                <td style={numero(resumo.totalPeriodo.naoInformado > 0 ? 'var(--report-orange)' : theme.textSecondary)}>{resumo.totalPeriodo.naoInformado}</td>
-                <td style={{ ...numero(theme.text), fontWeight: 900 }}>{resumo.totalPeriodo.total}</td>
+                <td style={{ padding: '9px 12px', color: theme.text, fontWeight: 900 }}>TOTAL ATIVO ATUAL</td>
+                <td style={numero('var(--report-blue)')}>{resumo.totalAtual.masculino}</td>
+                <td style={numero('var(--report-pink)')}>{resumo.totalAtual.feminino}</td>
+                <td style={numero(resumo.totalAtual.naoInformado > 0 ? 'var(--report-orange)' : theme.textSecondary)}>{resumo.totalAtual.naoInformado}</td>
+                <td style={{ ...numero(theme.text), fontWeight: 900 }}>{resumo.totalAtual.total}</td>
               </tr>
             </tfoot>
           </table>
@@ -904,8 +897,8 @@ export default function MatriculasMensais({
           </tbody>
           <tfoot>
             <tr style={{ background: 'var(--footer-row)', borderTop: `2px solid ${theme.primary}55` }}>
-              <td style={{ padding: '10px 12px', fontWeight: 800, color: theme.text }}>TOTAL DO PERÍODO*</td>
-              <CelulasContagem valor={resumo.totalPeriodo} />
+              <td style={{ padding: '10px 12px', fontWeight: 800, color: theme.text }}>POSIÇÃO NO FIM DO PERÍODO*</td>
+              <CelulasContagem valor={posicaoFimPeriodo} />
               <CelulasContagem valor={resumo.totalEntradas} />
               <CelulasContagem valor={resumo.totalSaidas} />
             </tr>
@@ -913,7 +906,7 @@ export default function MatriculasMensais({
         </table>
       </div>
       <div style={{ padding: '8px 16px 12px', color: theme.textSecondary, fontSize: 11.5 }}>
-        * Em “Matrículas existentes”, o total representa pessoas únicas no período selecionado — não é a soma dos meses.
+        * “Matrículas existentes” mostra a posição no fechamento de cada mês; no mês corrente, mostra apenas quem está ATIVO agora. Entradas e saídas permanecem como histórico.
       </div>
     </section>
   );
