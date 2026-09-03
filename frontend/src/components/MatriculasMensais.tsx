@@ -55,10 +55,10 @@ function CelulasContagem({ valor }: { valor: ContagemSexo }) {
 function CelulaMovimentacao({ valor, tipo }: { valor: ContagemSexo; tipo: 'entrada' | 'saida' }) {
   const sinal = tipo === 'entrada' ? '+' : '−';
   const cor = tipo === 'entrada' ? 'var(--report-green)' : 'var(--report-danger)';
-  const detalhes = `M ${valor.masculino} · F ${valor.feminino}${valor.naoInformado > 0 ? ` · N/I ${valor.naoInformado}` : ''}`;
+  const detalhes = `Meninos: ${valor.masculino} · Meninas: ${valor.feminino}${valor.naoInformado > 0 ? ` · Não informado: ${valor.naoInformado}` : ''}`;
   return (
-    <td style={{ ...numero(cor), minWidth: 112 }} title={`${detalhes} · Total ${valor.total}`}>
-      <div style={{ fontWeight: 900 }}>${sinal}{valor.total}</div>
+    <td style={{ ...numero(cor), minWidth: 172 }} title={`${detalhes} · Total: ${valor.total}`}>
+      <div style={{ fontWeight: 900 }}>{sinal}{valor.total}</div>
       <div style={{ marginTop: 1, color: theme.textSecondary, fontSize: 10.5, fontWeight: 600 }}>{detalhes}</div>
     </td>
   );
@@ -82,8 +82,8 @@ function celulasRelatorio(valor: ContagemSexo): string {
 }
 
 function celulaMovimentacaoRelatorio(valor: ContagemSexo, sinal: '+' | '−'): string {
-  const ni = valor.naoInformado > 0 ? ` / N/I ${valor.naoInformado}` : '';
-  return `<td><strong>${sinal}${valor.total}</strong><br><small>M ${valor.masculino} / F ${valor.feminino}${ni}</small></td>`;
+  const ni = valor.naoInformado > 0 ? ` / Não informado: ${valor.naoInformado}` : '';
+  return `<td><strong>${sinal}${valor.total}</strong><br><small>Meninos: ${valor.masculino} / Meninas: ${valor.feminino}${ni}</small></td>`;
 }
 
 export default function MatriculasMensais({
@@ -868,7 +868,7 @@ export default function MatriculasMensais({
           </div>
         </div>
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', minWidth: 820, borderCollapse: 'collapse', fontSize: 12.5 }}>
+          <table style={{ width: '100%', minWidth: 960, borderCollapse: 'collapse', fontSize: 12.5 }}>
             <thead>
               <tr style={{ background: theme.primary, color: 'white' }}>
                 <th style={{ padding: '8px 12px', textAlign: 'left' }}>Ensino / ciclo / ano</th>
