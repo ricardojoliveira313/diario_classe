@@ -245,8 +245,18 @@ export default function MatriculasMensais({
     [pendentesSexoOrdenados],
   );
 
+  // Acusa o erro NA HORA do clique, não só depois de já ter salvo — achado real
+  // (set/2026): o admin só descobria que tinha clicado errado quando o alerta
+  // "sexo pode estar trocado" aparecia numa visita futura, tarde demais.
   const confirmarSexo = async (chave: string, ids: string[], sexo: 'M' | 'F') => {
     if (somenteConsulta) return;
+    const pendente = pendentesSexoOrdenados.find(item => item.chave === chave);
+    if (pendente?.sugestao && pendente.sugestao !== sexo) {
+      const confirmou = window.confirm(
+        `O nome "${pendente.nome}" costuma indicar ${pendente.sugestao === 'M' ? 'menino' : 'menina'}, mas você selecionou ${sexo === 'M' ? 'menino' : 'menina'}. Confirma mesmo assim?`,
+      );
+      if (!confirmou) return;
+    }
     setSalvandoSexo(chave);
     setErroSexo('');
     try {
@@ -345,6 +355,14 @@ export default function MatriculasMensais({
   // resolver a partir do próprio quadro de cruzamento.
   const definirSexoManual = async (id: string, sexo: 'M' | 'F') => {
     if (somenteConsulta || !resultadoEducacenso) return;
+    const item = resultadoEducacenso.somenteSED.find(i => i.id === id) ?? resultadoEducacenso.ambiguos.find(i => i.id === id);
+    const sugestao = item ? sugerirSexoPeloNome(item.nome) : '';
+    if (sugestao && sugestao !== sexo) {
+      const confirmou = window.confirm(
+        `O nome "${item!.nome}" costuma indicar ${sugestao === 'M' ? 'menino' : 'menina'}, mas você selecionou ${sexo === 'M' ? 'menino' : 'menina'}. Confirma mesmo assim?`,
+      );
+      if (!confirmou) return;
+    }
     setSalvandoSexo(`cruzamento-${id}`);
     setErroSexo('');
     try {
