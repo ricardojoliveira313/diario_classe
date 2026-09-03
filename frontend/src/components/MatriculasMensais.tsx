@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import * as XLSX from 'xlsx';
 import { theme, MESES, input } from '../styles';
-import { calcularMatriculasAtuais, calcularMatriculasMensais, ContagemSexo } from '../matriculasMensais';
+import { calcularMatriculasMensais, ContagemSexo } from '../matriculasMensais';
 import { sugerirSexoPeloNome } from '../nomesGenero';
 import { extrairLinhasEducacenso } from '../educacenso';
 import { cruzarSEDComEducacenso, type ResultadoCruzamentoEducacenso, type CandidatoDivergente } from '../cruzamentoEducacenso';
