@@ -83,6 +83,12 @@ try {
   assert.equal(setembro.meses[0].matriculados.total, 3,
     'mês corrente deve reproduzir a fotografia ATIVO/vazio, inclusive ativo sem data de início');
 
+  const maio = calcularMatriculasMensais(fotografia, turmas, 2026, 5, 5, new Date(2026, 8, 3));
+  assert.equal(maio.totalEntradas.total, 0,
+    'ATIVO de destino não pode virar nova entrada quando o mesmo RA tem REMA de origem');
+  assert.equal(maio.totalSaidas.total, 0,
+    'REMA é movimentação interna e não pode virar saída da escola');
+
   const transferenciaNoMes = calcularMatriculasMensais([{
     id: 'saiu-no-mes', ra: 800, nome: 'SAIU NO MÊS', turmaId: 'regular', sexo: 'M',
     situacao: 'TRAN', data_inicio_matricula: '04/02/2026', data_fim_matricula: '10/08/2026',
