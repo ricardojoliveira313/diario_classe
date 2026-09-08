@@ -254,6 +254,9 @@ const SITUACAO_MAP: Record<string, string> = {
   'N COM': 'N COM', 'NAO COMPARECEU': 'N COM', 'N\u00c3O COMPARECEU': 'N COM', 'NCOM': 'N COM',
   'BAIXA POR NAO COMPARECIMENTO': 'N COM', 'BAIXA POR N\u00c3O COMPARECIMENTO': 'N COM',
   ABAN: 'ABAN', ABANDONO: 'ABAN',
+  // Vem direto da SED no EJA: mudança de ciclo (ex.: Alfa → Pós) sem ser uma
+  // nova matrícula — usado no Mapa EJA pra descontar/somar da matrícula geral.
+  CLASSIFICADO: 'CLASSIFICADO', RECLASSIFICADO: 'CLASSIFICADO', 'RECLASSIFICADO(A)': 'CLASSIFICADO',
 };
 
 function normalizeSituacao(s: string): string {
@@ -589,7 +592,7 @@ export default function Importar() {
         // Dig.RA é OPCIONAL — alunos de fora de SP às vezes não têm dígito verificador
         // no PDF (célula fica vazia), fazendo a coluna UF vir logo após o RA.
         const afterMatch = after.match(
-          new RegExp(`^\\s*(?:(\\S+)\\s+)?[A-Z]{2}\\s+${pdfDate}\\s+(ATIVO|TRAN|REMA|ABAN|N\\s?COM|BXTR|NAO\\s?COMPARECEU)(?:\\s+${pdfDate})?\\s*(.*?)(?=\\s*\\d{1,2}\\s+\\d{1,3}\\s+[A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ]|\\s*0{3}\\d{9}|${sectionBreak}|$)`, 'i')
+          new RegExp(`^\\s*(?:(\\S+)\\s+)?[A-Z]{2}\\s+${pdfDate}\\s+(ATIVO|TRAN|REMA|ABAN|N\\s?COM|BXTR|NAO\\s?COMPARECEU|RECLASSIFICADO|CLASSIFICADO)(?:\\s+${pdfDate})?\\s*(.*?)(?=\\s*\\d{1,2}\\s+\\d{1,3}\\s+[A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ]|\\s*0{3}\\d{9}|${sectionBreak}|$)`, 'i')
         );
         const { serie: serieAluno, professora: profAluno } = getSerie(raPos);
 
