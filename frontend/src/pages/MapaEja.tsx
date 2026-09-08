@@ -1,0 +1,427 @@
+import { useEffect, useMemo, useState } from 'react';
+import { api, supabase } from '../api';
+import { Loading } from '../components';
+import { theme, card as cardStyle, input, label as labelStyle, MESES } from '../styles';
+import { useAno } from '../AnoContext';
+import { calcularMapaEja, ehTurmaEja } from '../mapaEja';
+
+const CICLO_LABEL: Record<string, string> = { ALFA: 'Alfa', POS: 'Pós', MULTI: 'Multi' };
+const PERIODOS = ['Manhã', 'Tarde', 'Vespertino', 'Noite'];
+
+const th: React.CSSProperties = { padding: '8px 10px', textAlign: 'center', fontWeight: 700, color: '#fff', fontSize: 11.5, whiteSpace: 'nowrap' };
+const td: React.CSSProperties = { padding: '7px 10px', textAlign: 'center', color: theme.text, fontSize: 13, borderBottom: `1px solid ${theme.borderLight}` };
+const tdEsq: React.CSSProperties = { ...td, textAlign: 'left', fontWeight: 600 };
+
+function Secao({ titulo, children }: { titulo: string; children: React.ReactNode }) {
+  return (
+    <div style={cardStyle({ marginBottom: 20, overflow: 'hidden' })}>
+      <div style={{ padding: '10px 14px', background: theme.primary, color: '#fff', fontWeight: 800, fontSize: 14 }}>{titulo}</div>
+      <div style={{ overflowX: 'auto' }}>{children}</div>
+    </div>
+  );
+}
+
+export default function MapaEja() {
+  const { ano } = useAno();
+  const [turmas, setTurmas] = useState<any[]>([]);
+  const [alunos, setAlunos] = useState<any[]>([]);
+  const [listaEspera, setListaEspera] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const hoje = useMemo(() => new Date(), []);
+  const [mes, setMes] = useState(hoje.getMonth() + 1);
+  const [salvandoCampo, setSalvandoCampo] = useState('');
+  const [novaEspera, setNovaEspera] = useState({ nome: '', ciclo: 'ALFA', periodo: 'Noite', observacao: '' });
+  const [salvandoEspera, setSalvandoEspera] = useState(false);
+
+  const carregar = () => {
+    setLoading(true);
+    Promise.all([api.getTurmas(), api.getAllAlunos(), api.getListaEsperaEja()])
+      .then(([t, a, le]) => {
+        setTurmas(t ?? []);
+        setAlunos(a ?? []);
+        setListaEspera(le ?? []);
+      })
+      .finally(() => setLoading(false));
+  };
+  useEffect(carregar, []);
+
+  const resumo = useMemo(() => calcularMapaEja(alunos, turmas, mes, ano, hoje), [alunos, turmas, mes, ano, hoje]);
+  const alunosEjaPendentesDados = useMemo(() => {
+    const turmasEja = new Set(turmas.filter(t => ehTurmaEja(t.nome)).map(t => t.id));
+    return alunos.filter(a => turmasEja.has(a.turmaId) && (!a.situacao || a.situacao === 'ATIVO'));
+  }, [alunos, turmas]);
+
+  const somar = (campo: keyof typeof resumo.linhas[number]) =>
+    resumo.linhas.reduce((soma, l) => soma + (l[campo] as number), 0);
+
+  const atualizarCampoAluno = async (id: string, campo: string, valor: any) => {
+    setSalvandoCampo(id + campo);
+    try {
+      const { error } = await supabase.from('Aluno').update({ [campo]: valor }).eq('id', id);
+      if (error) throw error;
+      setAlunos(atuais => atuais.map(a => a.id === id ? { ...a, [campo]: valor } : a));
+    } finally {
+      setSalvandoCampo('');
+    }
+  };
+
+  const criarListaEspera = async () => {
+    if (!novaEspera.nome.trim()) return;
+    setSalvandoEspera(true);
+    try {
+      await api.criarListaEsperaEja(novaEspera);
+      setNovaEspera({ nome: '', ciclo: 'ALFA', periodo: 'Noite', observacao: '' });
+      const le = await api.getListaEsperaEja();
+      setListaEspera(le ?? []);
+    } finally {
+      setSalvandoEspera(false);
+    }
+  };
+
+  const removerListaEspera = async (id: string) => {
+    await api.removerListaEsperaEja(id);
+    setListaEspera(atuais => atuais.filter(l => l.id !== id));
+  };
+
+  if (loading) return <Loading />;
+
+  if (resumo.linhas.length === 0) {
+    return (
+      <div>
+        <h2 style={{ color: theme.text, marginBottom: 4 }}>📋 Mapa EJA</h2>
+        <p style={{ color: theme.textSecondary }}>Nenhuma turma de EJA encontrada. Importe os arquivos da SED na aba Importar primeiro.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <h2 style={{ color: theme.text, marginBottom: 4 }}>📋 Mapa EJA</h2>
+      <p style={{ color: theme.textSecondary, fontSize: 13, marginBottom: 16 }}>
+        Gerado automaticamente a partir dos dados importados da SED (situação, datas de matrícula/movimentação e
+        data de nascimento). Óbito, CADE, medida socioeducativa, rematrícula e resultado final são lançados manualmente
+        na conferência abaixo — a SED não informa isso.
+      </p>
+
+      <div style={{ ...cardStyle({ padding: 14 }), marginBottom: 20, display: 'flex', gap: 14, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <div>
+          <label style={labelStyle}>Mês de referência</label>
+          <select style={{ ...input, minWidth: 160 }} value={mes} onChange={e => setMes(Number(e.target.value))}>
+            {MESES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+          </select>
+        </div>
+        <div style={{ color: theme.textSecondary, fontSize: 12.5 }}>Ano letivo: <strong>{ano}</strong></div>
+      </div>
+
+      <Secao titulo="ELIMINAÇÃO GERAL">
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ background: theme.primaryHover }}>
+              <th style={{ ...th, textAlign: 'left' }}>Professor(a) EJA I</th>
+              <th style={th}>Modalidade/Ciclo</th>
+              <th style={th}>Matr. Geral</th>
+              <th style={th}>Evasão</th>
+              <th style={th}>Transferência</th>
+              <th style={th}>Óbito</th>
+              <th style={th}>Nunca comp.</th>
+              <th style={th}>Total eliminados</th>
+              <th style={th}>Frequentes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {resumo.linhas.map(l => (
+              <tr key={l.turmaId}>
+                <td style={tdEsq}>{l.turmaNome} — {l.professora}</td>
+                <td style={td}>EJA I / {CICLO_LABEL[l.ciclo]} / {l.periodo}</td>
+                <td style={td}>{l.matriculaGeral}</td>
+                <td style={td}>{l.evasao}</td>
+                <td style={td}>{l.transferencia}</td>
+                <td style={td}>{l.obito}</td>
+                <td style={td}>{l.nuncaCompareceram}</td>
+                <td style={{ ...td, fontWeight: 800 }}>{l.totalEliminadosGeral}</td>
+                <td style={td}>{l.alunosFrequentes}</td>
+              </tr>
+            ))}
+            <tr style={{ background: 'var(--footer-row)', fontWeight: 800 }}>
+              <td style={tdEsq} colSpan={2}>TOTAIS EJA I</td>
+              <td style={td}>{somar('matriculaGeral')}</td>
+              <td style={td}>{somar('evasao')}</td>
+              <td style={td}>{somar('transferencia')}</td>
+              <td style={td}>{somar('obito')}</td>
+              <td style={td}>{somar('nuncaCompareceram')}</td>
+              <td style={td}>{somar('totalEliminadosGeral')}</td>
+              <td style={td}>{somar('alunosFrequentes')}</td>
+            </tr>
+          </tbody>
+        </table>
+      </Secao>
+
+      <Secao titulo="MATRICULADOS NO MÊS">
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ background: theme.primaryHover }}>
+              <th style={{ ...th, textAlign: 'left' }}>Professor(a)</th>
+              <th style={th}>Ciclo</th>
+              <th style={th}>Período</th>
+              <th style={th}>Vieram do mês anterior</th>
+              <th style={th}>Matr. Nova</th>
+              <th style={th}>Rematrícula</th>
+              <th style={th}>CADE</th>
+              <th style={th}>Medidas socioeducativas</th>
+            </tr>
+          </thead>
+          <tbody>
+            {resumo.linhas.map(l => (
+              <tr key={l.turmaId}>
+                <td style={tdEsq}>{l.turmaNome}</td>
+                <td style={td}>{CICLO_LABEL[l.ciclo]}</td>
+                <td style={td}>{l.periodo}</td>
+                <td style={td}>{l.vieramDoMesAnterior}</td>
+                <td style={td}>{l.matriculaNova}</td>
+                <td style={td}>{l.rematricula}</td>
+                <td style={td}>{l.cade}</td>
+                <td style={td}>{l.medidasSocioeducativas}</td>
+              </tr>
+            ))}
+            <tr style={{ background: 'var(--footer-row)', fontWeight: 800 }}>
+              <td style={tdEsq} colSpan={3}>TOTAL</td>
+              <td style={td}>{somar('vieramDoMesAnterior')}</td>
+              <td style={td}>{somar('matriculaNova')}</td>
+              <td style={td}>{somar('rematricula')}</td>
+              <td style={td}>{somar('cade')}</td>
+              <td style={td}>{somar('medidasSocioeducativas')}</td>
+            </tr>
+          </tbody>
+        </table>
+      </Secao>
+
+      <Secao titulo="ELIMINADOS NO MÊS / RESULTADOS FINAIS">
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ background: theme.primaryHover }}>
+              <th style={{ ...th, textAlign: 'left' }}>Professor(a)</th>
+              <th style={th}>Evadido</th>
+              <th style={th}>Transferido</th>
+              <th style={th}>Óbito</th>
+              <th style={th}>Nunca comp.</th>
+              <th style={th}>Promovido</th>
+              <th style={th}>Permanece</th>
+              <th style={th}>Reclassificados</th>
+            </tr>
+          </thead>
+          <tbody>
+            {resumo.linhas.map(l => (
+              <tr key={l.turmaId}>
+                <td style={tdEsq}>{l.turmaNome}</td>
+                <td style={td}>{l.evadidoMes}</td>
+                <td style={td}>{l.transferidoMes}</td>
+                <td style={td}>{l.obitoMes}</td>
+                <td style={td}>{l.nuncaCompareceuMes}</td>
+                <td style={td}>{l.promovido}</td>
+                <td style={td}>{l.permanece}</td>
+                <td style={td}>{l.reclassificados}</td>
+              </tr>
+            ))}
+            <tr style={{ background: 'var(--footer-row)', fontWeight: 800 }}>
+              <td style={tdEsq}>TOTAL</td>
+              <td style={td}>{somar('evadidoMes')}</td>
+              <td style={td}>{somar('transferidoMes')}</td>
+              <td style={td}>{somar('obitoMes')}</td>
+              <td style={td}>{somar('nuncaCompareceuMes')}</td>
+              <td style={td}>{somar('promovido')}</td>
+              <td style={td}>{somar('permanece')}</td>
+              <td style={td}>{somar('reclassificados')}</td>
+            </tr>
+          </tbody>
+        </table>
+      </Secao>
+
+      <Secao titulo="QUADRO GERAL DE DISTRIBUIÇÃO DOS ALUNOS POR PERÍODO E CICLO">
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ background: theme.primaryHover }}>
+              <th style={{ ...th, textAlign: 'left' }}>Ciclo</th>
+              {PERIODOS.map(p => <th key={p} style={th} colSpan={2}>{p}</th>)}
+            </tr>
+            <tr style={{ background: theme.primaryHover }}>
+              <th style={th}></th>
+              {PERIODOS.map(p => <>
+                <th key={p + 'a'} style={th}>Alunos</th>
+                <th key={p + 'c'} style={th}>Classes</th>
+              </>)}
+            </tr>
+          </thead>
+          <tbody>
+            {(['ALFA', 'POS', 'MULTI'] as const).map(ciclo => (
+              <tr key={ciclo}>
+                <td style={tdEsq}>{CICLO_LABEL[ciclo]}</td>
+                {PERIODOS.map(p => <>
+                  <td key={p + 'a'} style={td}>{resumo.distribuicaoPorPeriodo[p]?.[ciclo].alunos ?? 0}</td>
+                  <td key={p + 'c'} style={td}>{resumo.distribuicaoPorPeriodo[p]?.[ciclo].classes ?? 0}</td>
+                </>)}
+              </tr>
+            ))}
+            <tr style={{ background: 'var(--footer-row)', fontWeight: 800 }}>
+              <td style={tdEsq}>TOTAL</td>
+              {PERIODOS.map(p => {
+                const alunosP = (['ALFA', 'POS', 'MULTI'] as const).reduce((s, c) => s + (resumo.distribuicaoPorPeriodo[p]?.[c].alunos ?? 0), 0);
+                const classesP = (['ALFA', 'POS', 'MULTI'] as const).reduce((s, c) => s + (resumo.distribuicaoPorPeriodo[p]?.[c].classes ?? 0), 0);
+                return <>
+                  <td key={p + 'a'} style={td}>{alunosP}</td>
+                  <td key={p + 'c'} style={td}>{classesP}</td>
+                </>;
+              })}
+            </tr>
+          </tbody>
+        </table>
+      </Secao>
+
+      <Secao titulo="FAIXA ETÁRIA">
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ background: theme.primaryHover }}>
+              <th style={{ ...th, textAlign: 'left' }}>Faixa etária</th>
+              <th style={th}>Atendimento</th>
+              <th style={th}>Evasão</th>
+              <th style={th}>Nunca comp.</th>
+            </tr>
+          </thead>
+          <tbody>
+            {resumo.faixaEtaria.map(f => (
+              <tr key={f.label}>
+                <td style={tdEsq}>{f.label}</td>
+                <td style={td}>{f.atendimento}</td>
+                <td style={td}>{f.evasao}</td>
+                <td style={td}>{f.nuncaComp}</td>
+              </tr>
+            ))}
+            <tr style={{ background: 'var(--footer-row)', fontWeight: 800 }}>
+              <td style={tdEsq}>Total EJA I</td>
+              <td style={td}>{resumo.faixaEtaria.reduce((s, f) => s + f.atendimento, 0)}</td>
+              <td style={td}>{resumo.faixaEtaria.reduce((s, f) => s + f.evasao, 0)}</td>
+              <td style={td}>{resumo.faixaEtaria.reduce((s, f) => s + f.nuncaComp, 0)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </Secao>
+
+      <Secao titulo="CONFERÊNCIA MANUAL — ÓBITO, CADE, MEDIDA SOCIOEDUCATIVA, REMATRÍCULA E RESULTADO FINAL">
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ background: theme.primaryHover }}>
+              <th style={{ ...th, textAlign: 'left' }}>Aluno</th>
+              <th style={th}>Turma</th>
+              <th style={th}>Óbito</th>
+              <th style={th}>CADE</th>
+              <th style={th}>Medida socioeducativa</th>
+              <th style={th}>Rematrícula</th>
+              <th style={th}>Resultado final</th>
+            </tr>
+          </thead>
+          <tbody>
+            {alunosEjaPendentesDados.map(a => {
+              const turma = turmas.find(t => t.id === a.turmaId);
+              return (
+                <tr key={a.id}>
+                  <td style={tdEsq}>{a.nome}</td>
+                  <td style={td}>{turma?.nome ?? ''}</td>
+                  <td style={td}>
+                    <input type="checkbox" checked={!!a.obito} disabled={salvandoCampo === a.id + 'obito'}
+                      onChange={e => atualizarCampoAluno(a.id, 'obito', e.target.checked)} />
+                  </td>
+                  <td style={td}>
+                    <input type="checkbox" checked={!!a.cade} disabled={salvandoCampo === a.id + 'cade'}
+                      onChange={e => atualizarCampoAluno(a.id, 'cade', e.target.checked)} />
+                  </td>
+                  <td style={td}>
+                    <select style={{ ...input, padding: '3px 6px', fontSize: 12 }} value={a.medida_socioeducativa ?? ''}
+                      onChange={e => atualizarCampoAluno(a.id, 'medida_socioeducativa', e.target.value || null)}>
+                      <option value="">—</option>
+                      <option value="LA">L.A.</option>
+                      <option value="CRAS">CRAS</option>
+                      <option value="CREAS">CREAS</option>
+                      <option value="CONSELHO_TUTELAR">Conselho Tutelar</option>
+                    </select>
+                  </td>
+                  <td style={td}>
+                    <input type="checkbox" checked={!!a.rematricula} disabled={salvandoCampo === a.id + 'rematricula'}
+                      onChange={e => atualizarCampoAluno(a.id, 'rematricula', e.target.checked)} />
+                  </td>
+                  <td style={td}>
+                    <select style={{ ...input, padding: '3px 6px', fontSize: 12 }} value={a.resultado_final ?? ''}
+                      onChange={e => atualizarCampoAluno(a.id, 'resultado_final', e.target.value || null)}>
+                      <option value="">—</option>
+                      <option value="PROMOVIDO">Promovido</option>
+                      <option value="PERMANECE">Permanece</option>
+                      <option value="CONCLUINTE">Concluinte</option>
+                    </select>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </Secao>
+
+      <Secao titulo="LISTA DE ESPERA">
+        <div style={{ padding: 12, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', borderBottom: `1px solid ${theme.borderLight}` }}>
+          <div>
+            <label style={labelStyle}>Nome</label>
+            <input style={input} value={novaEspera.nome} onChange={e => setNovaEspera(v => ({ ...v, nome: e.target.value }))} />
+          </div>
+          <div>
+            <label style={labelStyle}>Ciclo</label>
+            <select style={input} value={novaEspera.ciclo} onChange={e => setNovaEspera(v => ({ ...v, ciclo: e.target.value }))}>
+              <option value="ALFA">Alfa</option>
+              <option value="POS">Pós</option>
+              <option value="MULTI">Multi</option>
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>Período</label>
+            <select style={input} value={novaEspera.periodo} onChange={e => setNovaEspera(v => ({ ...v, periodo: e.target.value }))}>
+              {PERIODOS.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </div>
+          <div style={{ flex: '1 1 200px' }}>
+            <label style={labelStyle}>Observação</label>
+            <input style={input} value={novaEspera.observacao} onChange={e => setNovaEspera(v => ({ ...v, observacao: e.target.value }))} />
+          </div>
+          <button type="button" disabled={salvandoEspera || !novaEspera.nome.trim()} onClick={criarListaEspera}
+            className="report-action report-action-primary">
+            {salvandoEspera ? 'Salvando…' : '+ Adicionar'}
+          </button>
+        </div>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ background: theme.primaryHover }}>
+              <th style={{ ...th, textAlign: 'left' }}>Nome</th>
+              <th style={th}>Ciclo</th>
+              <th style={th}>Período</th>
+              <th style={{ ...th, textAlign: 'left' }}>Observação</th>
+              <th style={th}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {listaEspera.length === 0 && (
+              <tr><td style={{ ...td, textAlign: 'left' }} colSpan={5}>Nenhum registro na lista de espera.</td></tr>
+            )}
+            {listaEspera.map(l => (
+              <tr key={l.id}>
+                <td style={tdEsq}>{l.nome}</td>
+                <td style={td}>{CICLO_LABEL[l.ciclo] ?? l.ciclo}</td>
+                <td style={td}>{l.periodo}</td>
+                <td style={{ ...td, textAlign: 'left' }}>{l.observacao}</td>
+                <td style={td}>
+                  <button type="button" onClick={() => removerListaEspera(l.id)} className="report-action report-action-danger" style={{ padding: '2px 8px', fontSize: 11 }}>
+                    Remover
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Secao>
+    </div>
+  );
+}

@@ -276,6 +276,22 @@ export const api = {
     .order('id', { ascending: true })
     .range(inicio, fim)),
 
+  getListaEsperaEja: async () => todasAsPaginas((inicio, fim) => supabase
+    .from('ListaEsperaEja')
+    .select('*')
+    .order('criado_em', { ascending: false })
+    .range(inicio, fim)),
+
+  criarListaEsperaEja: async (registro: { nome: string; ciclo: string; periodo: string; observacao?: string; criado_por?: string }) => {
+    const { error } = await supabase.from('ListaEsperaEja').insert(registro);
+    if (error) throw error;
+  },
+
+  removerListaEsperaEja: async (id: string) => {
+    const { error } = await supabase.from('ListaEsperaEja').delete().eq('id', id);
+    if (error) throw error;
+  },
+
   getBackups: async () => todasAsPaginas((inicio, fim) => supabase
     .from('Backup')
     .select('id, created_at, descricao')

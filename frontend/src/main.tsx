@@ -21,6 +21,7 @@ import Genero from './pages/Genero';
 import Situacoes from './pages/Situacoes';
 import Analitico from './pages/Analitico';
 import FaixaEtaria from './pages/FaixaEtaria';
+import MapaEja from './pages/MapaEja';
 import Login from './pages/Login';
 import { api, supabase } from './api';
 import { theme } from './styles';
@@ -61,6 +62,7 @@ const NAV_ITEMS: { to: string; label: string; end?: boolean; badge?: boolean; ad
   { to: '/situacoes', label: '🔄 Situações',                         pageKey: 'situacoes' },
   { to: '/analitico', label: '📈 Painel Analítico',                  pageKey: 'analitico' },
   { to: '/faixa-etaria', label: '📅 Faixa Etária',                   pageKey: 'faixaetaria' },
+  { to: '/mapa-eja',  label: '📋 Mapa EJA',                          pageKey: 'mapaeja' },
   { to: '/controle',  label: '📊 Controle',  adminOnly: true },
   { to: '/usuarios',  label: '👥 Usuários',  adminOnly: true },
 ];
@@ -347,6 +349,7 @@ function AppShell() {
             <Route path="/situacoes" element={<ViewerRoute pageKey="situacoes"><Situacoes /></ViewerRoute>} />
             <Route path="/analitico" element={<ViewerRoute pageKey="analitico"><Analitico /></ViewerRoute>} />
             <Route path="/faixa-etaria" element={<ViewerRoute pageKey="faixaetaria"><FaixaEtaria /></ViewerRoute>} />
+            <Route path="/mapa-eja" element={<ViewerRoute pageKey="mapaeja"><MapaEja /></ViewerRoute>} />
             <Route path="/controle" element={<AdminRoute><Controle /></AdminRoute>} />
             <Route path="/usuarios" element={<AdminRoute><Usuarios /></AdminRoute>} />
           </Routes>
