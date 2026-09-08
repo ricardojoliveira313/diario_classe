@@ -27,21 +27,34 @@ export default function MapaEja() {
   const [alunos, setAlunos] = useState<any[]>([]);
   const [listaEspera, setListaEspera] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState('');
   const hoje = useMemo(() => new Date(), []);
   const [mes, setMes] = useState(hoje.getMonth() + 1);
   const [salvandoCampo, setSalvandoCampo] = useState('');
   const [novaEspera, setNovaEspera] = useState({ nome: '', ciclo: 'ALFA', periodo: 'Noite', observacao: '' });
   const [salvandoEspera, setSalvandoEspera] = useState(false);
 
+  // Cada busca é independente — turmas/alunos vêm do mesmo cadastro que a
+  // aba Importar já grava, então uma falha na lista de espera (por exemplo,
+  // ADICIONAR_MAPA_EJA.sql ainda não rodado no Supabase, tabela inexistente)
+  // não pode derrubar a tela inteira e mostrar "nenhuma turma encontrada"
+  // como se os dados não existissem — achado real (set/2026).
   const carregar = () => {
     setLoading(true);
-    Promise.all([api.getTurmas(), api.getAllAlunos(), api.getListaEsperaEja()])
-      .then(([t, a, le]) => {
+    setErro('');
+    Promise.all([
+      api.getTurmas().catch(e => { throw new Error(`Turmas: ${e.message ?? e}`); }),
+      api.getAllAlunos().catch(e => { throw new Error(`Alunos: ${e.message ?? e}`); }),
+    ])
+      .then(([t, a]) => {
         setTurmas(t ?? []);
         setAlunos(a ?? []);
-        setListaEspera(le ?? []);
       })
+      .catch(e => setErro(e.message ?? String(e)))
       .finally(() => setLoading(false));
+    api.getListaEsperaEja()
+      .then(le => setListaEspera(le ?? []))
+      .catch(() => setListaEspera([]));
   };
   useEffect(carregar, []);
 
@@ -85,11 +98,33 @@ export default function MapaEja() {
 
   if (loading) return <Loading />;
 
+  if (erro) {
+    return (
+      <div>
+        <h2 style={{ color: theme.text, marginBottom: 4 }}>📋 Mapa EJA</h2>
+        <div style={{ ...cardStyle({ padding: 16 }), border: `1px solid ${theme.danger}`, color: theme.danger }}>
+          <strong>Não foi possível carregar os dados:</strong> {erro}
+          <div style={{ marginTop: 6, fontSize: 13, color: theme.textSecondary }}>
+            Se o erro mencionar uma coluna ou tabela que não existe, é sinal de que o SQL <code>ADICIONAR_MAPA_EJA.sql</code> ainda
+            não foi rodado no Supabase — peça pra administração rodar e depois clique em "Tentar de novo".
+          </div>
+          <button type="button" onClick={carregar} className="report-action report-action-primary" style={{ marginTop: 10 }}>
+            🔄 Tentar de novo
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (resumo.linhas.length === 0) {
     return (
       <div>
         <h2 style={{ color: theme.text, marginBottom: 4 }}>📋 Mapa EJA</h2>
-        <p style={{ color: theme.textSecondary }}>Nenhuma turma de EJA encontrada. Importe os arquivos da SED na aba Importar primeiro.</p>
+        <p style={{ color: theme.textSecondary }}>
+          Nenhuma turma de EJA encontrada nos dados atuais (buscamos turmas cujo nome contém "EJA"). Importe os
+          arquivos da SED na aba Importar, depois volte aqui e clique em "Atualizar dados".
+        </p>
+        <button type="button" onClick={carregar} className="report-action report-action-primary">🔄 Atualizar dados</button>
       </div>
     );
   }
@@ -99,7 +134,8 @@ export default function MapaEja() {
       <h2 style={{ color: theme.text, marginBottom: 4 }}>📋 Mapa EJA</h2>
       <p style={{ color: theme.textSecondary, fontSize: 13, marginBottom: 16 }}>
         Gerado automaticamente a partir dos dados importados da SED (situação, datas de matrícula/movimentação e
-        data de nascimento). Óbito, CADE, medida socioeducativa, rematrícula e resultado final são lançados manualmente
+        data de nascimento). A importação continua sendo feita na aba <strong>Importar</strong> — aqui é só a leitura
+        do mesmo cadastro. Óbito, CADE, medida socioeducativa, rematrícula e resultado final são lançados manualmente
         na conferência abaixo — a SED não informa isso.
       </p>
 
@@ -110,6 +146,9 @@ export default function MapaEja() {
             {MESES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
           </select>
         </div>
+        <button type="button" onClick={carregar} className="report-action report-action-neutral">
+          🔄 Atualizar dados
+        </button>
         <div style={{ color: theme.textSecondary, fontSize: 12.5 }}>Ano letivo: <strong>{ano}</strong></div>
       </div>
 
