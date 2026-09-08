@@ -5,7 +5,24 @@ import { Loading, EmptyState } from '../components';
 import { useTheme } from '../ThemeContext';
 import { useAno } from '../AnoContext';
 
-type Filtro = 'todas' | 'lancadas' | 'com_faltas' | 'sem_faltas' | 'nao_lancadas';
+type Filtro = 'todas' | 'lancadas' | 'parciais' | 'com_faltas' | 'sem_faltas' | 'nao_lancadas';
+
+// Uma linha de Falta só conta como "conferida" se ela representa uma decisão
+// de fato: faltas digitadas, o botão SF (sem faltas) confirmado, ou um status
+// especial (transferido etc). Uma linha default (0 faltas, sem SF, grade em
+// branco) é só o que sobra de salvar a turma inteira de uma vez — não prova
+// que alguém olhou aquele aluno. Ver aviso na tela de Faltas: "Zero sem SF
+// continua pendente".
+function faltaConferida(f: any): boolean {
+  if ((f.faltas ?? 0) > 0) return true;
+  if (f.conferido_sem_faltas === true) return true;
+  if (f.frequencia && !String(f.frequencia).startsWith('DIAS:')) return true;
+  return false;
+}
+
+function alunoAtivo(a: any): boolean {
+  return !a.situacao || a.situacao === 'ATIVO';
+}
 
 function fmtData(iso: string | null | undefined) {
   if (!iso) return '—';
@@ -21,6 +38,7 @@ export default function Controle() {
   const { ano } = useAno();
   const [mes, setMes] = useState(new Date().getMonth() + 1);
   const [turmas, setTurmas] = useState<any[]>([]);
+  const [alunos, setAlunos] = useState<any[]>([]);
   const [lancamentos, setLancamentos] = useState<any[]>([]);
   const [faltasMes, setFaltasMes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,6 +48,7 @@ export default function Controle() {
     setLoading(true);
     Promise.all([
       api.getTurmas(),
+      api.getAllAlunos(),
       api.getLancamentos(mes, ano).catch(error => {
         // Falha no registro auxiliar não pode esconder faltas já salvas.
         console.error('Falha ao carregar LancamentoFaltas; usando dados de Falta:', error);
@@ -37,8 +56,9 @@ export default function Controle() {
       }),
       api.getFaltasMes(mes, ano),
     ])
-      .then(([t, l, f]) => {
+      .then(([t, al, l, f]) => {
         setTurmas(sortTurmasPedagogico(t ?? []));
+        setAlunos(al ?? []);
         setLancamentos(l ?? []);
         setFaltasMes(f ?? []);
       })
@@ -76,37 +96,80 @@ export default function Controle() {
     return m;
   }, [lancamentos, faltasMes, mes, ano]);
 
+  // Quantos alunos ATIVOS cada turma tem — é o denominador que decide se o
+  // lançamento está completo, não a simples existência de alguma linha salva.
+  const ativosPorTurma = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    alunos.filter(alunoAtivo).forEach(a => {
+      if (!m.has(a.turmaId)) m.set(a.turmaId, new Set());
+      m.get(a.turmaId)!.add(a.id);
+    });
+    return m;
+  }, [alunos]);
+
+  // Quais desses alunos já têm uma linha de Falta realmente conferida no mês.
+  const conferidosPorTurma = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    faltasMes.filter(faltaConferida).forEach(f => {
+      if (!m.has(f.turmaId)) m.set(f.turmaId, new Set());
+      m.get(f.turmaId)!.add(f.alunoId);
+    });
+    return m;
+  }, [faltasMes]);
+
   const rows = useMemo(() =>
-    turmas.map(t => ({ turma: t, lancamento: lancMap.get(t.id) ?? null })),
-    [turmas, lancMap]
+    turmas.map(t => {
+      const ativos = ativosPorTurma.get(t.id) ?? new Set<string>();
+      const conferidosTodos = conferidosPorTurma.get(t.id) ?? new Set<string>();
+      const conferidos = new Set([...conferidosTodos].filter(id => ativos.has(id)));
+      const status: 'nao_lancada' | 'parcial' | 'completa' =
+        conferidos.size === 0 ? 'nao_lancada'
+        : (ativos.size > 0 && conferidos.size < ativos.size) ? 'parcial'
+        : 'completa';
+      return {
+        turma: t,
+        lancamento: lancMap.get(t.id) ?? null,
+        totalAtivos: ativos.size,
+        totalConferidos: conferidos.size,
+        status,
+      };
+    }),
+    [turmas, lancMap, ativosPorTurma, conferidosPorTurma]
   );
 
   const totalTurmas = rows.length;
-  const totalLancadas = rows.filter(r => r.lancamento).length;
-  const totalComFaltas = rows.filter(r => r.lancamento && r.lancamento.total_faltas > 0).length;
-  const totalSemFaltas = totalLancadas - totalComFaltas;
-  const totalNaoLancadas = totalTurmas - totalLancadas;
-  const pct = totalTurmas > 0 ? Math.round(totalLancadas / totalTurmas * 100) : 0;
+  const totalCompletas = rows.filter(r => r.status === 'completa').length;
+  const totalParciais = rows.filter(r => r.status === 'parcial').length;
+  const totalComFaltas = rows.filter(r => r.status === 'completa' && r.lancamento && r.lancamento.total_faltas > 0).length;
+  const totalSemFaltas = totalCompletas - totalComFaltas;
+  const totalNaoLancadas = rows.filter(r => r.status === 'nao_lancada').length;
+  const pct = totalTurmas > 0 ? Math.round(totalCompletas / totalTurmas * 100) : 0;
 
   const filtradas = useMemo(() => {
     switch (filtro) {
-      case 'lancadas':     return rows.filter(r => r.lancamento);
-      case 'com_faltas':   return rows.filter(r => r.lancamento && r.lancamento.total_faltas > 0);
-      case 'sem_faltas':   return rows.filter(r => r.lancamento && r.lancamento.total_faltas === 0);
-      case 'nao_lancadas': return rows.filter(r => !r.lancamento);
+      case 'lancadas':     return rows.filter(r => r.status === 'completa');
+      case 'parciais':     return rows.filter(r => r.status === 'parcial');
+      case 'com_faltas':   return rows.filter(r => r.status === 'completa' && r.lancamento && r.lancamento.total_faltas > 0);
+      case 'sem_faltas':   return rows.filter(r => r.status === 'completa' && r.lancamento && r.lancamento.total_faltas === 0);
+      case 'nao_lancadas': return rows.filter(r => r.status === 'nao_lancada');
       default:             return rows;
     }
   }, [rows, filtro]);
 
   if (loading) return <Loading />;
 
-  const statusBadge = (lancamento: any | null) => {
-    if (!lancamento) return (
+  const statusBadge = (status: 'nao_lancada' | 'parcial' | 'completa', totalConferidos: number, totalAtivos: number, lancamento: any | null) => {
+    if (status === 'nao_lancada') return (
       <span style={{ background: isDark ? 'rgba(239,68,68,0.15)' : '#fee2e2', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: 6, padding: '3px 9px', fontSize: 12, fontWeight: 700 }}>
         ❌ Não lançado
       </span>
     );
-    if (lancamento.total_faltas > 0) return (
+    if (status === 'parcial') return (
+      <span style={{ background: isDark ? 'rgba(217,119,6,0.15)' : '#fef3c7', color: '#d97706', border: '1px solid #fcd34d', borderRadius: 6, padding: '3px 9px', fontSize: 12, fontWeight: 700 }} title="Nem todos os alunos da turma foram conferidos ainda">
+        🟡 Parcial ({totalConferidos}/{totalAtivos})
+      </span>
+    );
+    if (lancamento && lancamento.total_faltas > 0) return (
       <span style={{ background: isDark ? 'rgba(217,119,6,0.15)' : '#fef3c7', color: '#d97706', border: '1px solid #fcd34d', borderRadius: 6, padding: '3px 9px', fontSize: 12, fontWeight: 700 }}>
         ⚠️ Com faltas
       </span>
@@ -120,7 +183,8 @@ export default function Controle() {
 
   const FILTROS: { key: Filtro; label: string }[] = [
     { key: 'todas',        label: `Todas (${totalTurmas})` },
-    { key: 'lancadas',     label: `✅ Lançadas (${totalLancadas})` },
+    { key: 'lancadas',     label: `✅ Lançadas (${totalCompletas})` },
+    { key: 'parciais',     label: `🟡 Parciais (${totalParciais})` },
     { key: 'com_faltas',   label: `⚠️ Com faltas (${totalComFaltas})` },
     { key: 'sem_faltas',   label: `✓ Sem faltas (${totalSemFaltas})` },
     { key: 'nao_lancadas', label: `❌ Não lançadas (${totalNaoLancadas})` },
@@ -144,7 +208,8 @@ export default function Controle() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 16 }}>
         {[
           { val: totalTurmas,      lbl: 'Total de turmas',  cor: theme.primary },
-          { val: totalLancadas,    lbl: 'Lançadas',         cor: '#16a34a' },
+          { val: totalCompletas,   lbl: 'Lançadas',         cor: '#16a34a' },
+          { val: totalParciais,    lbl: 'Parciais',         cor: '#d97706' },
           { val: totalComFaltas,   lbl: 'Com faltas',       cor: '#d97706' },
           { val: totalSemFaltas,   lbl: 'Sem faltas',       cor: '#0369a1' },
           { val: totalNaoLancadas, lbl: 'Não lançadas',     cor: '#dc2626' },
@@ -161,7 +226,7 @@ export default function Controle() {
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: 13, fontWeight: 600 }}>
           <span style={{ color: theme.text }}>Progresso de {MESES[mes - 1]} {ano}</span>
           <span style={{ color: totalNaoLancadas === 0 && totalTurmas > 0 ? '#16a34a' : theme.textSecondary, fontWeight: 700 }}>
-            {pct}% — {totalLancadas}/{totalTurmas} turmas {totalNaoLancadas === 0 && totalTurmas > 0 ? '✅ Completo!' : ''}
+            {pct}% — {totalCompletas}/{totalTurmas} turmas {totalNaoLancadas === 0 && totalTurmas > 0 ? '✅ Completo!' : ''}
           </span>
         </div>
         <div style={{ background: theme.borderLight, borderRadius: 8, height: 12, overflow: 'hidden' }}>
@@ -196,16 +261,18 @@ export default function Controle() {
               </tr>
             </thead>
             <tbody>
-              {filtradas.map(({ turma, lancamento }) => {
-                const naoLancado = !lancamento;
+              {filtradas.map(({ turma, lancamento, status, totalConferidos, totalAtivos }) => {
+                const naoLancado = status === 'nao_lancada';
                 const rowBg = naoLancado
                   ? (isDark ? 'rgba(239,68,68,0.08)' : '#fff5f5')
+                  : status === 'parcial'
+                  ? (isDark ? 'rgba(217,119,6,0.08)' : '#fffbeb')
                   : 'transparent';
                 return (
                   <tr key={turma.id} style={{ borderBottom: `1px solid ${theme.borderLight}`, background: rowBg }}>
                     <td style={{ padding: '10px 12px', fontWeight: 700, color: naoLancado ? '#dc2626' : theme.text, whiteSpace: 'nowrap' }}>{turma.nome}</td>
                     <td style={{ padding: '10px 12px', fontWeight: naoLancado ? 700 : 400, color: naoLancado ? '#dc2626' : theme.textSecondary }}>{turma.professora ?? '—'}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'center' }}>{statusBadge(lancamento)}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'center' }}>{statusBadge(status, totalConferidos, totalAtivos, lancamento)}</td>
                     <td style={{ padding: '10px 12px', textAlign: 'center', color: lancamento?.alunos_com_falta > 0 ? '#d97706' : theme.textSecondary, fontWeight: lancamento?.alunos_com_falta > 0 ? 700 : 400 }}>
                       {lancamento != null ? lancamento.alunos_com_falta : '—'}
                     </td>
