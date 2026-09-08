@@ -658,8 +658,11 @@ export default function Importar() {
 
   // ─── PARSE: Excel ───
   // datesOnly: mapa externo onde são guardadas datas de séries numéricas não-AEE
-  // (FUNDAMENTAL, INFANTIL) — esses alunos não entram no alunosMap, PDF é a base
-  function parseExcels(files: File[], datesOnly?: Map<string, { inicio: string; fim: string; sexo: string }>): Promise<AlunoUnificado[]> {
+  // (FUNDAMENTAL, INFANTIL) — esses alunos não entram no alunosMap, PDF é a base.
+  // Guarda também nome/série pra dar pra avisar quando um RA só aparece aqui — sinal
+  // de matrícula nova que a lista de alunos (PDF) ainda não cobre (ver PASSO onde
+  // excelDatesMap é cruzado com todosAlunos, mais abaixo em analisar()).
+  function parseExcels(files: File[], datesOnly?: Map<string, { inicio: string; fim: string; sexo: string; nome: string; serie: string }>): Promise<AlunoUnificado[]> {
     return new Promise((resolve, reject) => {
       const alunosMap = new Map<string, AlunoUnificado>();
       let pendentes = 0;
@@ -745,14 +748,14 @@ export default function Importar() {
                     const ini = fmtDate(nr[Object.keys(nr).find(k => normalizeStr(k).includes('INICIO') && normalizeStr(k).includes('MATRI') && !normalizeStr(k).includes('FIM')) ?? '']);
                     const fim = fmtDate(nr[Object.keys(nr).find(k => normalizeStr(k).includes('FIM') && normalizeStr(k).includes('MATRI')) ?? '']);
                     const sexo = normalizarSexo(nr['SEXO'] ?? nr['GENERO'] ?? nr['GÊNERO'] ?? nr['SEXO DO ALUNO']);
-                    if (ini || fim || sexo) {
-                      const atual = datesOnly.get(String(raNum));
-                      datesOnly.set(String(raNum), {
-                        inicio: ini || atual?.inicio || '',
-                        fim: fim || atual?.fim || '',
-                        sexo: sexo || atual?.sexo || '',
-                      });
-                    }
+                    const atual = datesOnly.get(String(raNum));
+                    datesOnly.set(String(raNum), {
+                      inicio: ini || atual?.inicio || '',
+                      fim: fim || atual?.fim || '',
+                      sexo: sexo || atual?.sexo || '',
+                      nome: atual?.nome || nome,
+                      serie: atual?.serie || String(nr['SERIE'] ?? nr['TURMA'] ?? '').trim(),
+                    });
                   }
                 }
                 continue;
@@ -1256,7 +1259,7 @@ export default function Importar() {
       let cpfMap = new Map<string, DadosEducacenso>();
       try { alunosPDF = await parsePDFs(pdfFiles); } catch (e: any) { setErro('Erro nos PDFs: ' + (e.message ?? e)); return; }
       try { alunosHTML = await parseHTMLSED(xlsFiles); } catch (e: any) { setErro('Erro nos HTML (xls): ' + (e.message ?? e)); return; }
-      const excelDatesMap = new Map<string, { inicio: string; fim: string; sexo: string }>();
+      const excelDatesMap = new Map<string, { inicio: string; fim: string; sexo: string; nome: string; serie: string }>();
       try { alunosExcel = await parseExcels(xlsxFiles, excelDatesMap); } catch (e: any) { setErro('Erro nos Excel: ' + (e.message ?? e)); return; }
       try { turmasMap = await parseTurmasProfessores(files); } catch (e: any) { setErro('Erro na planilha Turmas: ' + (e.message ?? e)); return; }
       try { bolsaMapPDF = await parseBolsaFamiliaPDF(pdfFiles); } catch (e: any) { setErro('Erro no PDF Bolsa Família: ' + (e.message ?? e)); return; }
@@ -1512,6 +1515,7 @@ export default function Importar() {
       // ─── Suplementar datas do Excel para alunos vindos do PDF ──────────────
       // excelDatesMap tem datas de séries numéricas (FUNDAMENTAL, INFANTIL) que
       // não entraram no alunosMap — aplica apenas se o aluno não tiver a data já
+      const rasVistosNoLote = new Set(Array.from(todosAlunos.values()).filter(a => a.ra).map(a => String(a.ra)));
       if (excelDatesMap.size > 0) {
         for (const a of todosAlunos.values()) {
           if (!a.ra) continue;
@@ -1521,6 +1525,29 @@ export default function Importar() {
           if (!a.dataFimMatricula && d.fim) a.dataFimMatricula = d.fim;
           if (!a.sexo && d.sexo) a.sexo = d.sexo;
         }
+      }
+
+      // ─── Matrícula nova sem cobertura de PDF (achado real, set/2026) ───────
+      // Séries numéricas (FUNDAMENTAL/INFANTIL) só criam Aluno via PDF "Relação
+      // de Alunos por Classe" — o Excel diário só supre datas (ver comentário em
+      // parseExcels). Um RA que só aparece no excelDatesMap, sem PDF que o traga
+      // e sem já existir no banco, é uma matrícula nova que este import NÃO vai
+      // cadastrar — silenciosamente, sem esse aviso. Isso é o que aconteceu com
+      // a HELENA VITORYA FONSECA SILVA REIS (RA 000122501488): entrou na turma
+      // em 13/05/2026, bem depois do início do ano, e só apareceu na planilha
+      // diária — nunca foi importada a lista de alunos (PDF) atualizada da
+      // turma, então o aluno nunca foi criado no sistema.
+      let alunosNovosSemPDF: Array<{ nome: string; ra: string; serie: string }> = [];
+      if (excelDatesMap.size > 0) {
+        let alunosNoBancoRA: Set<string>;
+        try {
+          alunosNoBancoRA = new Set((await api.getAllAlunos()).map((a: any) => String(a.ra)).filter(Boolean));
+        } catch {
+          alunosNoBancoRA = new Set();
+        }
+        alunosNovosSemPDF = Array.from(excelDatesMap.entries())
+          .filter(([ra]) => !rasVistosNoLote.has(ra) && !alunosNoBancoRA.has(ra))
+          .map(([ra, d]) => ({ nome: d.nome, ra, serie: d.serie }));
       }
 
       // ─── Reconciliação pós-merge: mesmo aluno com RA num arquivo e sem RA noutro ──
@@ -1748,6 +1775,7 @@ export default function Importar() {
         bolsaMapSize: bolsaMap.size,
         arquivos: files.length,
         faltas: totalFaltas,
+        alunosNovosSemPDF,
       };
       setPreview(prev);
       // Converte cpfMap (Map) em array para serialização — só entradas com nome real
@@ -2799,6 +2827,36 @@ export default function Importar() {
             ✅ Faltas históricas serão PRESERVADAS.
             Apenas registros do mês correspondente serão atualizados.
           </div>
+
+          {/* ─── Alunos com matrícula nova que este import NÃO vai cadastrar ───────
+              Séries numéricas (FUNDAMENTAL/INFANTIL) só criam Aluno via PDF "Relação
+              de Alunos por Classe" — planilha diária sozinha nunca cria cadastro novo,
+              só atualiza quem já existe. Um RA que só aparece na planilha, sem PDF que
+              o traga e sem já existir no banco, ficaria de fora silenciosamente. */}
+          {preview.alunosNovosSemPDF?.length > 0 && (
+            <div style={{
+              marginTop: 12, padding: '10px 14px',
+              background: theme.dangerLight ?? '#fef2f2',
+              border: `1px solid ${theme.danger ?? '#dc2626'}`,
+              borderRadius: theme.radius,
+              fontSize: 13, color: theme.dangerHover ?? '#b91c1c',
+            }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                ⚠️ {preview.alunosNovosSemPDF.length} aluno(s) da planilha diária SEM cadastro — não serão importados agora
+              </div>
+              <div style={{ marginBottom: 6 }}>
+                Aparecem na planilha (com RA), mas nunca vieram numa lista de alunos em PDF
+                e ainda não existem no sistema. Provavelmente matrícula nova no meio do ano —
+                envie a lista de alunos (PDF "Relação de Alunos por Classe") atualizada da
+                turma deles junto no próximo import para cadastrá-los.
+              </div>
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {preview.alunosNovosSemPDF.map((a: any) => (
+                  <li key={a.ra}>{a.nome || '(nome não identificado)'} — RA {a.ra}{a.serie ? ` — série ${a.serie}` : ''}</li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {/* ─── Relatório de conciliação Bolsa Família ─────────────── */}
           {dadosRef.current?.bfNaoEncontrados?.length > 0 && (
