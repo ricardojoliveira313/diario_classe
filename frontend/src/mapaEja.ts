@@ -158,7 +158,10 @@ export function calcularMapaEja(
     const vieramDoMesAnterior = ativos.filter(a => !entrouNoMes(a)).length;
     const matriculaNova = ativos.filter(a => entrouNoMes(a) && !a.rematricula).length;
     const rematricula = ativos.filter(a => entrouNoMes(a) && a.rematricula === true).length;
-    const cade = ativos.filter(a => a.cade === true).length;
+    // CADE (atendimento a alunos com deficiência) é automático — vem direto do
+    // campo "deficiencia" que a SED já manda na importação (ex.: "AUTISTA
+    // INFANTIL", "SÍNDROME DE DOWN"), sem precisar de conferência manual.
+    const cade = ativos.filter(a => String(a.deficiencia ?? '').trim() !== '').length;
     const medidasSocioeducativas = ativos.filter(a => a.medida_socioeducativa).length;
 
     const reclassificados = doTurma.filter(a => situacaoDe(a) === 'CLASSIFICADO').length;

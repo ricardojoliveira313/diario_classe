@@ -37,7 +37,7 @@ try {
     { id: 'infantil', nome: '1ª ETAPA A', professora: 'Prof C', periodo: 'Manhã' },
   ];
   const alunos = [
-    { id: '1', ra: 1, nome: 'ATIVO ANTIGO', turmaId: 'alfa', situacao: 'ATIVO', data_nascimento: '10/05/1976', data_inicio_matricula: '04/02/2026' },
+    { id: '1', ra: 1, nome: 'ATIVO ANTIGO', turmaId: 'alfa', situacao: 'ATIVO', data_nascimento: '10/05/1976', data_inicio_matricula: '04/02/2026', deficiencia: 'AUTISTA INFANTIL' },
     { id: '2', ra: 2, nome: 'MATRICULA NOVA', turmaId: 'alfa', situacao: 'ATIVO', data_nascimento: '01/01/2000', data_inicio_matricula: '05/09/2026' },
     { id: '3', ra: 3, nome: 'EVADIDO', turmaId: 'alfa', situacao: 'ABAN', data_nascimento: '01/01/1990', data_inicio_matricula: '04/02/2026', data_fim_matricula: '10/09/2026' },
     { id: '4', ra: 4, nome: 'TRANSFERIDO', turmaId: 'pos', situacao: 'TRAN', data_nascimento: '01/01/1985', data_inicio_matricula: '04/02/2026', data_fim_matricula: '10/06/2026' },
@@ -54,6 +54,7 @@ try {
   assert.equal(alfa.vieramDoMesAnterior, 1);
   assert.equal(alfa.evasao, 1);
   assert.equal(alfa.evadidoMes, 1, 'saída em setembro deve contar no mês');
+  assert.equal(alfa.cade, 1, 'CADE deve ser automático a partir do campo deficiencia vindo da SED, sem conferência manual');
 
   const pos = resumo.linhas.find(l => l.turmaId === 'pos');
   assert.equal(pos.transferencia, 1);
