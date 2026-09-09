@@ -597,9 +597,54 @@ export default function Importar() {
         const { serie: serieAluno, professora: profAluno } = getSerie(raPos);
 
         if (!afterMatch) {
-          // Fallback: PDF "Relação de Alunos" SED — colunas em ordem invertida
-          // (datas/situações extraídas antes dos nomes pelo pdfjs). Salva nome+RA+série;
-          // o merge com Excel preencherá nascimento, situação e deficiência via RA.
+          // PDF "Relação de Alunos por Classe" SED: tem 3 datas antes da situação
+          // (Nascimento, Início Matrícula, Fim Matrícula) em vez de só 1 — o
+          // afterMatch acima não bate. Achado real (set/2026): sem esta 2ª tentativa,
+          // o código caía direto no fallback nome+RA-só, que grava situação SEMPRE
+          // como 'ATIVO' e deficiência SEMPRE em branco, não importa o que o PDF diga
+          // — perdendo BXTR/TRAN/REMA reais e escondendo alunos com deficiência (CADE
+          // do Mapa EJA saindo zerado mesmo com aluno real cadastrado). Tenta casar
+          // essa 2ª forma antes de desistir e cair no fallback só-nome.
+          // "Identificação Única – Educacenso" (12 dígitos) é OPCIONAL entre nascimento
+          // e início de matrícula — só alguns alunos têm esse valor preenchido no PDF
+          // (achado real: DANIEL HENRIQUE BENTO SEMEXAN tinha, os vizinhos dele não).
+          const afterMatch3Datas = after.match(
+            new RegExp(`^\\s*(?:(\\S+)\\s+)?[A-Z]{2}\\s+${pdfDate}\\s+(?:\\d{6,20}\\s+)?${pdfDate}\\s+${pdfDate}\\s+(ATIVO|TRAN|REMA|ABAN|N\\s?COM|BXTR|NAO\\s?COMPARECEU|RECLASSIFICADO|CLASSIFICADO)(?:\\s+${pdfDate})?\\s*(.*?)(?=\\s*\\d{1,2}\\s+\\d{1,3}\\s+[A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ]|\\s*0{3}\\d{9}|${sectionBreak}|$)`, 'i')
+          );
+          if (afterMatch3Datas && serieAluno) {
+            const [, digRaRaw3, nascRaw3, inicioRaw3, fimRaw3, situacaoRaw3, movimRaw3] = afterMatch3Datas;
+            const digRa3 = /^[0-9X]$/i.test(digRaRaw3?.trim() ?? '') ? digRaRaw3.trim().toUpperCase() : '';
+            const situacao3 = normalizeSituacao(situacaoRaw3.trim());
+            const isAtivo3 = situacao3 === 'ATIVO';
+            // Deficiência NÃO é extraída aqui: nesse formato de PDF ("Relação de Alunos
+            // por Classe") a coluna "Condições educacionais especiais" some numa 2ª
+            // seção separada do texto (endereços), então o texto capturado depois da
+            // situação é o ENDEREÇO do aluno, não a deficiência — testado e confirmado
+            // com PDF real (set/2026). Capturar aqui gravaria endereço como se fosse
+            // deficiência, pior que deixar em branco. Deficiência continua vindo só do
+            // merge com Excel/afterMatch principal, quando disponível.
+            alunos.push({
+              nome, nomeNorm: normalizeNome(nome),
+              ra: parseInt(raStr) || null,
+              digRa: digRa3,
+              numero,
+              nascimento: nascRaw3.replace(/\s*\/\s*/g, '/'),
+              serie: serieAluno,
+              professora: profAluno || getProfessora(raPos),
+              situacao: situacao3, deficiencia: '',
+              bolsaFamilia: false,
+              dataInicioMatricula: inicioRaw3.replace(/\s*\/\s*/g, '/'),
+              dataFimMatricula: fimRaw3.replace(/\s*\/\s*/g, '/'),
+              dataMovimentacao: isAtivo3 ? '' : (movimRaw3 ? movimRaw3.replace(/\s*\/\s*/g, '/') : ''),
+              nis: '', responsavel: '', cpf: '',
+              turmaOrigem: '', professoraOrigem: '', turmaDestino: '', professoraDestino: '', corRaca: '', sexo: '',
+              faltas: {},
+            });
+            continue;
+          }
+          // Último recurso: nem 1 nem 3 datas bateram. Salva só nome+RA+série;
+          // o merge com Excel tenta preencher nascimento/situação/deficiência via RA
+          // (só funciona se a série não for puramente numérica — ver parseExcels).
           if (!serieAluno) continue;
           alunos.push({
             nome, nomeNorm: normalizeNome(nome),
