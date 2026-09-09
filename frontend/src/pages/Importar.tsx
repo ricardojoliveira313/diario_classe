@@ -322,6 +322,7 @@ export default function Importar() {
   const [total, setTotal] = useState(0);
   const [erro, setErro] = useState('');
   const [sucesso, setSucesso] = useState(false);
+  const [faltasProtegidasCount, setFaltasProtegidasCount] = useState(0);
   const [fixing, setFixing] = useState(false);
   const [importando, setImportando] = useState(false);
   const [bfConfirmados, setBFConfirmados] = useState<Record<string, string>>({});
@@ -1913,6 +1914,7 @@ export default function Importar() {
     const bfConciliacaoNesteLote = (bolsaMapSize ?? 0) > 0;
     setErro('');
     setSucesso(false);
+    setFaltasProtegidasCount(0);
     setTotal(alunos.length);
     setProgresso(0);
 
@@ -2789,11 +2791,41 @@ export default function Importar() {
         }
       }
 
-      setStatus(`Atualizando ${faltasParaInserir.length} registros de frequência...`);
-      for (let i = 0; i < faltasParaInserir.length; i += 80) {
+      // ─── Proteção contra sobrescrever faltas já digitadas (achado real, set/2026) ──
+      // A planilha diária da SED, quando reimportada, pode estar em branco/desatualizada
+      // (exportada antes de o(a) professor(a) lançar as faltas do mês na tela). Sem essa
+      // proteção, o upsert acima sobrescreve silenciosamente o que já foi digitado com
+      // zero — foi o que aconteceu com as faltas da turma da Prof. Roseli Zamana.
+      // Só sobrescreve quando o registro já existente NÃO tem dado real (F/J/A marcado,
+      // falta > 0, ou SF confirmado) — nesse caso é seguro, é só o valor inicial em branco.
+      // Se o já existente tem dado real e o import vem em branco, preserva o que já está lá.
+      const temMarcaReal = (freq: unknown) => /[FJA]/i.test(String(freq ?? '').replace(/^DIAS:/, ''));
+      const mesesAnos = new Set(faltasParaInserir.map(f => `${f.mes}|${f.ano}`));
+      const existentesPorChave = new Map<string, any>();
+      for (const chave of mesesAnos) {
+        const [mesStr, anoStr] = chave.split('|');
+        const existentes = await api.getFaltasMes(Number(mesStr), Number(anoStr)).catch(() => []);
+        for (const e of existentes ?? []) existentesPorChave.set(`${e.alunoId}|${e.mes}|${e.ano}`, e);
+      }
+      let faltasProtegidas = 0;
+      const faltasParaGravar = faltasParaInserir.filter(f => {
+        const existente = existentesPorChave.get(`${f.alunoId}|${f.mes}|${f.ano}`);
+        const existenteTemDadoReal = !!existente && (
+          (existente.faltas ?? 0) > 0 ||
+          existente.conferido_sem_faltas === true ||
+          temMarcaReal(existente.frequencia)
+        );
+        const importTemDadoReal = (f.faltas ?? 0) > 0 || temMarcaReal(f.frequencia);
+        if (existenteTemDadoReal && !importTemDadoReal) { faltasProtegidas++; return false; }
+        return true;
+      });
+      setFaltasProtegidasCount(faltasProtegidas);
+
+      setStatus(`Atualizando ${faltasParaGravar.length} registros de frequência...`);
+      for (let i = 0; i < faltasParaGravar.length; i += 80) {
         const { error } = await supabase
           .from('Falta')
-          .upsert(faltasParaInserir.slice(i, i + 80), { onConflict: 'alunoId,mes,ano' });
+          .upsert(faltasParaGravar.slice(i, i + 80), { onConflict: 'alunoId,mes,ano' });
         if (error) throw error;
       }
 
@@ -3008,6 +3040,17 @@ export default function Importar() {
           {preview && <p style={{ fontSize: 14, color: theme.textSecondary, marginTop: 6 }}>
             {preview.turmas} turmas, {preview.alunos} alunos, {preview.faltas} registros de frequência
           </p>}
+          {faltasProtegidasCount > 0 && (
+            <div style={{
+              marginTop: 12, padding: '10px 14px', textAlign: 'left',
+              background: theme.primaryHover, border: `1px solid ${theme.primary}`,
+              borderRadius: theme.radius, fontSize: 13, color: theme.text,
+            }}>
+              🛡️ {faltasProtegidasCount} registro(s) de frequência já preenchidos na tela de Faltas foram
+              {' '}<strong>preservados</strong> — a planilha deste import trouxe esses meses em branco para
+              esses alunos, e o sistema não sobrescreveu o que já estava digitado.
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'center' }}>
             <a href="/alunos" style={{ ...btn('primary'), textDecoration: 'none' }}>👥 Ver Alunos</a>
             <a href="/faltas" style={{ ...btn('success'), textDecoration: 'none' }}>📋 Lançar Faltas</a>
