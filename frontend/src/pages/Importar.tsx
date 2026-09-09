@@ -646,7 +646,46 @@ export default function Importar() {
             });
             continue;
           }
-          // Último recurso: nem 1 nem 3 datas bateram. Salva só nome+RA+série;
+          // 3º formato (achado real, EJA — ALFABETIZACAO): 2 datas antes da situação
+          // (Nascimento, Data Movimentação), mas a Movimentação vem ANTES da situação
+          // no texto extraído — ordem diferente tanto do formato de 1 data (afterMatch)
+          // quanto do de 3 datas acima. Sem isto, JOSE LUIZ e FELIPE AMARAL (que têm
+          // deficiência real no PDF: INTELECTUAL e MÚLTIPLA) caíam no fallback final e
+          // ficavam sem deficiência — mesmo turma, mesma escola, PDF só organizado
+          // diferente (a turma POS-ALFABETIZACAO do mesmo colégio já usa o formato de
+          // 1 data e funciona pelo afterMatch principal — o Kleber lá é prova disso).
+          const afterMatch2DatasMovAntes = after.match(
+            new RegExp(`^\\s*(?:(\\S+)\\s+)?[A-Z]{2}\\s+${pdfDate}\\s+${pdfDate}\\s+(ATIVO|TRAN|REMA|ABAN|N\\s?COM|BXTR|NAO\\s?COMPARECEU|RECLASSIFICADO|CLASSIFICADO)\\s*(.*?)(?=\\s*(?:${enderecoInicio})\\b|\\s*\\d{1,2}\\s+\\d{1,3}\\s+[A-ZÁÀÃÂÉÊÍÓÔÕÚÜÇ]|\\s*0{3}\\d{9}|${sectionBreak}|$)`, 'i')
+          );
+          if (afterMatch2DatasMovAntes && serieAluno) {
+            const [, digRaRaw2, nascRaw2, movRaw2, situacaoRaw2, defRaw2] = afterMatch2DatasMovAntes;
+            const digRa2 = /^[0-9X]$/i.test(digRaRaw2?.trim() ?? '') ? digRaRaw2.trim().toUpperCase() : '';
+            const situacao2 = normalizeSituacao(situacaoRaw2.trim());
+            const isAtivo2 = situacao2 === 'ATIVO';
+            const defRawClean2 = (defRaw2 ?? '').trim().replace(/\s+/g, ' ');
+            const deficiencia2 = (!defRawClean2 || defRawClean2.length > 60
+              || /^(ATIVO|REMA|TRAN|BXTR|ABAN|N\s?COM|NAO\s?COMPAREC|\d{2}\s*\/\s*\d{2}\s*\/\s*\d{4}|$)/i.test(defRawClean2)
+              || /^(Ano|Diretoria|Escola|Turma|Tipo|Habilitação|Série|Nr\b|N[ãa]o?$)/i.test(defRawClean2)
+            ) ? '' : defRawClean2;
+            alunos.push({
+              nome, nomeNorm: normalizeNome(nome),
+              ra: parseInt(raStr) || null,
+              digRa: digRa2,
+              numero,
+              nascimento: nascRaw2.replace(/\s*\/\s*/g, '/'),
+              serie: serieAluno,
+              professora: profAluno || getProfessora(raPos),
+              situacao: situacao2, deficiencia: deficiencia2,
+              bolsaFamilia: false,
+              dataInicioMatricula: '', dataFimMatricula: '',
+              dataMovimentacao: isAtivo2 ? '' : (movRaw2 ? movRaw2.replace(/\s*\/\s*/g, '/') : ''),
+              nis: '', responsavel: '', cpf: '',
+              turmaOrigem: '', professoraOrigem: '', turmaDestino: '', professoraDestino: '', corRaca: '', sexo: '',
+              faltas: {},
+            });
+            continue;
+          }
+          // Último recurso: nenhum formato bateu. Salva só nome+RA+série;
           // o merge com Excel tenta preencher nascimento/situação/deficiência via RA
           // (só funciona se a série não for puramente numérica — ver parseExcels).
           if (!serieAluno) continue;
