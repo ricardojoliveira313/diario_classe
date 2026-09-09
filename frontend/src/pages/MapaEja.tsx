@@ -5,7 +5,13 @@ import { theme, card as cardStyle, input, label as labelStyle, MESES } from '../
 import { useAno } from '../AnoContext';
 import { calcularMapaEja, ehTurmaEja } from '../mapaEja';
 
-const CICLO_LABEL: Record<string, string> = { ALFA: 'Alfa', POS: 'Pós', MULTI: 'Multi' };
+const CICLO_LABEL: Record<string, string> = {
+  ALFA: 'Alfa', POS: 'Pós', MULTI: 'Multi',
+  TERMO1: '1º Termo', TERMO2: '2º Termo', TERMO3: '3º Termo', TERMO4: '4º Termo',
+};
+// Lista de espera: pré-cadastro de quem procura vaga — usa termo (1º a 4º),
+// mais específico que o ciclo Alfa/Pós usado pelos alunos já matriculados.
+const TERMOS_ESPERA = ['TERMO1', 'TERMO2', 'TERMO3', 'TERMO4'];
 const PERIODOS = ['Manhã', 'Tarde', 'Vespertino', 'Noite'];
 
 const th: React.CSSProperties = { padding: '8px 10px', textAlign: 'center', fontWeight: 700, color: '#fff', fontSize: 11.5, whiteSpace: 'nowrap' };
@@ -31,7 +37,7 @@ export default function MapaEja() {
   const hoje = useMemo(() => new Date(), []);
   const [mes, setMes] = useState(hoje.getMonth() + 1);
   const [salvandoCampo, setSalvandoCampo] = useState('');
-  const [novaEspera, setNovaEspera] = useState({ nome: '', ciclo: 'ALFA', periodo: 'Noite', observacao: '' });
+  const [novaEspera, setNovaEspera] = useState({ nome: '', ciclo: 'TERMO1', periodo: 'Noite', telefone: '', observacao: '' });
   const [salvandoEspera, setSalvandoEspera] = useState(false);
 
   // Cada busca é independente — turmas/alunos vêm do mesmo cadastro que a
@@ -83,7 +89,7 @@ export default function MapaEja() {
     setSalvandoEspera(true);
     try {
       await api.criarListaEsperaEja(novaEspera);
-      setNovaEspera({ nome: '', ciclo: 'ALFA', periodo: 'Noite', observacao: '' });
+      setNovaEspera({ nome: '', ciclo: 'TERMO1', periodo: 'Noite', telefone: '', observacao: '' });
       const le = await api.getListaEsperaEja();
       setListaEspera(le ?? []);
     } finally {
@@ -411,11 +417,9 @@ export default function MapaEja() {
             <input style={input} value={novaEspera.nome} onChange={e => setNovaEspera(v => ({ ...v, nome: e.target.value }))} />
           </div>
           <div>
-            <label style={labelStyle}>Ciclo</label>
+            <label style={labelStyle}>Termo</label>
             <select style={input} value={novaEspera.ciclo} onChange={e => setNovaEspera(v => ({ ...v, ciclo: e.target.value }))}>
-              <option value="ALFA">Alfa</option>
-              <option value="POS">Pós</option>
-              <option value="MULTI">Multi</option>
+              {TERMOS_ESPERA.map(t => <option key={t} value={t}>{CICLO_LABEL[t]}</option>)}
             </select>
           </div>
           <div>
@@ -423,6 +427,11 @@ export default function MapaEja() {
             <select style={input} value={novaEspera.periodo} onChange={e => setNovaEspera(v => ({ ...v, periodo: e.target.value }))}>
               {PERIODOS.map(p => <option key={p} value={p}>{p}</option>)}
             </select>
+          </div>
+          <div>
+            <label style={labelStyle}>Telefone</label>
+            <input style={input} placeholder="(11) 91234-5678" value={novaEspera.telefone}
+              onChange={e => setNovaEspera(v => ({ ...v, telefone: e.target.value }))} />
           </div>
           <div style={{ flex: '1 1 200px' }}>
             <label style={labelStyle}>Observação</label>
@@ -437,21 +446,23 @@ export default function MapaEja() {
           <thead>
             <tr style={{ background: theme.primaryHover }}>
               <th style={{ ...th, textAlign: 'left' }}>Nome</th>
-              <th style={th}>Ciclo</th>
+              <th style={th}>Termo</th>
               <th style={th}>Período</th>
+              <th style={th}>Telefone</th>
               <th style={{ ...th, textAlign: 'left' }}>Observação</th>
               <th style={th}></th>
             </tr>
           </thead>
           <tbody>
             {listaEspera.length === 0 && (
-              <tr><td style={{ ...td, textAlign: 'left' }} colSpan={5}>Nenhum registro na lista de espera.</td></tr>
+              <tr><td style={{ ...td, textAlign: 'left' }} colSpan={6}>Nenhum registro na lista de espera.</td></tr>
             )}
             {listaEspera.map(l => (
               <tr key={l.id}>
                 <td style={tdEsq}>{l.nome}</td>
                 <td style={td}>{CICLO_LABEL[l.ciclo] ?? l.ciclo}</td>
                 <td style={td}>{l.periodo}</td>
+                <td style={td}>{l.telefone || '—'}</td>
                 <td style={{ ...td, textAlign: 'left' }}>{l.observacao}</td>
                 <td style={td}>
                   <button type="button" onClick={() => removerListaEspera(l.id)} className="report-action report-action-danger" style={{ padding: '2px 8px', fontSize: 11 }}>

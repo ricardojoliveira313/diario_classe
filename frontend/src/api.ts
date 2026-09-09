@@ -282,7 +282,7 @@ export const api = {
     .order('criado_em', { ascending: false })
     .range(inicio, fim)),
 
-  criarListaEsperaEja: async (registro: { nome: string; ciclo: string; periodo: string; observacao?: string; criado_por?: string }) => {
+  criarListaEsperaEja: async (registro: { nome: string; ciclo: string; periodo: string; telefone?: string; observacao?: string; criado_por?: string }) => {
     const { error } = await supabase.from('ListaEsperaEja').insert(registro);
     if (error) throw error;
   },
