@@ -346,13 +346,14 @@ export default function MapaEja() {
 
       <Secao titulo="CONFERÊNCIA MANUAL — ÓBITO, MEDIDA SOCIOEDUCATIVA, REMATRÍCULA E RESULTADO FINAL">
         <p style={{ padding: '10px 14px 0', fontSize: 12, color: theme.textSecondary }}>
-          O CADE não está aqui porque agora é automático — calculado a partir do campo "Deficiência" que já vem da SED.
+          O CADE não é lançado aqui — é automático, calculado a partir da coluna "Deficiência" abaixo, que já vem da SED.
         </p>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ background: theme.primaryHover }}>
               <th style={{ ...th, textAlign: 'left' }}>Aluno</th>
               <th style={th}>Turma</th>
+              <th style={{ ...th, textAlign: 'left' }}>Deficiência</th>
               <th style={th}>Óbito</th>
               <th style={th}>Medida socioeducativa</th>
               <th style={th}>Rematrícula</th>
@@ -366,6 +367,9 @@ export default function MapaEja() {
                 <tr key={a.id}>
                   <td style={tdEsq}>{a.nome}</td>
                   <td style={td}>{turma?.nome ?? ''}</td>
+                  <td style={{ ...tdEsq, color: a.deficiencia ? theme.purple : theme.textMuted }}>
+                    {a.deficiencia ? `🟣 ${a.deficiencia}` : '—'}
+                  </td>
                   <td style={td}>
                     <input type="checkbox" checked={!!a.obito} disabled={salvandoCampo === a.id + 'obito'}
                       onChange={e => atualizarCampoAluno(a.id, 'obito', e.target.checked)} />
