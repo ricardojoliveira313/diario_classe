@@ -306,10 +306,10 @@ export default function Alunos() {
 
   // ─── Export ───
   const exportarExcel = () => {
-    const dados = alunosFiltrados.map((a, i) => {
+    const dados = alunosFiltrados.map((a) => {
       const t = turmaMap.get(a.turmaId);
       return {
-        'Nº': i + 1,
+        'Nº': a.numero > 0 ? a.numero : '',
         'Nome do Aluno': a.nome,
         'RA': a.ra ?? '',
         'Dig. RA': a.dig_ra ?? '',
@@ -342,12 +342,13 @@ export default function Alunos() {
 
     if (turmaSel) {
       // Turma específica selecionada
-      const linhas = alunosFiltrados.map((a, i) => {
+      const linhas = alunosFiltrados.map((a) => {
         const nome = String(a.nome ?? '').padEnd(38);
         const ra = String(a.ra ?? '').padEnd(12);
         const sit = (SITUACAO_LABEL[a.situacao] ?? a.situacao ?? '').padEnd(14);
         const defi = (a.deficiencia ?? '').substring(0, 22).padEnd(22);
-        return `${String(i + 1).padStart(2)} ${nome} ${ra} ${sit} ${defi}`;
+        const nr = a.numero > 0 ? String(a.numero) : '—';
+        return `${nr.padStart(2)} ${nome} ${ra} ${sit} ${defi}`;
       });
       const prof = turmaSel.professora ? `  ${labelDocente(turmaSel.professora)} ${turmaSel.professora}` : '';
       blocos.push([
@@ -376,12 +377,13 @@ export default function Alunos() {
         arr.sort(sortByNr);
         const prof = t?.professora ? `  ${labelDocente(t.professora)} ${t.professora}` : '';
         const nomeTurma = t?.nome ?? 'Sem turma';
-        const linhas = arr.map((a: any, i: number) => {
+        const linhas = arr.map((a: any) => {
           const nome = String(a.nome ?? '').padEnd(38);
           const ra = String(a.ra ?? '').padEnd(12);
           const sit = (SITUACAO_LABEL[a.situacao] ?? a.situacao ?? '').padEnd(14);
           const defi = (a.deficiencia ?? '').substring(0, 22).padEnd(22);
-          return `${String(i + 1).padStart(2)} ${nome} ${ra} ${sit} ${defi}`;
+          const nr = a.numero > 0 ? String(a.numero) : '—';
+          return `${nr.padStart(2)} ${nome} ${ra} ${sit} ${defi}`;
         });
         blocos.push([
           '='.repeat(100),
@@ -735,7 +737,7 @@ export default function Alunos() {
                     }}
                     onMouseEnter={e => { if (editandoId !== a.id) e.currentTarget.style.background = 'var(--ghost-bg)'; }}
                     onMouseLeave={e => { if (editandoId !== a.id) e.currentTarget.style.background = ''; }}>
-<span style={{ fontSize: 13, color: theme.textMuted }}>{i + 1}</span>
+<span style={{ fontSize: 13, color: theme.textMuted }}>{a.numero > 0 ? a.numero : '—'}</span>
                   <div>
                       <div style={{ fontSize: 15, fontWeight: 600, color: theme.text }}>{a.nome}</div>
                       <div style={{ fontSize: 12, color: theme.textMuted, marginTop: 2 }}>
