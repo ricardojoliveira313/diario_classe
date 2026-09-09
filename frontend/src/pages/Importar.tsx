@@ -1056,6 +1056,13 @@ export default function Importar() {
             const serieColIdx = headers.findIndex(h => normHdr(h) === 'SERIE');
             const nomeColIdx = headers.findIndex(h => normHdr(h).includes('NOME'));
             const nrColIdx = headers.findIndex(h => /^(N[º°]?|NR\.?|NUMERO|CHAMADA)$/i.test(normHdr(h)));
+            // Rastreia o último aluno empurrado NESTA tabela — nome comprido que não
+            // coube na célula vira uma linha própria no HTML/XLS exportado pela SED,
+            // com o resto das colunas em branco (achado real: "DAVI MESSIAS SOARES"
+            // + linha seguinte só com "DA SILVA", RA/data/situação todos vazios —
+            // sem essa junção o sobrenome se perdia e o aluno ficava sem casar com
+            // o cadastro existente por nome, "sumindo" do sistema).
+            let ultimoAlunoPushado: AlunoUnificado | null = null;
             for (let i = headerIdx + 1; i < rows.length; i++) {
               const cells = rows[i].querySelectorAll('td');
               const vals = Array.from(cells).map(c => (c.textContent || '').trim());
@@ -1073,6 +1080,14 @@ export default function Importar() {
                 else if (/^(ATIVO|N\s?COM|BAIXA|REMA|TRANSF)/.test(v.toUpperCase())) situ = v;
                 else if (v.length > 2 && !/^\d/.test(v) && !nasc) defi = v;
               }
+              // Linha "fantasma" = só tem nome, todo o resto veio vazio — é a
+              // continuação do sobrenome da linha anterior, não um aluno novo.
+              const linhaSoNome = !raStr && !nasc && !defi && !numero;
+              if (linhaSoNome && ultimoAlunoPushado) {
+                ultimoAlunoPushado.nome = `${ultimoAlunoPushado.nome} ${nome}`.replace(/\s+/g, ' ').trim();
+                ultimoAlunoPushado.nomeNorm = normalizeNome(ultimoAlunoPushado.nome);
+                continue;
+              }
               let rowSerie = serie;
               if (serieColIdx >= 0 && serieColIdx < vals.length) {
                 const sNum = parseInt(vals[serieColIdx]);
@@ -1083,7 +1098,7 @@ export default function Importar() {
               const key = ra ? `RA:${ra}` : `${normalizeNome(nome)}|${nasc}`;
               if (processados.has(key)) continue;
               processados.add(key);
-              alunos.push({
+              const novoAluno: AlunoUnificado = {
                 nome, nomeNorm: normalizeNome(nome),
                 ra, digRa: '', numero,
                 nascimento: nasc, serie: rowSerie,
@@ -1093,7 +1108,9 @@ export default function Importar() {
                 nis: '', responsavel: '', cpf: '',
                 turmaOrigem: '', professoraOrigem: '', turmaDestino: '', professoraDestino: '', corRaca: '', sexo: '',
                 faltas: {},
-              });
+              };
+              alunos.push(novoAluno);
+              ultimoAlunoPushado = novoAluno;
             }
           }
           pendentes--;
