@@ -2592,11 +2592,19 @@ export default function Importar() {
           const { data: existentesDB } = await supabase.from('Aluno')
             .select('id, ra, nome, situacao, cpf, nis, responsavel, bolsa_familia, turmaId, data_nascimento, cor_raca, deficiencia, aee')
             .eq('turmaId', turmaId);
+          const candidatosPorId = new Map((existentesDB ?? []).map((r: any) => [r.id, r]));
+          // Só o espelho ATIVO precisa bater 1:1 com o relatório deste mês — um
+          // aluno com situação histórica (REMA/TRAN/BXTR/ABAN/N COM) é um FATO
+          // que já ocorreu, e reports SED posteriores da EJA nem sempre voltam a
+          // listar quem nunca compareceu ou abandonou. Achado real: um aluno
+          // "N COM" (0 faltas, porque nunca apareceu) era apagado por este
+          // espelho assim que o import seguinte não o listava mais, zerando
+          // Evasão/Nunca Comp no Mapa EJA mesmo com o histórico real na SED.
           const candidatosApagar = (existentesDB ?? [])
+            .filter((r: any) => !r.situacao || r.situacao === 'ATIVO')
             .map(r => r.id)
             .filter(id => !idsValidos.has(id));
           if (candidatosApagar.length === 0) continue;
-          const candidatosPorId = new Map((existentesDB ?? []).map((r: any) => [r.id, r]));
           // Protege registos com faltas lançadas — nunca apagar histórico real
           const { data: comFaltas } = await supabase.from('Falta')
             .select('alunoId').in('alunoId', candidatosApagar);
