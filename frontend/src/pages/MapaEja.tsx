@@ -85,7 +85,7 @@ export default function MapaEja() {
   };
 
   const criarListaEspera = async () => {
-    if (!novaEspera.nome.trim()) return;
+    if (!novaEspera.nome.trim() || !novaEspera.telefone.trim()) return;
     setSalvandoEspera(true);
     try {
       await api.criarListaEsperaEja(novaEspera);
@@ -429,7 +429,7 @@ export default function MapaEja() {
             </select>
           </div>
           <div>
-            <label style={labelStyle}>Telefone</label>
+            <label style={labelStyle}>Telefone/Celular *</label>
             <input style={input} placeholder="(11) 91234-5678" value={novaEspera.telefone}
               onChange={e => setNovaEspera(v => ({ ...v, telefone: e.target.value }))} />
           </div>
@@ -437,7 +437,7 @@ export default function MapaEja() {
             <label style={labelStyle}>Observação</label>
             <input style={input} value={novaEspera.observacao} onChange={e => setNovaEspera(v => ({ ...v, observacao: e.target.value }))} />
           </div>
-          <button type="button" disabled={salvandoEspera || !novaEspera.nome.trim()} onClick={criarListaEspera}
+          <button type="button" disabled={salvandoEspera || !novaEspera.nome.trim() || !novaEspera.telefone.trim()} onClick={criarListaEspera}
             className="report-action report-action-primary">
             {salvandoEspera ? 'Salvando…' : '+ Adicionar'}
           </button>
@@ -448,7 +448,7 @@ export default function MapaEja() {
               <th style={{ ...th, textAlign: 'left' }}>Nome</th>
               <th style={th}>Termo</th>
               <th style={th}>Período</th>
-              <th style={th}>Telefone</th>
+              <th style={th}>Telefone/Celular</th>
               <th style={{ ...th, textAlign: 'left' }}>Observação</th>
               <th style={th}></th>
             </tr>
