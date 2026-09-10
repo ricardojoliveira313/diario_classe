@@ -9,9 +9,9 @@ const CICLO_LABEL: Record<string, string> = {
   ALFA: 'Alfa', POS: 'Pós', MULTI: 'Multi',
   TERMO1: '1º Termo', TERMO2: '2º Termo', TERMO3: '3º Termo', TERMO4: '4º Termo',
 };
-// Lista de espera: pré-cadastro de quem procura vaga — usa termo (1º a 4º),
-// mais específico que o ciclo Alfa/Pós usado pelos alunos já matriculados.
-const TERMOS_ESPERA = ['TERMO1', 'TERMO2', 'TERMO3', 'TERMO4'];
+// Lista de espera: pré-cadastro de quem procura vaga — aceita tanto o ciclo
+// (Alfa/Pós) quanto o termo (1º a 4º), conforme o que a escola já sabe do candidato.
+const TERMOS_ESPERA = ['ALFA', 'POS', 'TERMO1', 'TERMO2', 'TERMO3', 'TERMO4'];
 const PERIODOS = ['Manhã', 'Tarde', 'Vespertino', 'Noite'];
 
 const th: React.CSSProperties = { padding: '8px 10px', textAlign: 'center', fontWeight: 700, color: '#fff', fontSize: 11.5, whiteSpace: 'nowrap' };
