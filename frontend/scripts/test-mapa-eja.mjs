@@ -87,6 +87,29 @@ try {
   assert.equal(alfaSet.alunosFrequentes, 2, 'em Setembro o N COM de Agosto já tinha saído');
   assert.equal(alfaSet.nuncaCompareceram, 1, 'em Setembro o N COM de Agosto já conta como eliminado');
 
+  // ─── Ajuste manual fixo (aluno N COM que a SED parou de listar) ───────────
+  // Caso real: 3 alunos "nunca compareceram" em agosto (2 na Alfa, 1 na Pós,
+  // faixa 40-59) somem dos relatórios seguintes da SED e não têm mais como
+  // virar um registro de Aluno de verdade. A escola lança a quantidade fixa
+  // direto na turma — precisa somar no Mapa mesmo sem nenhum aluno real.
+  const turmasComAjuste = [
+    { id: 'alfa', nome: 'EJA I – ALFABETIZAÇÃO', professora: 'Prof A', periodo: 'Noite', ajuste_nunca_compareceram: 2, ajuste_faixa_nunca_compareceram: '40 a 59' },
+    { id: 'pos', nome: 'EJA I – POS-ALFABETIZAÇÃO', professora: 'Prof B', periodo: 'Noite', ajuste_nunca_compareceram: 1, ajuste_faixa_nunca_compareceram: '40 a 59' },
+  ];
+  const alunosSoAtivos = [
+    { id: '20', ra: 20, nome: 'ATIVO ALFA', turmaId: 'alfa', situacao: 'ATIVO', data_nascimento: '10/05/1976', data_inicio_matricula: '04/02/2026' },
+    { id: '21', ra: 21, nome: 'ATIVO POS', turmaId: 'pos', situacao: 'ATIVO', data_nascimento: '10/05/1976', data_inicio_matricula: '04/02/2026' },
+  ];
+  const resumoAjuste = calcularMapaEja(alunosSoAtivos, turmasComAjuste, 9, 2026, hoje);
+  const alfaAjuste = resumoAjuste.linhas.find(l => l.turmaId === 'alfa');
+  const posAjuste = resumoAjuste.linhas.find(l => l.turmaId === 'pos');
+  assert.equal(alfaAjuste.nuncaCompareceram, 2, 'ajuste manual soma no Nunca Comp. da Alfa mesmo sem aluno real');
+  assert.equal(alfaAjuste.matriculaGeral, 3, 'ajuste manual soma na Matrícula Geral da Alfa (1 ativo + 2 do ajuste)');
+  assert.equal(posAjuste.nuncaCompareceram, 1, 'ajuste manual soma no Nunca Comp. da Pós mesmo sem aluno real');
+  assert.equal(alfaAjuste.alunosFrequentes, 1, 'o ajuste não conta como frequente');
+  const faixa4059Ajuste = resumoAjuste.faixaEtaria.find(f => f.label === '40 a 59');
+  assert.equal(faixa4059Ajuste.nuncaComp, 3, 'os 3 do ajuste (2 Alfa + 1 Pós) somam juntos na faixa etária indicada');
+
   console.log('Teste do Mapa EJA: OK');
 } finally {
   await rm(bundle, { force: true });

@@ -3,7 +3,7 @@ import { api, supabase } from '../api';
 import { Loading } from '../components';
 import { theme, card as cardStyle, input, label as labelStyle, MESES } from '../styles';
 import { useAno } from '../AnoContext';
-import { calcularMapaEja, ehTurmaEja } from '../mapaEja';
+import { calcularMapaEja, ehTurmaEja, FAIXAS_ETARIAS_EJA } from '../mapaEja';
 
 const CICLO_LABEL: Record<string, string> = {
   ALFA: 'Alfa', POS: 'Pós', MULTI: 'Multi',
@@ -84,6 +84,17 @@ export default function MapaEja() {
     }
   };
 
+  const atualizarCampoTurma = async (id: string, campo: string, valor: any) => {
+    setSalvandoCampo(id + campo);
+    try {
+      const { error } = await supabase.from('Turma').update({ [campo]: valor }).eq('id', id);
+      if (error) throw error;
+      setTurmas(atuais => atuais.map(t => t.id === id ? { ...t, [campo]: valor } : t));
+    } finally {
+      setSalvandoCampo('');
+    }
+  };
+
   const criarListaEspera = async () => {
     if (!novaEspera.nome.trim() || !novaEspera.telefone.trim()) return;
     setSalvandoEspera(true);
@@ -157,6 +168,43 @@ export default function MapaEja() {
         </button>
         <div style={{ color: theme.textSecondary, fontSize: 12.5 }}>Ano letivo: <strong>{ano}</strong></div>
       </div>
+
+      <Secao titulo="AJUSTE MANUAL — NUNCA COMPARECEU (não listado mais pela SED)">
+        <div style={{ padding: '10px 14px', fontSize: 12.5, color: theme.textMuted }}>
+          Alunos com situação "Nunca compareceu" que a SED parou de listar nos relatórios
+          (nome/RA perdidos) não podem mais virar um cadastro de aluno de verdade. Lance aqui
+          a quantidade fixa por turma e a faixa etária — o valor soma direto no Mapa EJA
+          (Eliminação Geral e Faixa Etária) até você conseguir os dados reais, se um dia conseguir.
+        </div>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ background: theme.primaryHover }}>
+              <th style={{ ...th, textAlign: 'left' }}>Turma</th>
+              <th style={th}>Qtde Nunca Comp.</th>
+              <th style={th}>Faixa etária</th>
+            </tr>
+          </thead>
+          <tbody>
+            {turmas.filter(t => ehTurmaEja(t.nome)).map(t => (
+              <tr key={t.id}>
+                <td style={tdEsq}>{t.nome} — {t.professora}</td>
+                <td style={td}>
+                  <input type="number" min={0} style={{ ...input, width: 70, textAlign: 'center' }}
+                    value={t.ajuste_nunca_compareceram ?? 0}
+                    onChange={e => atualizarCampoTurma(t.id, 'ajuste_nunca_compareceram', Number(e.target.value) || 0)} />
+                </td>
+                <td style={td}>
+                  <select style={input} value={t.ajuste_faixa_nunca_compareceram ?? ''}
+                    onChange={e => atualizarCampoTurma(t.id, 'ajuste_faixa_nunca_compareceram', e.target.value || null)}>
+                    <option value="">—</option>
+                    {FAIXAS_ETARIAS_EJA.map(f => <option key={f.label} value={f.label}>{f.label}</option>)}
+                  </select>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Secao>
 
       <Secao titulo="ELIMINAÇÃO GERAL">
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
