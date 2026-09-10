@@ -64,6 +64,29 @@ try {
   const faixa50 = resumo.faixaEtaria.find(f => f.label === '40 a 59');
   assert.equal(faixa50.atendimento, 1, 'aluno ativo de 50 anos deve entrar na faixa 40 a 59');
 
+  // ─── Reconstrução por mês selecionado (não é uma foto fixa de "hoje") ───
+  // Cenário real relatado: em Fevereiro a turma tinha 28 matriculados; em
+  // Setembro (hoje), 3 já saíram (N COM) e viram só como situação atual —
+  // mas ao selecionar Fevereiro no seletor de mês, o Mapa tem que mostrar
+  // esses 3 como ainda ativos (a saída só ocorreu depois), e um aluno cuja
+  // matrícula começou em Junho não pode aparecer em Fevereiro.
+  const alunosHistorico = [
+    { id: '10', ra: 10, nome: 'SEMPRE ATIVO', turmaId: 'alfa', situacao: 'ATIVO', data_nascimento: '10/05/1976', data_inicio_matricula: '04/02/2026' },
+    { id: '11', ra: 11, nome: 'NUNCA COMPARECEU EM AGOSTO', turmaId: 'alfa', situacao: 'N COM', data_nascimento: '10/05/1980', data_inicio_matricula: '04/02/2026', data_movimentacao: '15/08/2026' },
+    { id: '12', ra: 12, nome: 'MATRICULADO SO EM JUNHO', turmaId: 'alfa', situacao: 'ATIVO', data_nascimento: '01/01/1990', data_inicio_matricula: '10/06/2026' },
+  ];
+  const resumoFevereiro = calcularMapaEja(alunosHistorico, turmas, 2, 2026, hoje);
+  const alfaFev = resumoFevereiro.linhas.find(l => l.turmaId === 'alfa');
+  assert.equal(alfaFev.matriculaGeral, 2, 'em Fevereiro só existiam 2 matriculados — quem entrou em Junho ainda não contava');
+  assert.equal(alfaFev.alunosFrequentes, 2, 'a saída de Agosto ainda não tinha ocorrido em Fevereiro — os dois contam como ativos');
+  assert.equal(alfaFev.nuncaCompareceram, 0, 'em Fevereiro o N COM de Agosto ainda não existia');
+
+  const resumoSetembro = calcularMapaEja(alunosHistorico, turmas, 9, 2026, hoje);
+  const alfaSet = resumoSetembro.linhas.find(l => l.turmaId === 'alfa');
+  assert.equal(alfaSet.matriculaGeral, 3, 'em Setembro os 3 já estavam matriculados em algum momento');
+  assert.equal(alfaSet.alunosFrequentes, 2, 'em Setembro o N COM de Agosto já tinha saído');
+  assert.equal(alfaSet.nuncaCompareceram, 1, 'em Setembro o N COM de Agosto já conta como eliminado');
+
   console.log('Teste do Mapa EJA: OK');
 } finally {
   await rm(bundle, { force: true });

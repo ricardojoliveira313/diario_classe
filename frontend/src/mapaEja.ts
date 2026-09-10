@@ -120,6 +120,32 @@ function ehAtivo(situacao: string): boolean {
   return situacao === '' || situacao === 'ATIVO';
 }
 
+// ─── Reconstrução do estado do aluno NO MÊS selecionado ─────────────────────
+// O cadastro do Aluno guarda só a situação ATUAL (o import sobrescreve a cada
+// SED novo) — não um histórico mês a mês. Por isso, ao selecionar Fevereiro,
+// o Mapa não pode simplesmente usar a situação de hoje: um aluno que hoje
+// está BXTR/N COM/ABAN pode ter saído em Agosto, e em Fevereiro ele ainda
+// estava ATIVO — e um aluno matriculado em Junho não existia em Fevereiro.
+// Reconstrói isso a partir das datas que a SED já manda (data de início de
+// matrícula e data de movimentação/fim de matrícula): se a mudança de
+// situação só ocorreu DEPOIS do mês selecionado, o aluno ainda era ATIVO
+// naquele mês; se a matrícula só começou DEPOIS do mês selecionado, o aluno
+// ainda não existia no cadastro daquele mês.
+function aindaNaoMatriculadoNoMes(aluno: any, fimMes: Date): boolean {
+  const dIni = parseDataBR(aluno.data_inicio_matricula);
+  return !!dIni && dIni > fimMes;
+}
+
+function situacaoNoMes(aluno: any, fimMes: Date): string {
+  const sit = situacaoDe(aluno);
+  if (ehAtivo(sit)) return sit;
+  const dMov = parseDataBR(aluno.data_fim_matricula) ?? parseDataBR(aluno.data_movimentacao);
+  // Sem data pra comparar, mantém a situação atual (conservador — é o que já
+  // fazíamos antes desta reconstrução por mês).
+  if (dMov && dMov > fimMes) return ''; // mudança ainda não tinha ocorrido nesse mês
+  return sit;
+}
+
 export function calcularMapaEja(
   alunos: any[],
   turmas: any[],
@@ -136,13 +162,15 @@ export function calcularMapaEja(
   const dataRef = hoje < fimMes ? hoje : fimMes;
 
   const linhas: LinhaTurmaEja[] = turmasEja.map(turma => {
-    const doTurma = alunosEja.filter(a => a.turmaId === turma.id);
-    const ativos = doTurma.filter(a => ehAtivo(situacaoDe(a)));
-    const eliminados = doTurma.filter(a => situacaoDe(a) in SITUACOES_ELIMINACAO);
-    const evasao = eliminados.filter(a => SITUACOES_ELIMINACAO[situacaoDe(a)] === 'EVASAO' && !a.obito);
-    const transferencia = eliminados.filter(a => SITUACOES_ELIMINACAO[situacaoDe(a)] === 'TRANSFERENCIA');
+    const doTurma = alunosEja
+      .filter(a => a.turmaId === turma.id)
+      .filter(a => !aindaNaoMatriculadoNoMes(a, fimMes));
+    const ativos = doTurma.filter(a => ehAtivo(situacaoNoMes(a, fimMes)));
+    const eliminados = doTurma.filter(a => situacaoNoMes(a, fimMes) in SITUACOES_ELIMINACAO);
+    const evasao = eliminados.filter(a => SITUACOES_ELIMINACAO[situacaoNoMes(a, fimMes)] === 'EVASAO' && !a.obito);
+    const transferencia = eliminados.filter(a => SITUACOES_ELIMINACAO[situacaoNoMes(a, fimMes)] === 'TRANSFERENCIA');
     const obitoTodos = doTurma.filter(a => a.obito === true);
-    const nuncaCompareceram = eliminados.filter(a => SITUACOES_ELIMINACAO[situacaoDe(a)] === 'NUNCA_COMPARECEU');
+    const nuncaCompareceram = eliminados.filter(a => SITUACOES_ELIMINACAO[situacaoNoMes(a, fimMes)] === 'NUNCA_COMPARECEU');
 
     const dataMovimentacao = (a: any) => parseDataBR(a.data_fim_matricula) ?? parseDataBR(a.data_movimentacao);
     const noMes = (a: any) => {
@@ -197,14 +225,15 @@ export function calcularMapaEja(
     };
   });
 
-  const idadesAtivos = alunosEja
-    .filter(a => ehAtivo(situacaoDe(a)))
+  const alunosEjaNoMes = alunosEja.filter(a => !aindaNaoMatriculadoNoMes(a, fimMes));
+  const idadesAtivos = alunosEjaNoMes
+    .filter(a => ehAtivo(situacaoNoMes(a, fimMes)))
     .map(a => calcularIdade(a.data_nascimento, dataRef));
-  const idadesEvasao = alunosEja
-    .filter(a => SITUACOES_ELIMINACAO[situacaoDe(a)] === 'EVASAO')
+  const idadesEvasao = alunosEjaNoMes
+    .filter(a => SITUACOES_ELIMINACAO[situacaoNoMes(a, fimMes)] === 'EVASAO')
     .map(a => calcularIdade(a.data_nascimento, dataRef));
-  const idadesNuncaComp = alunosEja
-    .filter(a => SITUACOES_ELIMINACAO[situacaoDe(a)] === 'NUNCA_COMPARECEU')
+  const idadesNuncaComp = alunosEjaNoMes
+    .filter(a => SITUACOES_ELIMINACAO[situacaoNoMes(a, fimMes)] === 'NUNCA_COMPARECEU')
     .map(a => calcularIdade(a.data_nascimento, dataRef));
 
   const faixaEtaria = FAIXAS_ETARIAS_EJA.map(faixa => ({
