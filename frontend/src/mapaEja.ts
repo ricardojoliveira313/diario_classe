@@ -194,11 +194,15 @@ export function calcularMapaEja(
 
     const reclassificados = doTurma.filter(a => situacaoDe(a) === 'CLASSIFICADO').length;
 
-    // Ajuste manual fixo: alunos N COM que a SED parou de listar e não têm
-    // mais como virar um registro de Aluno de verdade (nome/RA perdidos).
-    // Lançado uma vez pela escola na Conferência Manual — não some do Mapa
-    // EJA mesmo que nenhum import volte a trazer esses alunos.
+    // Ajuste manual fixo: alunos N COM/ABAN que a SED parou de listar e não
+    // têm mais como virar um registro de Aluno de verdade (nome/RA
+    // perdidos). Lançado uma vez pela escola na Conferência Manual — não
+    // some do Mapa EJA mesmo que nenhum import volte a trazer esses alunos.
+    // Uma evasão NOVA continua detectada automaticamente pela situação ABAN
+    // real do aluno (linha `evasao` acima) — este ajuste só cobre o que já
+    // foi perdido antes de existir esse recurso.
     const ajusteNuncaCompareceram = Number(turma.ajuste_nunca_compareceram) || 0;
+    const ajusteEvasao = Number(turma.ajuste_evasao) || 0;
 
     return {
       turmaId: turma.id,
@@ -206,12 +210,12 @@ export function calcularMapaEja(
       professora: turma.professora ?? '',
       periodo: turma.periodo ?? '',
       ciclo: cicloEjaDaTurma(turma.nome),
-      matriculaGeral: ativos.length + eliminados.length + ajusteNuncaCompareceram,
-      evasao: evasao.length,
+      matriculaGeral: ativos.length + eliminados.length + ajusteNuncaCompareceram + ajusteEvasao,
+      evasao: evasao.length + ajusteEvasao,
       transferencia: transferencia.length,
       obito: obitoTodos.length,
       nuncaCompareceram: nuncaCompareceram.length + ajusteNuncaCompareceram,
-      totalEliminadosGeral: evasao.length + transferencia.length + obitoTodos.length + nuncaCompareceram.length + ajusteNuncaCompareceram,
+      totalEliminadosGeral: evasao.length + transferencia.length + obitoTodos.length + nuncaCompareceram.length + ajusteNuncaCompareceram + ajusteEvasao,
       alunosFrequentes: ativos.length,
       vieramDoMesAnterior,
       matriculaNova,
@@ -242,21 +246,28 @@ export function calcularMapaEja(
     .filter(a => SITUACOES_ELIMINACAO[situacaoNoMes(a, fimMes)] === 'NUNCA_COMPARECEU')
     .map(a => calcularIdade(a.data_nascimento, dataRef));
 
-  // Ajustes manuais fixos de Nunca Comp. (ver linhas acima), somados na faixa
-  // etária que a escola indicou pra cada turma — não vêm de aluno nenhum.
-  const ajustesNuncaCompPorFaixa = new Map<string, number>();
-  for (const turma of turmasEja) {
-    const qtd = Number(turma.ajuste_nunca_compareceram) || 0;
-    const faixaLabel = String(turma.ajuste_faixa_nunca_compareceram ?? '').trim();
-    if (qtd > 0 && faixaLabel) {
-      ajustesNuncaCompPorFaixa.set(faixaLabel, (ajustesNuncaCompPorFaixa.get(faixaLabel) ?? 0) + qtd);
+  // Ajustes manuais fixos de Nunca Comp./Evasão (ver linhas acima), somados
+  // na faixa etária que a escola indicou pra cada turma — não vêm de aluno
+  // nenhum.
+  const somarAjustePorFaixa = (qtdCampo: string, faixaCampo: string) => {
+    const porFaixa = new Map<string, number>();
+    for (const turma of turmasEja) {
+      const qtd = Number(turma[qtdCampo]) || 0;
+      const faixaLabel = String(turma[faixaCampo] ?? '').trim();
+      if (qtd > 0 && faixaLabel) {
+        porFaixa.set(faixaLabel, (porFaixa.get(faixaLabel) ?? 0) + qtd);
+      }
     }
-  }
+    return porFaixa;
+  };
+  const ajustesNuncaCompPorFaixa = somarAjustePorFaixa('ajuste_nunca_compareceram', 'ajuste_faixa_nunca_compareceram');
+  const ajustesEvasaoPorFaixa = somarAjustePorFaixa('ajuste_evasao', 'ajuste_faixa_evasao');
 
   const faixaEtaria = FAIXAS_ETARIAS_EJA.map(faixa => ({
     label: faixa.label,
     atendimento: idadesAtivos.filter(i => i !== null && i >= faixa.min && i <= faixa.max).length,
-    evasao: idadesEvasao.filter(i => i !== null && i >= faixa.min && i <= faixa.max).length,
+    evasao: idadesEvasao.filter(i => i !== null && i >= faixa.min && i <= faixa.max).length
+      + (ajustesEvasaoPorFaixa.get(faixa.label) ?? 0),
     nuncaComp: idadesNuncaComp.filter(i => i !== null && i >= faixa.min && i <= faixa.max).length
       + (ajustesNuncaCompPorFaixa.get(faixa.label) ?? 0),
   }));

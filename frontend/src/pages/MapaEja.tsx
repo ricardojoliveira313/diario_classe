@@ -39,7 +39,7 @@ export default function MapaEja() {
   const hoje = useMemo(() => new Date(), []);
   const [mes, setMes] = useState(hoje.getMonth() + 1);
   const [salvandoCampo, setSalvandoCampo] = useState('');
-  const [novaEspera, setNovaEspera] = useState({ nome: '', ciclo: 'TERMO1', periodo: 'Noite', telefone: '', observacao: '' });
+  const [novaEspera, setNovaEspera] = useState({ nome: '', ciclo: 'ALFA', periodo: 'Noite', telefone: '', observacao: '' });
   const [salvandoEspera, setSalvandoEspera] = useState(false);
 
   // Cada busca é independente — turmas/alunos vêm do mesmo cadastro que a
@@ -109,7 +109,7 @@ export default function MapaEja() {
     setSalvandoEspera(true);
     try {
       await api.criarListaEsperaEja(novaEspera);
-      setNovaEspera({ nome: '', ciclo: 'TERMO1', periodo: 'Noite', telefone: '', observacao: '' });
+      setNovaEspera({ nome: '', ciclo: 'ALFA', periodo: 'Noite', telefone: '', observacao: '' });
       const le = await api.getListaEsperaEja();
       setListaEspera(le ?? []);
     } finally {
@@ -178,25 +178,42 @@ export default function MapaEja() {
         <div style={{ color: theme.textSecondary, fontSize: 12.5 }}>Ano letivo: <strong>{ano}</strong></div>
       </div>
 
-      <Secao titulo="AJUSTE MANUAL — NUNCA COMPARECEU (não listado mais pela SED)">
+      <Secao titulo="AJUSTE MANUAL — EVASÃO E NUNCA COMPARECEU (não listados mais pela SED)">
         <div style={{ padding: '10px 14px', fontSize: 12.5, color: theme.textMuted }}>
-          Alunos com situação "Nunca compareceu" que a SED parou de listar nos relatórios
-          (nome/RA perdidos) não podem mais virar um cadastro de aluno de verdade. Lance aqui
-          a quantidade fixa por turma e a faixa etária — o valor soma direto no Mapa EJA
-          (Eliminação Geral e Faixa Etária) até você conseguir os dados reais, se um dia conseguir.
+          Alunos com situação "Evasão" ou "Nunca compareceu" que a SED parou de listar nos
+          relatórios (nome/RA perdidos) não podem mais virar um cadastro de aluno de verdade.
+          Lance aqui a quantidade fixa por turma e a faixa etária — o valor soma direto no Mapa
+          EJA (Eliminação Geral e Faixa Etária) até você conseguir os dados reais, se um dia
+          conseguir. Uma evasão ou nunca-comparecimento <strong>novo</strong>, vindo de um import
+          real, continua sendo detectado automaticamente pela situação do aluno — não precisa
+          lançar aqui.
         </div>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ background: theme.primaryHover }}>
               <th style={{ ...th, textAlign: 'left' }}>Turma</th>
+              <th style={th}>Qtde Evasão</th>
+              <th style={th}>Faixa etária (Evasão)</th>
               <th style={th}>Qtde Nunca Comp.</th>
-              <th style={th}>Faixa etária</th>
+              <th style={th}>Faixa etária (Nunca Comp.)</th>
             </tr>
           </thead>
           <tbody>
             {turmas.filter(t => ehTurmaEja(t.nome)).map(t => (
               <tr key={t.id}>
                 <td style={tdEsq}>{t.nome} — {t.professora}</td>
+                <td style={td}>
+                  <input type="number" min={0} style={{ ...input, width: 70, textAlign: 'center' }}
+                    value={t.ajuste_evasao ?? 0}
+                    onChange={e => atualizarCampoTurma(t.id, 'ajuste_evasao', Number(e.target.value) || 0)} />
+                </td>
+                <td style={td}>
+                  <select style={input} value={t.ajuste_faixa_evasao ?? ''}
+                    onChange={e => atualizarCampoTurma(t.id, 'ajuste_faixa_evasao', e.target.value || null)}>
+                    <option value="">—</option>
+                    {FAIXAS_ETARIAS_EJA.map(f => <option key={f.label} value={f.label}>{f.label}</option>)}
+                  </select>
+                </td>
                 <td style={td}>
                   <input type="number" min={0} style={{ ...input, width: 70, textAlign: 'center' }}
                     value={t.ajuste_nunca_compareceram ?? 0}

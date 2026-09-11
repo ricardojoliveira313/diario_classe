@@ -93,7 +93,7 @@ try {
   // virar um registro de Aluno de verdade. A escola lança a quantidade fixa
   // direto na turma — precisa somar no Mapa mesmo sem nenhum aluno real.
   const turmasComAjuste = [
-    { id: 'alfa', nome: 'EJA I – ALFABETIZAÇÃO', professora: 'Prof A', periodo: 'Noite', ajuste_nunca_compareceram: 2, ajuste_faixa_nunca_compareceram: '40 a 59' },
+    { id: 'alfa', nome: 'EJA I – ALFABETIZAÇÃO', professora: 'Prof A', periodo: 'Noite', ajuste_nunca_compareceram: 2, ajuste_faixa_nunca_compareceram: '40 a 59', ajuste_evasao: 1, ajuste_faixa_evasao: 'acima de 60 anos' },
     { id: 'pos', nome: 'EJA I – POS-ALFABETIZAÇÃO', professora: 'Prof B', periodo: 'Noite', ajuste_nunca_compareceram: 1, ajuste_faixa_nunca_compareceram: '40 a 59' },
   ];
   const alunosSoAtivos = [
@@ -104,11 +104,14 @@ try {
   const alfaAjuste = resumoAjuste.linhas.find(l => l.turmaId === 'alfa');
   const posAjuste = resumoAjuste.linhas.find(l => l.turmaId === 'pos');
   assert.equal(alfaAjuste.nuncaCompareceram, 2, 'ajuste manual soma no Nunca Comp. da Alfa mesmo sem aluno real');
-  assert.equal(alfaAjuste.matriculaGeral, 3, 'ajuste manual soma na Matrícula Geral da Alfa (1 ativo + 2 do ajuste)');
+  assert.equal(alfaAjuste.evasao, 1, 'ajuste manual soma na Evasão da Alfa mesmo sem aluno real');
+  assert.equal(alfaAjuste.matriculaGeral, 4, 'ajuste manual soma na Matrícula Geral da Alfa (1 ativo + 2 nunca comp + 1 evasão)');
   assert.equal(posAjuste.nuncaCompareceram, 1, 'ajuste manual soma no Nunca Comp. da Pós mesmo sem aluno real');
   assert.equal(alfaAjuste.alunosFrequentes, 1, 'o ajuste não conta como frequente');
   const faixa4059Ajuste = resumoAjuste.faixaEtaria.find(f => f.label === '40 a 59');
   assert.equal(faixa4059Ajuste.nuncaComp, 3, 'os 3 do ajuste (2 Alfa + 1 Pós) somam juntos na faixa etária indicada');
+  const faixa60Ajuste = resumoAjuste.faixaEtaria.find(f => f.label === 'acima de 60 anos');
+  assert.equal(faixa60Ajuste.evasao, 1, 'o ajuste de evasão soma na faixa etária indicada, separado do ajuste de nunca comp.');
 
   console.log('Teste do Mapa EJA: OK');
 } finally {
