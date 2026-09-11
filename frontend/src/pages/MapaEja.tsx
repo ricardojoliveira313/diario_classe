@@ -3,7 +3,9 @@ import { api, supabase } from '../api';
 import { Loading } from '../components';
 import { theme, card as cardStyle, input, label as labelStyle, MESES } from '../styles';
 import { useAno } from '../AnoContext';
-import { calcularMapaEja, ehTurmaEja, FAIXAS_ETARIAS_EJA } from '../mapaEja';
+import { calcularMapaEja, ehTurmaEja, cicloEjaDaTurma, FAIXAS_ETARIAS_EJA } from '../mapaEja';
+
+const ORDEM_CICLO = { ALFA: 0, POS: 1, MULTI: 2 } as const;
 
 const CICLO_LABEL: Record<string, string> = {
   ALFA: 'Alfa', POS: 'Pós', MULTI: 'Multi',
@@ -69,6 +71,13 @@ export default function MapaEja() {
     const turmasEja = new Set(turmas.filter(t => ehTurmaEja(t.nome)).map(t => t.id));
     return alunos.filter(a => turmasEja.has(a.turmaId) && (!a.situacao || a.situacao === 'ATIVO'));
   }, [alunos, turmas]);
+  // Agrupado por turma (Alfa em cima, Pós embaixo, etc.) em vez de misturado
+  // por ordem de chegada do banco — pedido real: fica mais fácil de conferir
+  // separado por turma do que intercalado.
+  const turmasEjaOrdenadas = useMemo(() =>
+    turmas.filter(t => ehTurmaEja(t.nome))
+      .sort((x, y) => ORDEM_CICLO[cicloEjaDaTurma(x.nome)] - ORDEM_CICLO[cicloEjaDaTurma(y.nome)]),
+    [turmas]);
 
   const somar = (campo: keyof typeof resumo.linhas[number]) =>
     resumo.linhas.reduce((soma, l) => soma + (l[campo] as number), 0);
@@ -406,7 +415,6 @@ export default function MapaEja() {
           <thead>
             <tr style={{ background: theme.primaryHover }}>
               <th style={{ ...th, textAlign: 'left' }}>Aluno</th>
-              <th style={th}>Turma</th>
               <th style={{ ...th, textAlign: 'left' }}>Deficiência</th>
               <th style={th}>Óbito</th>
               <th style={th}>Medida socioeducativa</th>
@@ -415,43 +423,52 @@ export default function MapaEja() {
             </tr>
           </thead>
           <tbody>
-            {alunosEjaPendentesDados.map(a => {
-              const turma = turmas.find(t => t.id === a.turmaId);
+            {turmasEjaOrdenadas.map(turma => {
+              const alunosDaTurma = alunosEjaPendentesDados.filter(a => a.turmaId === turma.id);
+              if (alunosDaTurma.length === 0) return null;
               return (
-                <tr key={a.id}>
-                  <td style={tdEsq}>{a.nome}</td>
-                  <td style={td}>{turma?.nome ?? ''}</td>
-                  <td style={{ ...tdEsq, color: a.deficiencia ? theme.purple : theme.textMuted }}>
-                    {a.deficiencia ? `🟣 ${a.deficiencia}` : '—'}
-                  </td>
-                  <td style={td}>
-                    <input type="checkbox" checked={!!a.obito} disabled={salvandoCampo === a.id + 'obito'}
-                      onChange={e => atualizarCampoAluno(a.id, 'obito', e.target.checked)} />
-                  </td>
-                  <td style={td}>
-                    <select style={{ ...input, padding: '3px 6px', fontSize: 12 }} value={a.medida_socioeducativa ?? ''}
-                      onChange={e => atualizarCampoAluno(a.id, 'medida_socioeducativa', e.target.value || null)}>
-                      <option value="">—</option>
-                      <option value="LA">L.A.</option>
-                      <option value="CRAS">CRAS</option>
-                      <option value="CREAS">CREAS</option>
-                      <option value="CONSELHO_TUTELAR">Conselho Tutelar</option>
-                    </select>
-                  </td>
-                  <td style={td}>
-                    <input type="checkbox" checked={!!a.rematricula} disabled={salvandoCampo === a.id + 'rematricula'}
-                      onChange={e => atualizarCampoAluno(a.id, 'rematricula', e.target.checked)} />
-                  </td>
-                  <td style={td}>
-                    <select style={{ ...input, padding: '3px 6px', fontSize: 12 }} value={a.resultado_final ?? ''}
-                      onChange={e => atualizarCampoAluno(a.id, 'resultado_final', e.target.value || null)}>
-                      <option value="">—</option>
-                      <option value="PROMOVIDO">Promovido</option>
-                      <option value="PERMANECE">Permanece</option>
-                      <option value="CONCLUINTE">Concluinte</option>
-                    </select>
-                  </td>
-                </tr>
+                <>
+                  <tr key={`grupo-${turma.id}`}>
+                    <td colSpan={6} style={{ ...tdEsq, background: theme.primaryHover, color: '#fff', fontWeight: 800 }}>
+                      {turma.nome}{turma.professora ? ` — ${turma.professora}` : ''}
+                    </td>
+                  </tr>
+                  {alunosDaTurma.map(a => (
+                    <tr key={a.id}>
+                      <td style={tdEsq}>{a.nome}</td>
+                      <td style={{ ...tdEsq, color: a.deficiencia ? theme.purple : theme.textMuted }}>
+                        {a.deficiencia ? `🟣 ${a.deficiencia}` : '—'}
+                      </td>
+                      <td style={td}>
+                        <input type="checkbox" checked={!!a.obito} disabled={salvandoCampo === a.id + 'obito'}
+                          onChange={e => atualizarCampoAluno(a.id, 'obito', e.target.checked)} />
+                      </td>
+                      <td style={td}>
+                        <select style={{ ...input, padding: '3px 6px', fontSize: 12 }} value={a.medida_socioeducativa ?? ''}
+                          onChange={e => atualizarCampoAluno(a.id, 'medida_socioeducativa', e.target.value || null)}>
+                          <option value="">—</option>
+                          <option value="LA">L.A.</option>
+                          <option value="CRAS">CRAS</option>
+                          <option value="CREAS">CREAS</option>
+                          <option value="CONSELHO_TUTELAR">Conselho Tutelar</option>
+                        </select>
+                      </td>
+                      <td style={td}>
+                        <input type="checkbox" checked={!!a.rematricula} disabled={salvandoCampo === a.id + 'rematricula'}
+                          onChange={e => atualizarCampoAluno(a.id, 'rematricula', e.target.checked)} />
+                      </td>
+                      <td style={td}>
+                        <select style={{ ...input, padding: '3px 6px', fontSize: 12 }} value={a.resultado_final ?? ''}
+                          onChange={e => atualizarCampoAluno(a.id, 'resultado_final', e.target.value || null)}>
+                          <option value="">—</option>
+                          <option value="PROMOVIDO">Promovido</option>
+                          <option value="PERMANECE">Permanece</option>
+                          <option value="CONCLUINTE">Concluinte</option>
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                </>
               );
             })}
           </tbody>
