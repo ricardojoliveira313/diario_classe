@@ -39,7 +39,7 @@ export default function MapaEja() {
   const hoje = useMemo(() => new Date(), []);
   const [mes, setMes] = useState(hoje.getMonth() + 1);
   const [salvandoCampo, setSalvandoCampo] = useState('');
-  const [novaEspera, setNovaEspera] = useState({ nome: '', ciclo: 'TERMO1', periodo: 'Noite', telefone: '', observacao: '' });
+  const [novaEspera, setNovaEspera] = useState({ nome: '', ciclo: 'ALFA', periodo: 'Noite', telefone: '', observacao: '' });
   const [salvandoEspera, setSalvandoEspera] = useState(false);
 
   // Cada busca é independente — turmas/alunos vêm do mesmo cadastro que a
@@ -109,7 +109,7 @@ export default function MapaEja() {
     setSalvandoEspera(true);
     try {
       await api.criarListaEsperaEja(novaEspera);
-      setNovaEspera({ nome: '', ciclo: 'TERMO1', periodo: 'Noite', telefone: '', observacao: '' });
+      setNovaEspera({ nome: '', ciclo: 'ALFA', periodo: 'Noite', telefone: '', observacao: '' });
       const le = await api.getListaEsperaEja();
       setListaEspera(le ?? []);
     } finally {
