@@ -23,6 +23,7 @@ import Analitico from './pages/Analitico';
 import FaixaEtaria from './pages/FaixaEtaria';
 import MapaEja from './pages/MapaEja';
 import CrechesMatriculas from './pages/CrechesMatriculas';
+import Uniforme2027 from './pages/Uniforme2027';
 import Login from './pages/Login';
 import { api, supabase } from './api';
 import { theme } from './styles';
@@ -48,6 +49,7 @@ const NAV_ITEMS: { to: string; label: string; end?: boolean; badge?: boolean; ad
   { to: '/',          label: '📊 Dashboard', end: true,              pageKey: 'dashboard' },
   { to: '/importar',  label: '📥 Importar',  adminOnly: true, usernameOnly: USUARIO_IMPORTACAO },
   { to: '/creches-matriculas-2027', label: '🏫 Creches 2027', pageKey: 'creches' },
+  { to: '/uniforme-2027', label: '👕 Uniforme 2027', pageKey: 'uniforme2027' },
   { to: '/turmas',    label: '👩‍🏫 Turmas',                            pageKey: 'turmas' },
   { to: '/alunos',    label: '👥 Alunos',                             pageKey: 'alunos' },
   { to: '/genero',    label: '👫 Gênero',                             capabilityKey: 'acessar_genero' },
@@ -336,6 +338,7 @@ function AppShell() {
             <Route path="/" element={<ViewerRoute pageKey="dashboard"><Dashboard /></ViewerRoute>} />
             <Route path="/importar" element={<SomenteUsuarioRoute><Importar /></SomenteUsuarioRoute>} />
             <Route path="/creches-matriculas-2027" element={<ViewerRoute pageKey="creches"><CrechesMatriculas /></ViewerRoute>} />
+            <Route path="/uniforme-2027" element={<ViewerRoute pageKey="uniforme2027"><Uniforme2027 /></ViewerRoute>} />
             <Route path="/turmas" element={<ViewerRoute pageKey="turmas"><Turmas /></ViewerRoute>} />
             <Route path="/alunos" element={<ViewerRoute pageKey="alunos"><Alunos /></ViewerRoute>} />
             <Route path="/genero" element={<CapabilityRoute capabilityKey="acessar_genero"><Genero /></CapabilityRoute>} />
