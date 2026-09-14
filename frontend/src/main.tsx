@@ -118,8 +118,8 @@ function SomenteUsuarioRoute({ children }: { children: React.ReactNode }) {
 // ─── Guarda de rota: redireciona viewers sem permissão pra primeira aba liberada ─
 function ViewerRoute({ children, pageKey }: { children: React.ReactNode; pageKey: PageKey }) {
   const { role, permissoes } = useAuth();
-  if (role === 'admin') return <>{children}</>;
-  if (permissoes === null) return <>{children}</>;
+  if (role === 'admin') return <>{children}</>;          // admin: acesso total
+  if (permissoes === null) return <>{children}</>;       // null = todas liberadas
   if (permissoes.includes(pageKey)) return <>{children}</>;
   const destino = primeiraPaginaPermitida(permissoes);
   return destino ? <Navigate to={destino} replace /> : <SemAcesso />;
@@ -153,6 +153,7 @@ function AppShell() {
   useEffect(() => {
     const ch = supabase.channel('app-reload')
       .on('broadcast', { event: 'reload' }, () => {
+        // pequeno delay para não recarregar junto com quem enviou
         setTimeout(() => window.location.reload(), 800);
       })
       .subscribe();
@@ -175,15 +176,15 @@ function AppShell() {
 
   // Filtra itens do menu conforme o perfil e permissões
   const navItems = NAV_ITEMS.filter(item => {
-    if (item.usernameOnly) {
+    if (item.usernameOnly) {                               // trava por usuário específico, vale até para outros admins
       return (username ?? '').trim().toLowerCase() === item.usernameOnly;
     }
-    if (role === 'admin') return true;
-    if (item.adminOnly) return false;
+    if (role === 'admin') return true;                    // admin vê tudo
+    if (item.adminOnly) return false;                     // viewer nunca vê adminOnly
     if (item.capabilityKey) return !!permissoes?.includes(item.capabilityKey);
-    if (!item.pageKey) return true;
-    if (permissoes === null) return true;
-    return permissoes.includes(item.pageKey);
+    if (!item.pageKey) return true;                       // sem pageKey → sempre visível
+    if (permissoes === null) return true;                 // null = todas liberadas
+    return permissoes.includes(item.pageKey);             // verifica whitelist
   });
 
   const navStyle: React.CSSProperties = {
@@ -211,6 +212,9 @@ function AppShell() {
     ...linkBase, background: 'rgba(255,255,255,0.15)', color: 'white', fontWeight: 700,
   };
 
+  // Clicar em outra aba é navegação interna do React Router — não passa por
+  // window.beforeunload, então precisa de um aviso próprio quando a tela
+  // atual (hoje, só Faltas) sinaliza que tem alterações não salvas.
   const confirmarSaidaComAlteracoes = (e: React.MouseEvent) => {
     if (existemAlteracoesNaoSalvas() && !window.confirm('Você tem alterações não salvas nesta aba. Deseja realmente sair sem salvar?')) {
       e.preventDefault();
@@ -234,6 +238,7 @@ function AppShell() {
               📚 Diário
             </NavLink>
 
+            {/* Desktop menu */}
             <div className="nav-scroll" style={{ display: 'flex', gap: 1, flex: 1, minWidth: 0, overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'thin' }}>
               {navItems.filter(item => item.to !== '/usuarios').map(item => (
                 <NavLink
@@ -250,6 +255,7 @@ function AppShell() {
               ))}
             </div>
 
+            {/* Usuários — fixo fora da área rolável para nunca ficar escondido (admin) */}
             {role === 'admin' && (
               <NavLink to="/usuarios" title="Usuários" onClick={confirmarSaidaComAlteracoes}
                 style={({ isActive }) => ({ ...(isActive ? linkActive : linkBase), flexShrink: 0 })}>
@@ -257,10 +263,12 @@ function AppShell() {
               </NavLink>
             )}
 
+            {/* Badge de perfil + nome do usuário */}
             <span style={{ ...roleBadgeStyle, flexShrink: 0 }} title={`${username || ''} — ${role === 'admin' ? 'Acesso completo' : 'Somente visualização'}`}>
               {role === 'admin' ? '🔑' : '👁️'} {(username || '').split(':')[0].substring(0, 10)}
             </span>
 
+            {/* Seletor de ano */}
             <select
               value={ano} onChange={e => setAno(Number(e.target.value))}
               title="Ano letivo"
@@ -269,6 +277,7 @@ function AppShell() {
               {ANOS_DISPONIVEIS.map(a => <option key={a} value={a} style={{ background: theme.primary, color: 'white' }}>{a}</option>)}
             </select>
 
+            {/* Botão atualizar todos (só admin) */}
             {role === 'admin' && (
               <button
                 onClick={forcarAtualizacao}
@@ -279,16 +288,19 @@ function AppShell() {
               </button>
             )}
 
+            {/* Theme toggle */}
             <button onClick={toggleTheme} title={themeMode === 'light' ? 'Modo escuro' : 'Modo claro'}
               style={{ flexShrink: 0, background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', cursor: 'pointer', padding: '6px 8px', borderRadius: 6, fontSize: 16, lineHeight: 1 }}>
               {themeMode === 'light' ? '🌙' : '☀️'}
             </button>
 
+            {/* Sair */}
             <button onClick={logout} title="Sair"
               style={{ flexShrink: 0, background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fca5a5', cursor: 'pointer', padding: '5px 7px', borderRadius: 6, fontSize: 12, fontWeight: 600, lineHeight: 1, whiteSpace: 'nowrap' }}>
               ⬅ Sair
             </button>
 
+            {/* Mobile hamburger */}
             <button
               onClick={() => setMenuAberto(!menuAberto)}
               style={{ display: 'none', background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', fontSize: 20, cursor: 'pointer', padding: '6px 10px', borderRadius: theme.radius, marginLeft: 'auto' }}
@@ -297,12 +309,14 @@ function AppShell() {
               {menuAberto ? '✕' : '☰'}
             </button>
 
+            {/* GitHub — só ícone para economizar espaço */}
             <a href="https://github.com/ricardojoliveira313/diario_classe" target="_blank" rel="noopener noreferrer"
               title="GitHub" style={{ flexShrink: 0, color: '#93c5fd', textDecoration: 'none', padding: '6px 8px', borderRadius: 6, fontSize: 12, display: 'flex', alignItems: 'center' }}>
               <svg height="15" width="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
             </a>
           </div>
 
+          {/* Mobile menu dropdown */}
           {menuAberto && (
             <div style={{ display: 'none', flexDirection: 'column', padding: '8px 12px 12px', gap: 4, borderTop: '1px solid rgba(255,255,255,0.1)' }} className="mobile-menu">
               {navItems.map(item => (
@@ -354,6 +368,7 @@ function AppShell() {
   );
 }
 
+// ─── Controle de autenticação ─────────────────────────────────────────────────
 function AppContent() {
   const { role } = useAuth();
   if (!role) return <Login />;
