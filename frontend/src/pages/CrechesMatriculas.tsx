@@ -61,7 +61,7 @@ export default function CrechesMatriculas() {
         if (error) {
           sessionStorage.removeItem(CHAVE);
           setToken('');
-          setErro('A sessão venceu. Confirme sua senha novamente.');
+          setErro('A sessão venceu ou a base não pôde ser carregada. Confirme sua senha novamente.');
           return;
         }
         setRegistros(data || []);
@@ -129,7 +129,7 @@ export default function CrechesMatriculas() {
     finally { setCarregando(false); }
   };
 
-  const caixa: React.CSSProperties = { background:'#fff', border:'1px solid #d7e0ea', borderRadius:10, padding:18, marginBottom:16 };
+  const caixa: React.CSSProperties = { background:'#fff', color:'#111827', border:'1px solid #d7e0ea', borderRadius:10, padding:18, marginBottom:16 };
   const botao: React.CSSProperties = { background:'#1e4d75', color:'#fff', border:0, borderRadius:7, padding:'10px 13px', fontWeight:700, cursor:'pointer' };
 
   if (!token) return <div style={{ ...caixa, maxWidth:540, margin:'40px auto' }}>
@@ -140,15 +140,15 @@ export default function CrechesMatriculas() {
   </div>;
 
   return <div>
-    <h1 style={{color:'#1e4d75'}}>🏫 Creches — Matrículas 2027</h1>
-    <p>Base conferida dos ofícios em PDF e impressão por creche.</p>
+    <h1 style={{color:'#f8fafc', marginBottom:6}}>🏫 Creches — Matrículas 2027</h1>
+    <p style={{color:'#f8fafc', marginTop:0}}>Base conferida dos ofícios em PDF e impressão por creche.</p>
     {erro && <p style={{color:'#b42318',fontWeight:700}}>{erro}</p>}{status && <p style={{color:'#166534',fontWeight:700}}>{status}</p>}
-    <section style={caixa}><h2 style={{fontSize:17,marginTop:0}}>1. Base oficial em PDF</h2><p>A base conferida dos ofícios em PDF já está carregada no sistema. Não há arquivo JSON para você importar.</p><p>{registros.length ? `${registros.length} alunos em ${creches.length} creches, extraídos e conferidos a partir dos ofícios.` : 'Carregando a base oficial...'}</p></section>
-    <section style={caixa}><h2 style={{fontSize:17,marginTop:0}}>2. Imprimir por creche</h2>
+    <section style={caixa}><h2 style={{fontSize:17,marginTop:0,color:'#1e4d75'}}>1. Base oficial em PDF</h2><p>A base conferida dos ofícios em PDF já está carregada no sistema. Não há arquivo JSON para você importar.</p><p>{registros.length ? `${registros.length} alunos em ${creches.length} creches, extraídos e conferidos a partir dos ofícios.` : 'Carregando a base oficial...'}</p></section>
+    <section style={caixa}><h2 style={{fontSize:17,marginTop:0,color:'#1e4d75'}}>2. Imprimir por creche</h2>
       <select value={creche} onChange={e=>setCreche(e.target.value)} disabled={!registros.length} style={{padding:10,minWidth:300}}><option value="">Selecione a creche...</option>{creches.map(c=><option key={c}>{c}</option>)}</select>
       {creche && <><p><b>{creche}</b> — {alunos.length} aluno(s)</p><div style={{maxHeight:220,overflow:'auto',border:'1px solid #d7e0ea'}}>{alunos.map((a,i)=><div key={a.ra} style={{padding:7,borderBottom:'1px solid #e7edf3'}}>{i+1}. {a.nome}{a.deficiencia_sinalizada?' ♥':''} — RA {a.ra} — {dataBR(a.data_nascimento)} — {a.periodo}</div>)}</div><button style={{...botao,marginTop:12}} onClick={imprimirLista}>🖨 Imprimir lista de controle</button></>}
     </section>
-    <section style={caixa}><h2 style={{fontSize:17,marginTop:0}}>3. Combos individuais</h2><p>Selecione o PDF mestre já gerado. O Diário separará somente os combos da creche escolhida, sem alterar sua qualidade.</p>
+    <section style={caixa}><h2 style={{fontSize:17,marginTop:0,color:'#1e4d75'}}>3. Combos individuais</h2><p>Selecione o PDF mestre já gerado. O Diário separará somente os combos da creche escolhida, sem alterar sua qualidade.</p>
       <select value={modelo} onChange={e=>setModelo(e.target.value as Modelo)} style={{padding:9,marginRight:10}}>{(Object.keys(ROTULOS) as Modelo[]).map(m=><option key={m} value={m}>{ROTULOS[m]}</option>)}</select>
       <input type="file" accept=".pdf,application/pdf" onChange={e=>setPdf(e.target.files?.[0] || null)} disabled={!creche}/>
       <div><button style={{...botao,marginTop:12}} onClick={gerar} disabled={!pdf || !alunos.length || carregando}>{carregando?'Montando...':'📄 Gerar todos os combos desta creche'}</button></div>
