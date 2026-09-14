@@ -49,6 +49,7 @@ export const PAGINAS_VIEWER = [
   { key: 'faixaetaria', label: '📅 Faixa Etária' },
   { key: 'mapaeja',     label: '📋 Mapa EJA' },
   { key: 'creches',     label: '🏫 Creches — Matrículas 2027' },
+  { key: 'uniforme2027', label: '👕 Uniforme 2027' },
 ] as const;
 
 export type PageKey = typeof PAGINAS_VIEWER[number]['key'];
