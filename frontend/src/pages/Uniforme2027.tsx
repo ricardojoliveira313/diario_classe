@@ -136,10 +136,9 @@ export default function Uniforme2027() {
       novos[chave] = {
         aluno_ra: aluno.ra, aluno_id: aluno.id, aluno_nome: aluno.nome,
         turma_2026_id: turma.id, turma_2026: turma.nome,
-        turma_2027: salvo?.turma_2027 ||
-          (turmaDemanda(turma.nome) && demandaConfirmada(aluno)
-            ? aluno.turma_destino!.trim()
-            : turmaSeguinte(turma.nome)),
+        turma_2027: turmaDemanda(turma.nome) && demandaConfirmada(aluno)
+          ? aluno.turma_destino!.trim()
+          : salvo?.turma_2027 || turmaSeguinte(turma.nome),
         professora: salvo?.professora || turma.professora || '',
         periodo: salvo?.periodo || turma.periodo || '',
         permanente: Boolean(salvo?.permanente),
