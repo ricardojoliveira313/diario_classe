@@ -127,9 +127,9 @@ export default function CrechesMatriculas() {
 
   return <div>
     <h1 style={{color:'#1e4d75'}}>🏫 Creches — Matrículas 2027</h1>
-    <p>Importação exclusiva dos ofícios conferidos e impressão por creche.</p>
+    <p>Base conferida dos ofícios em PDF e impressão por creche.</p>
     {erro && <p style={{color:'#b42318',fontWeight:700}}>{erro}</p>}{status && <p style={{color:'#166534',fontWeight:700}}>{status}</p>}
-    <section style={caixa}><h2 style={{fontSize:17,marginTop:0}}>1. Base conferida</h2><p>Importe o arquivo JSON já preparado. A nova base substitui a anterior para não duplicar alunos.</p><input type="file" accept=".json,application/json" onChange={importar} disabled={carregando}/><p>{registros.length ? `${registros.length} alunos em ${creches.length} creches.` : 'Nenhum aluno importado ainda.'}</p></section>
+    <section style={caixa}><h2 style={{fontSize:17,marginTop:0}}>1. Base oficial em PDF</h2><p>A base conferida dos ofícios em PDF já está carregada no sistema. Não há arquivo JSON para você importar.</p><p>{registros.length ? `${registros.length} alunos em ${creches.length} creches, extraídos e conferidos a partir dos ofícios.` : 'Carregando a base oficial...'}</p></section>
     <section style={caixa}><h2 style={{fontSize:17,marginTop:0}}>2. Imprimir por creche</h2>
       <select value={creche} onChange={e=>setCreche(e.target.value)} disabled={!registros.length} style={{padding:10,minWidth:300}}><option value="">Selecione a creche...</option>{creches.map(c=><option key={c}>{c}</option>)}</select>
       {creche && <><p><b>{creche}</b> — {alunos.length} aluno(s)</p><div style={{maxHeight:220,overflow:'auto',border:'1px solid #d7e0ea'}}>{alunos.map((a,i)=><div key={a.ra} style={{padding:7,borderBottom:'1px solid #e7edf3'}}>{i+1}. {a.nome}{a.deficiencia_sinalizada?' ♥':''} — RA {a.ra} — {dataBR(a.data_nascimento)} — {a.periodo}</div>)}</div><button style={{...botao,marginTop:12}} onClick={imprimirLista}>🖨 Imprimir lista de controle</button></>}
