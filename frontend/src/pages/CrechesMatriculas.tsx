@@ -1,4 +1,4 @@
-import { ChangeEvent, useMemo, useState } from 'react';
+import { ChangeEvent, useEffect, useMemo, useState } from 'react';
 import { PDFDocument } from 'pdf-lib';
 import { supabase } from '../api';
 import { useAuth } from '../AuthContext';
@@ -53,6 +53,20 @@ export default function CrechesMatriculas() {
   const [status, setStatus] = useState('');
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(false);
+
+  useEffect(() => {
+    if (!token) return;
+    supabase.rpc('listar_creche_matricula_2027', { p_token: token })
+      .then(({ data, error }) => {
+        if (error) {
+          sessionStorage.removeItem(CHAVE);
+          setToken('');
+          setErro('A sessão venceu. Confirme sua senha novamente.');
+          return;
+        }
+        setRegistros(data || []);
+      });
+  }, [token]);
 
   const creches = useMemo(() => [...new Set(registros.map(r => r.creche))].sort((a, b) => a.localeCompare(b, 'pt-BR')), [registros]);
   const alunos = useMemo(() => registros.filter(r => r.creche === creche).sort((a,b) => a.ordem_combo - b.ordem_combo), [registros, creche]);
