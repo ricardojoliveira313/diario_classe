@@ -150,7 +150,7 @@ export default function CrechesMatriculas() {
     </section>
     <section style={caixa}><h2 style={{fontSize:17,marginTop:0,color:'#1e4d75'}}>3. Combos individuais</h2><p>Selecione o PDF mestre já gerado. O Diário separará somente os combos da creche escolhida, sem alterar sua qualidade.</p>
       <select value={modelo} onChange={e=>setModelo(e.target.value as Modelo)} style={{padding:9,marginRight:10}}>{(Object.keys(ROTULOS) as Modelo[]).map(m=><option key={m} value={m}>{ROTULOS[m]}</option>)}</select>
-      <input type="file" accept=".pdf,application/pdf" onChange={e=>setPdf(e.target.files?.[0] || null)} disabled={!creche}/>
+      <input type="file" accept=".pdf,application/pdf" onChange={e=>setPdf(e.target.files?.[0] || null)}/>
       <div><button style={{...botao,marginTop:12}} onClick={gerar} disabled={!pdf || !alunos.length || carregando}>{carregando?'Montando...':'📄 Gerar todos os combos desta creche'}</button></div>
     </section>
   </div>;
