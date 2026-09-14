@@ -47,7 +47,7 @@ const USUARIO_IMPORTACAO = 'ricojoliveira';
 const NAV_ITEMS: { to: string; label: string; end?: boolean; badge?: boolean; adminOnly?: boolean; usernameOnly?: string; pageKey?: PageKey; capabilityKey?: CapabilityKey }[] = [
   { to: '/',          label: '📊 Dashboard', end: true,              pageKey: 'dashboard' },
   { to: '/importar',  label: '📥 Importar',  adminOnly: true, usernameOnly: USUARIO_IMPORTACAO },
-  { to: '/creches-matriculas-2027', label: '🏫 Creches 2027', adminOnly: true },
+  { to: '/creches-matriculas-2027', label: '🏫 Creches 2027', pageKey: 'creches' },
   { to: '/turmas',    label: '👩‍🏫 Turmas',                            pageKey: 'turmas' },
   { to: '/alunos',    label: '👥 Alunos',                             pageKey: 'alunos' },
   { to: '/genero',    label: '👫 Gênero',                             capabilityKey: 'acessar_genero' },
@@ -335,7 +335,7 @@ function AppShell() {
           <Routes>
             <Route path="/" element={<ViewerRoute pageKey="dashboard"><Dashboard /></ViewerRoute>} />
             <Route path="/importar" element={<SomenteUsuarioRoute><Importar /></SomenteUsuarioRoute>} />
-            <Route path="/creches-matriculas-2027" element={<AdminRoute><CrechesMatriculas /></AdminRoute>} />
+            <Route path="/creches-matriculas-2027" element={<ViewerRoute pageKey="creches"><CrechesMatriculas /></ViewerRoute>} />
             <Route path="/turmas" element={<ViewerRoute pageKey="turmas"><Turmas /></ViewerRoute>} />
             <Route path="/alunos" element={<ViewerRoute pageKey="alunos"><Alunos /></ViewerRoute>} />
             <Route path="/genero" element={<CapabilityRoute capabilityKey="acessar_genero"><Genero /></CapabilityRoute>} />
