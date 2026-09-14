@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Censo Docentes - Diário de Classe",
+  "version": "1.0.0",
+  "description": "Ponte segura entre o Diário de Classe e o formulário oficial do Cadastro Censo Escolar 2026.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://diario.jroapp.com.br/*",
+    "https://script.google.com/*",
+    "https://script.googleusercontent.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://diario.jroapp.com.br/*"],
+      "js": ["bridge-diario.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://script.google.com/macros/s/*/exec*",
+        "https://script.googleusercontent.com/*"
+      ],
+      "js": ["autofill-censo.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
