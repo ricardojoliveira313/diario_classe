@@ -17,6 +17,7 @@ import Historico from './pages/Historico';
 import Capa from './pages/Capa';
 import Formularios from './pages/Formularios';
 import Educacenso from './pages/Educacenso';
+import EducacensoDocentes from './pages/EducacensoDocentes';
 import Genero from './pages/Genero';
 import Situacoes from './pages/Situacoes';
 import Analitico from './pages/Analitico';
@@ -63,6 +64,7 @@ const NAV_ITEMS: { to: string; label: string; end?: boolean; badge?: boolean; ad
   { to: '/bilhetes', label: '📝 Bilhetes', pageKey: 'bilhetes' },
   { to: '/capa',        label: '✉️ Capa',       pageKey: 'capa' },
   { to: '/educacenso', label: '🔗 Educacenso',                       pageKey: 'educacenso' },
+  { to: '/educacenso-docentes', label: '👩‍🏫 Censo Docentes', adminOnly: true, usernameOnly: USUARIO_IMPORTACAO },
   { to: '/situacoes', label: '🔄 Situações',                         pageKey: 'situacoes' },
   { to: '/analitico', label: '📈 Painel Analítico',                  pageKey: 'analitico' },
   { to: '/faixa-etaria', label: '📅 Faixa Etária',                   pageKey: 'faixaetaria' },
@@ -352,6 +354,7 @@ function AppShell() {
             <Route path="/bilhetes" element={<ViewerRoute pageKey="bilhetes"><Bilhetes /></ViewerRoute>} />
             <Route path="/capa" element={<ViewerRoute pageKey="capa"><Capa /></ViewerRoute>} />
             <Route path="/educacenso" element={<ViewerRoute pageKey="educacenso"><Educacenso /></ViewerRoute>} />
+            <Route path="/educacenso-docentes" element={<SomenteUsuarioRoute><EducacensoDocentes /></SomenteUsuarioRoute>} />
             <Route path="/situacoes" element={<ViewerRoute pageKey="situacoes"><Situacoes /></ViewerRoute>} />
             <Route path="/analitico" element={<ViewerRoute pageKey="analitico"><Analitico /></ViewerRoute>} />
             <Route path="/faixa-etaria" element={<ViewerRoute pageKey="faixaetaria"><FaixaEtaria /></ViewerRoute>} />
