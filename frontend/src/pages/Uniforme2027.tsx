@@ -5,7 +5,7 @@ import { useAuth } from '../AuthContext';
 type Turma = { id: string; nome: string; professora?: string; periodo?: string; tipo?: string };
 type Aluno = {
   id: string; turmaId: string; nome: string; numero?: number; ra: string | number;
-  situacao?: string;
+  situacao?: string; turma_destino?: string; rematricula?: boolean;
 };
 type Registro = {
   aluno_ra: string | number; aluno_id: string; aluno_nome: string;
@@ -25,14 +25,22 @@ function turmaRegular(nome: string) {
   return /^(1ª ETAPA|2ª ETAPA|[1-5]º ano)\b/i.test(nome.trim());
 }
 
-function turmaSaida(nome: string) {
-  return /^(2ª ETAPA|5º ano)\b/i.test(nome.trim());
+function turmaDemanda(nome: string) {
+  return /^2ª ETAPA\b/i.test(nome.trim());
+}
+
+function turmaQuintoAno(nome: string) {
+  return /^5º ano\b/i.test(nome.trim());
+}
+
+function demandaConfirmada(aluno: Aluno) {
+  return aluno.rematricula === true && Boolean(aluno.turma_destino?.trim());
 }
 
 function turmaSeguinte(nome: string) {
   const atual = nome.trim();
   if (/^1ª ETAPA\b/i.test(atual)) return atual.replace(/^1ª ETAPA/i, '2ª ETAPA');
-  if (/^2ª ETAPA\b/i.test(atual)) return atual;
+  if (/^2ª ETAPA\b/i.test(atual)) return 'Aguardando definição de demanda';
   const m = atual.match(/^([1-5])º ano/i);
   if (m) {
     const ano = Number(m[1]);
@@ -128,7 +136,10 @@ export default function Uniforme2027() {
       novos[chave] = {
         aluno_ra: aluno.ra, aluno_id: aluno.id, aluno_nome: aluno.nome,
         turma_2026_id: turma.id, turma_2026: turma.nome,
-        turma_2027: salvo?.turma_2027 || turmaSeguinte(turma.nome),
+        turma_2027: salvo?.turma_2027 ||
+          (turmaDemanda(turma.nome) && demandaConfirmada(aluno)
+            ? aluno.turma_destino!.trim()
+            : turmaSeguinte(turma.nome)),
         professora: salvo?.professora || turma.professora || '',
         periodo: salvo?.periodo || turma.periodo || '',
         permanente: Boolean(salvo?.permanente),
@@ -152,8 +163,14 @@ export default function Uniforme2027() {
     setDados(atual => ({ ...atual, [chave]: { ...atual[chave], [campo]: valor } }));
   };
 
-  const excluida = turma ? turmaSaida(turma.nome) : false;
-  const incluidos = alunosTurma.filter(a => !excluida || dados[String(a.ra)]?.permanente);
+  const aguardandoDemanda = turma ? turmaDemanda(turma.nome) : false;
+  const quintoAno = turma ? turmaQuintoAno(turma.nome) : false;
+  const incluidos = alunosTurma.filter(a =>
+    aguardandoDemanda ? demandaConfirmada(a) :
+    quintoAno ? dados[String(a.ra)]?.permanente :
+    true
+  );
+  const pendentesDemanda = aguardandoDemanda ? alunosTurma.length - incluidos.length : 0;
   const preenchidosVerao = incluidos.filter(a => dados[String(a.ra)]?.tamanho_verao).length;
   const preenchidosInverno = incluidos.filter(a => dados[String(a.ra)]?.tamanho_inverno).length;
 
@@ -161,7 +178,13 @@ export default function Uniforme2027() {
     if (!turma || !alunosTurma.length) return;
     setErro(''); setMensagem(''); setSalvando(true);
     try {
-      const registros = alunosTurma.map(a => dados[String(a.ra)]).filter(Boolean);
+      const registros = alunosTurma
+        .filter(a => !aguardandoDemanda && !quintoAno ||
+          demandaConfirmada(a) ||
+          dados[String(a.ra)]?.permanente ||
+          Boolean(salvos[String(a.ra)]))
+        .map(a => dados[String(a.ra)])
+        .filter(Boolean);
       const { data, error } = await supabase.rpc('salvar_uniforme_2027', {
         p_token: token, p_registros: registros,
       });
@@ -296,8 +319,11 @@ export default function Uniforme2027() {
       </select>
       {turma && <p>
         <b>Progressão prevista:</b> {turma.nome} → {turmaSeguinte(turma.nome)}.
-        {excluida && <span style={{ color: '#9a3412', fontWeight: 700 }}>
-          {' '}Esta turma não participa da rematrícula; marque somente os alunos permanentes.
+        {aguardandoDemanda && <span style={{ color: '#9a3412', fontWeight: 700 }}>
+          {' '}A coleta ficará bloqueada até o sistema confirmar a turma de destino da criança na EMEIEF Luiz Gonzaga.
+        </span>}
+        {quintoAno && <span style={{ color: '#9a3412', fontWeight: 700 }}>
+          {' '}O 5º ano não participa da rematrícula; marque somente os alunos permanentes.
         </span>}
       </p>}
     </section>
@@ -308,11 +334,12 @@ export default function Uniforme2027() {
         <span><b>{incluidos.length}</b> aluno(s) incluído(s)</span>
         <span><b>{preenchidosVerao}</b> verão preenchido(s)</span>
         <span><b>{preenchidosInverno}</b> inverno preenchido(s)</span>
+        {aguardandoDemanda && <span style={{ color: '#9a3412' }}><b>{pendentesDemanda}</b> aguardando definição de demanda</span>}
       </div>
       <div style={{ overflowX: 'auto', border: '1px solid #d7e0ea' }}>
         <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 1500, fontSize: 12 }}>
           <thead><tr style={{ background: '#e8eef5' }}>
-            {['Nº / Aluno', 'Turma 2027', 'Permanente', 'Uniforme verão', 'Uniforme inverno',
+            {['Nº / Aluno', 'Turma 2027', 'Situação', 'Uniforme verão', 'Uniforme inverno',
               'Data solicitação', 'Responsável', 'Servidor da coleta', 'Verão entregue',
               'Data verão', 'Inverno entregue', 'Data inverno', 'Observações'].map(h =>
               <th key={h} style={{ border: '1px solid #cbd5e1', padding: 7 }}>{h}</th>)}
@@ -320,15 +347,23 @@ export default function Uniforme2027() {
           <tbody>{alunosTurma.map((a, i) => {
             const r = dados[String(a.ra)];
             if (!r) return null;
-            const habilitado = !excluida || r.permanente;
+            const confirmadoDemanda = demandaConfirmada(a);
+            const habilitado = aguardandoDemanda ? confirmadoDemanda : quintoAno ? r.permanente : true;
             const td: React.CSSProperties = { border: '1px solid #d7e0ea', padding: 5, verticalAlign: 'top' };
             return <tr key={a.id} style={{ opacity: habilitado ? 1 : .58, background: habilitado ? '#fff' : '#f8fafc' }}>
               <td style={{ ...td, minWidth: 210 }}><b>{i + 1}. {a.nome}</b><br /><small>RA {a.ra}</small></td>
               <td style={td}><input value={r.turma_2027} onChange={e => atualizar(a.ra, 'turma_2027', e.target.value)}
                 disabled={!habilitado} style={{ ...input, width: 115 }} /></td>
-              <td style={{ ...td, textAlign: 'center' }}>
-                {excluida ? <input type="checkbox" checked={r.permanente}
-                  onChange={e => atualizar(a.ra, 'permanente', e.target.checked)} title="Incluir como permanente" /> : '—'}
+              <td style={{ ...td, textAlign: 'center', minWidth: 125 }}>
+                {aguardandoDemanda
+                  ? <span style={{ color: confirmadoDemanda ? '#166534' : '#9a3412', fontWeight: 700 }}>
+                      {confirmadoDemanda ? 'Demanda definida' : 'Aguardando demanda'}
+                    </span>
+                  : quintoAno
+                    ? <label><input type="checkbox" checked={r.permanente}
+                        onChange={e => atualizar(a.ra, 'permanente', e.target.checked)}
+                        title="Incluir como aluno permanente" /> Permanente</label>
+                    : 'Rematrícula'}
               </td>
               <td style={td}><select value={r.tamanho_verao} disabled={!habilitado}
                 onChange={e => atualizar(a.ra, 'tamanho_verao', e.target.value)} style={input}>
