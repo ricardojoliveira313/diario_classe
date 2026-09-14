@@ -291,7 +291,7 @@ export default function Uniforme2027() {
       <select value={turmaId} onChange={e => { setTurmaId(e.target.value); setMensagem(''); }}
         disabled={carregando} style={{ ...input, minWidth: 330 }}>
         <option value="">Selecione a turma...</option>
-        {turmas.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')).map(t =>
+        {[...turmas].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')).map(t =>
           <option key={t.id} value={t.id}>{t.nome} — {t.professora} — {t.periodo}</option>)}
       </select>
       {turma && <p>
