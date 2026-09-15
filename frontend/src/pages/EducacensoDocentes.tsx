@@ -1,12 +1,50 @@
 import { useEffect, useMemo, useState } from 'react';
-import * as XLSX from 'xlsx';
 import { supabase } from '../api';
+import { useAuth } from '../AuthContext';
 import { btn, input, theme } from '../styles';
 import { Loading } from '../components';
 
 const FORM_URL = 'https://script.google.com/macros/s/AKfycbxRAI9YowrLP1ffKAV7URQaXWPKaOOV3dqDbxVouD7Q4Jq-lRFJDmVbzbeRahNpDv6STg/exec';
-const FICHA_KEY = 'censo_docentes_ficha_2026';
-const FICHA_NOME_KEY = 'censo_docentes_ficha_nome_2026';
+const TOKEN_KEY = 'censo_direto_token';
+const TOKEN_EXP_KEY = 'censo_direto_expira';
+const SCHOOL = 'EMEIEF LUIZ GONZAGA';
+
+const MODALIDADES = [
+  'Educação Infantil',
+  'Ensino Fundamental Regular',
+  'Educação Básica I',
+  'Educação Básica II',
+  'Educação Física',
+  'Arte – Regular',
+  'EJA I',
+  'EJA II – Arte',
+  'EJA II – História',
+  'EJA II – Geografia',
+  'EJA II – Língua Portuguesa',
+  'EJA II – Matemática',
+  'EJA II – Ciências',
+  'EJA II – Inglês',
+] as const;
+
+const DEFICIENCIAS = [
+  'Baixa Visão',
+  'Cegueira',
+  'Surdez',
+  'Surdocegueira',
+  'Deficiência Auditiva',
+  'Deficiência Física',
+  'Deficiência Intelectual',
+  'Deficiência Múltipla',
+  'TEA',
+  'Visão Monocular',
+  'Altas Habilidades / Superdotação',
+  'Não possuo deficiência',
+] as const;
+
+const SEXOS = ['Feminino', 'Masculino', 'Não declarado'] as const;
+const CORES_RACAS = ['Branca', 'Preta', 'Parda', 'Amarela', 'Indígena', 'Não declarada'] as const;
+const NACIONALIDADES = ['Brasileiro(a)', 'Estrangeiro(a)'] as const;
+const GRAUS = ['Magistério', 'Ensino Superior'] as const;
 
 type Servidor = {
   rf: string;
@@ -40,54 +78,93 @@ type Turma = {
   tipo?: string | null;
 };
 
-type FichaRow = Record<string, any>;
-type Status = 'pronto' | 'pendente' | 'sem_cadastro';
-
 type Linha = {
   servidor: Servidor;
   frequencia: Frequencia;
-  ficha: FichaRow | null;
   turmas: Turma[];
   modalidade: string;
-  cpf: string;
-  nascimento: string;
-  email: string;
-  telefone: string;
-  endereco: string;
-  bairro: string;
-  cep: string;
-  municipio: string;
-  uf: string;
-  mae: string;
-  pai: string;
-  naturalidade: string;
-  etnia: string;
-  formacao: string;
-  pos: string;
-  faltantes: string[];
-  completude: number;
-  status: Status;
   vinculosMesmoNome: number;
 };
 
-const txt = (v: any) => String(v ?? '').trim();
-const dig = (v: any) => txt(v).replace(/\D/g, '');
-const norm = (v: any) => txt(v)
+type CursoSuperior = {
+  tipo: string;
+  area: string;
+  curso: string;
+  instituicao: string;
+  ano: string;
+  entregue: boolean;
+};
+
+type PosGraduacao = {
+  tipo: string;
+  area: string;
+  ano: string;
+  entregue: boolean;
+};
+
+type Draft = {
+  rf: string;
+  nome: string;
+  unidadeEscolar: string;
+  modalidade: string;
+  cpf: string;
+  dataNasc: string;
+  sexo: string;
+  corRaca: string;
+  telefone: string;
+  email: string;
+  nomeMae: string;
+  nomePai: string;
+  nacionalidade: string;
+  paisEstrangeiro: string;
+  naturalidade: string;
+  ufNascimento: string;
+  cep: string;
+  rua: string;
+  numero: string;
+  bairro: string;
+  municipio: string;
+  uf: string;
+  deficiencias: string[];
+  grauFormacao: string;
+  cursosSuperiores: CursoSuperior[];
+  possuiPos: boolean;
+  posGraduacoes: PosGraduacao[];
+  cursosEspecificos: string[];
+};
+
+type PrepareResponse = {
+  ok: boolean;
+  official: { rf?: string; nome?: string; cpf?: string; dataNascimento?: string; sucesso?: boolean };
+  attendance?: Frequencia;
+  unidadeEscolar?: string;
+  local?: {
+    profile?: Record<string, any> | null;
+    profileMatch?: string;
+    ficha?: { dados?: Record<string, any> } | null;
+    formacoes?: Array<Record<string, any>>;
+  };
+};
+
+const txt = (v: unknown) => String(v ?? '').trim();
+const dig = (v: unknown) => txt(v).replace(/\D/g, '');
+const norm = (v: unknown) => txt(v)
   .toUpperCase()
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
   .replace(/[^A-Z0-9 ]/g, ' ')
   .replace(/\s+/g, ' ')
   .trim();
+const first = (...values: unknown[]) => values.map(txt).find(Boolean) || '';
 
-function campo(row: FichaRow | null, aliases: string[]): string {
-  if (!row) return '';
-  const entries = Object.entries(row).map(([k, v]) => [norm(k), txt(v)] as const);
-  for (const alias of aliases.map(norm)) {
-    const achou = entries.find(([k, v]) => k === alias && !!v);
-    if (achou) return achou[1];
-  }
-  return '';
+function formatRf(rf: string): string {
+  const d = dig(rf);
+  return d.length === 6 ? `${d.slice(0, 2)}.${d.slice(2, 5)}-${d.slice(5)}` : rf;
+}
+
+function maskCpf(cpf: string): string {
+  const d = dig(cpf);
+  return d.length === 11 ? `***.***.${d.slice(6, 9)}-${d.slice(9)}` : (cpf || '—');
 }
 
 function ehDocente(cargo: string): boolean {
@@ -107,7 +184,6 @@ function turmasDoServidor(s: Servidor, turmas: Turma[]): Turma[] {
     const porAtribuicao = turmas.filter(t => norm(t.nome) === atribuida);
     if (porAtribuicao.length) return porAtribuicao;
   }
-
   return turmas.filter(t => {
     const p = txt(t.professora);
     return !!p && (contemNome(p, s.nome) || contemNome(s.nome, p));
@@ -118,596 +194,325 @@ function modalidadeSugerida(s: Servidor, f: Frequencia, turmas: Turma[]): string
   const cargo = norm(f.cargo || s.cargo);
   const lotacao = norm(f.lotacao);
   const nomes = turmas.map(t => norm(t.nome));
-
   if (cargo.includes('EDUCACAO FISICA')) return 'Educação Física';
   if (cargo.includes('ART')) return 'Arte – Regular';
-  if (cargo.includes('ATENDIMENTO EDUCACIONAL ESPECIALIZADO') || turmas.some(t => norm(t.tipo) === 'AEE')) return 'A conferir (AEE)';
+  if (cargo.includes('ATENDIMENTO EDUCACIONAL ESPECIALIZADO') || turmas.some(t => norm(t.tipo) === 'AEE')) return '';
   if (lotacao.includes('EJA') || nomes.some(n => n.includes('EJA'))) return 'EJA I';
   if (lotacao.includes('PRE ESCOLA') || nomes.some(n => /^[12] ETAPA\b/.test(n))) return 'Educação Infantil';
   if (nomes.some(n => /^[1-5] ANO\b/.test(n))) return 'Ensino Fundamental Regular';
   return '';
 }
 
-function fichaDoServidor(s: Servidor, rows: FichaRow[], nomeAmbiguo: boolean): FichaRow | null {
-  const rf = dig(s.rf);
-  for (let i = rows.length - 1; i >= 0; i--) {
-    if (rf && dig(campo(rows[i], ['Registro Funcional (RF)', 'Registro Funcional', 'RF'])) === rf) return rows[i];
+function splitEndereco(value: string) {
+  const s = txt(value);
+  const m = s.match(/^(.*?)[,\s]+(\d+\w?(?:\s*[-/]\s*\w+)?(?:.*)?)$/i);
+  return m ? { rua: m[1].trim(), numero: m[2].trim() } : { rua: s, numero: '' };
+}
+
+function ufSigla(value: string): string {
+  const n = norm(value);
+  const map: Record<string, string> = {
+    ACRE: 'AC', ALAGOAS: 'AL', AMAPA: 'AP', AMAZONAS: 'AM', BAHIA: 'BA', CEARA: 'CE',
+    'DISTRITO FEDERAL': 'DF', 'ESPIRITO SANTO': 'ES', GOIAS: 'GO', MARANHAO: 'MA',
+    'MATO GROSSO': 'MT', 'MATO GROSSO DO SUL': 'MS', 'MINAS GERAIS': 'MG', PARA: 'PA',
+    PARAIBA: 'PB', PARANA: 'PR', PERNAMBUCO: 'PE', PIAUI: 'PI', 'RIO DE JANEIRO': 'RJ',
+    'RIO GRANDE DO NORTE': 'RN', 'RIO GRANDE DO SUL': 'RS', RONDONIA: 'RO', RORAIMA: 'RR',
+    'SANTA CATARINA': 'SC', 'SAO PAULO': 'SP', SERGIPE: 'SE', TOCANTINS: 'TO',
+  };
+  return /^[A-Z]{2}$/.test(n) ? n : (map[n] || txt(value));
+}
+
+function anoDe(value: unknown): string {
+  const matches = txt(value).match(/(?:19|20)\d{2}/g);
+  return matches?.at(-1) || '';
+}
+
+function cursoSuperiorVazio(): CursoSuperior {
+  return { tipo: '', area: '', curso: '', instituicao: '', ano: '', entregue: false };
+}
+
+function posVazia(): PosGraduacao {
+  return { tipo: '', area: '', ano: '', entregue: false };
+}
+
+function construirDraft(l: Linha, r: PrepareResponse): Draft {
+  const p = r.local?.profile || {};
+  const f = r.local?.ficha?.dados || {};
+  const official = r.official || {};
+  const endereco = splitEndereco(first(f.endereco, p.endereco));
+  const universidades = Array.isArray(f.universidades) ? f.universidades.map(txt).filter(Boolean) : [];
+  const posCursos = Array.isArray(f.posCursos) ? f.posCursos.map(txt).filter(Boolean) : [];
+  const formacoes = Array.isArray(r.local?.formacoes) ? r.local!.formacoes! : [];
+
+  const superiores: CursoSuperior[] = formacoes.slice(0, 3).map((x: any) => ({
+    tipo: txt(x.tipo),
+    area: '',
+    curso: txt(x.curso),
+    instituicao: txt(x.universidade),
+    ano: anoDe(x.termino),
+    entregue: false,
+  }));
+  if (!superiores.length && txt(f.formacaoPrincipal)) {
+    superiores.push({ ...cursoSuperiorVazio(), curso: txt(f.formacaoPrincipal), instituicao: universidades[0] || '' });
   }
 
-  if (nomeAmbiguo) return null;
+  const pos: PosGraduacao[] = posCursos.slice(0, 6).map((curso: string) => ({ ...posVazia(), area: curso }));
+  const etnia = txt(f.etniaReferencia || p.etnia);
+  const corExata = CORES_RACAS.find(c => norm(c) === norm(etnia)) || '';
+  const modalidade = MODALIDADES.includes(l.modalidade as any) ? l.modalidade : '';
+  const possuiPos = norm(f.posPossui) === 'SIM' || pos.length > 0 || formacoes.some((x: any) => norm(x.tipo).includes('POS'));
 
-  const nome = norm(s.nome);
-  for (let i = rows.length - 1; i >= 0; i--) {
-    if (norm(campo(rows[i], ['Nome do Servidor(a)', 'Nome do Servidor', 'Nome Completo'])) === nome) return rows[i];
-  }
-  return null;
-}
-
-function formatRf(rf: string): string {
-  const d = dig(rf);
-  return d.length === 6 ? `${d.slice(0, 2)}.${d.slice(2, 5)}-${d.slice(5)}` : rf;
-}
-
-function maskCpf(cpf: string): string {
-  const d = dig(cpf);
-  return d.length === 11 ? `***.***.${d.slice(6, 9)}-${d.slice(9)}` : (cpf || '—');
-}
-
-function Badge({ status }: { status: Status }) {
-  const [label, cor] = status === 'pronto'
-    ? ['Quase pronto', theme.success]
-    : status === 'pendente'
-      ? ['Pendente', theme.warning]
-      : ['Sem ficha', theme.danger];
-
-  return (
-    <span style={{
-      color: cor,
-      background: `${cor}18`,
-      border: `1px solid ${cor}55`,
-      borderRadius: 999,
-      padding: '4px 9px',
-      fontWeight: 800,
-      fontSize: 11,
-      whiteSpace: 'nowrap',
-    }}>
-      {label}
-    </span>
-  );
-}
-
-function Resumo({ titulo, valor, cor, sub }: { titulo: string; valor: number; cor: string; sub: string }) {
-  return (
-    <div style={{
-      background: theme.card,
-      border: `1px solid ${theme.border}`,
-      borderRadius: theme.radiusMd,
-      padding: '15px 16px',
-      boxShadow: theme.shadow,
-    }}>
-      <div style={{ color: theme.textSecondary, fontSize: 11, fontWeight: 800 }}>{titulo}</div>
-      <div style={{ color: cor, fontSize: 28, fontWeight: 900, marginTop: 5, lineHeight: 1 }}>{valor}</div>
-      <div style={{ color: theme.textMuted, fontSize: 10.5, marginTop: 7 }}>{sub}</div>
-    </div>
-  );
+  return {
+    rf: dig(official.rf || l.servidor.rf),
+    nome: first(official.nome, l.servidor.nome),
+    unidadeEscolar: r.unidadeEscolar || SCHOOL,
+    modalidade,
+    cpf: dig(official.cpf || f.cpf || p.cpf),
+    dataNasc: first(official.dataNascimento, f.dataNascimento, p.data_nascimento),
+    sexo: '',
+    corRaca: corExata,
+    telefone: first(f.telefone1, p.telefone_celular_1, f.telefone2, p.telefone_celular_2, p.telefone_fixo),
+    email: first(f.email, p.email),
+    nomeMae: first(f.nomeMae, p.nome_mae),
+    nomePai: first(f.nomePai, p.nome_pai),
+    nacionalidade: 'Brasileiro(a)',
+    paisEstrangeiro: '',
+    naturalidade: first(f.municipioNascimento, p.municipio_nascimento),
+    ufNascimento: '',
+    cep: dig(first(f.cep, p.cep)),
+    rua: endereco.rua,
+    numero: endereco.numero,
+    bairro: first(f.bairro, p.bairro),
+    municipio: first(f.municipio, p.municipio),
+    uf: ufSigla(first(f.estado, p.estado)),
+    deficiencias: [],
+    grauFormacao: '',
+    cursosSuperiores: superiores,
+    possuiPos,
+    posGraduacoes: pos,
+    cursosEspecificos: [],
+  };
 }
 
 function gerarCsv(linhas: Linha[]) {
-  const cab = ['Nome', 'RF', 'Período', 'Turma/atuação', 'Modalidade', 'Carga horária', 'Página frequência', 'Completude', 'Pendências'];
-  const esc = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const corpo = linhas.map(l => [
-    l.servidor.nome,
-    dig(l.servidor.rf),
-    l.servidor.periodo,
-    l.turmas.map(t => t.nome).join(' | '),
-    l.modalidade,
-    l.frequencia.carga_horaria ?? '',
-    l.frequencia.pagina_pdf ?? '',
-    `${l.completude}%`,
-    l.faltantes.join(' | '),
-  ].map(esc).join(';'));
-
+  const cab = ['Nome', 'RF', 'Período', 'Turma/atuação', 'Modalidade sugerida', 'Carga horária', 'Página frequência'];
+  const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const corpo = linhas.map(l => [l.servidor.nome, dig(l.servidor.rf), l.servidor.periodo, l.turmas.map(t => t.nome).join(' | '), l.modalidade, l.frequencia.carga_horaria ?? '', l.frequencia.pagina_pdf ?? ''].map(esc).join(';'));
   const blob = new Blob(['\ufeff' + [cab.map(esc).join(';'), ...corpo].join('\n')], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'censo_docentes_2026_validado_frequencia.csv';
+  a.download = 'censo_docentes_2026_frequencia.csv';
   a.click();
   URL.revokeObjectURL(url);
 }
 
+function Resumo({ titulo, valor, cor, sub }: { titulo: string; valor: number; cor: string; sub: string }) {
+  return <div style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: theme.radiusMd, padding: '15px 16px', boxShadow: theme.shadow }}><div style={{ color: theme.textSecondary, fontSize: 11, fontWeight: 800 }}>{titulo}</div><div style={{ color: cor, fontSize: 28, fontWeight: 900, marginTop: 5, lineHeight: 1 }}>{valor}</div><div style={{ color: theme.textMuted, fontSize: 10.5, marginTop: 7 }}>{sub}</div></div>;
+}
+
+function Field({ labelText, value, onChange, type = 'text', readOnly = false, placeholder = '' }: { labelText: string; value: string; onChange?: (v: string) => void; type?: string; readOnly?: boolean; placeholder?: string; }) {
+  return <label style={{ display: 'grid', gap: 5 }}><span style={{ color: theme.textSecondary, fontSize: 10.5, fontWeight: 800 }}>{labelText}</span><input type={type} style={{ ...input, width: '100%', opacity: readOnly ? 0.78 : 1 }} value={value} readOnly={readOnly} placeholder={placeholder} onChange={e => onChange?.(e.target.value)} /></label>;
+}
+
+function SelectField({ labelText, value, onChange, options, placeholder = 'Selecione...' }: { labelText: string; value: string; onChange: (v: string) => void; options: readonly string[]; placeholder?: string; }) {
+  return <label style={{ display: 'grid', gap: 5 }}><span style={{ color: theme.textSecondary, fontSize: 10.5, fontWeight: 800 }}>{labelText}</span><select style={{ ...input, width: '100%' }} value={value} onChange={e => onChange(e.target.value)}><option value="">{placeholder}</option>{options.map(o => <option key={o} value={o}>{o}</option>)}</select></label>;
+}
+
 export default function EducacensoDocentes() {
+  const { username } = useAuth();
   const [servidores, setServidores] = useState<Servidor[]>([]);
   const [frequencias, setFrequencias] = useState<Frequencia[]>([]);
   const [turmas, setTurmas] = useState<Turma[]>([]);
-  const [ficha, setFicha] = useState<FichaRow[]>(() => {
-    try { return JSON.parse(sessionStorage.getItem(FICHA_KEY) || '[]'); } catch { return []; }
-  });
-  const [nomeFicha, setNomeFicha] = useState(() => sessionStorage.getItem(FICHA_NOME_KEY) || '');
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState('');
   const [aviso, setAviso] = useState('');
   const [busca, setBusca] = useState('');
-  const [filtro, setFiltro] = useState<'todos' | Status>('todos');
-  const [rfSelecionado, setRfSelecionado] = useState('');
-  const [mostrarFora, setMostrarFora] = useState(false);
-  const [extensaoAtiva, setExtensaoAtiva] = useState(false);
+  const [token, setToken] = useState(() => sessionStorage.getItem(TOKEN_KEY) || '');
+  const [expiraEm, setExpiraEm] = useState(() => sessionStorage.getItem(TOKEN_EXP_KEY) || '');
+  const [senha, setSenha] = useState('');
+  const [desbloqueando, setDesbloqueando] = useState(false);
+  const [sessaoOk, setSessaoOk] = useState(false);
+  const [preparandoRf, setPreparandoRf] = useState('');
+  const [linhaEmEdicao, setLinhaEmEdicao] = useState<Linha | null>(null);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [fonteMatch, setFonteMatch] = useState('');
+  const [confirmacao, setConfirmacao] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const [resultado, setResultado] = useState<any>(null);
 
-  useEffect(() => {
-    const onMessage = (ev: MessageEvent) => {
-      if (ev.source === window && ev.data?.source === 'censo-extension' && ['ready', 'prepared'].includes(ev.data?.type)) {
-        setExtensaoAtiva(true);
-      }
-    };
-    window.addEventListener('message', onMessage);
-    window.postMessage({ source: 'diario-censo', type: 'ping' }, '*');
-    return () => window.removeEventListener('message', onMessage);
-  }, []);
+  const bridge = async (body: Record<string, any>, explicitToken?: string) => {
+    const t = explicitToken ?? token;
+    const headers: Record<string, string> = {};
+    if (t) headers['x-censo-token'] = t;
+    const { data, error } = await supabase.functions.invoke('censo-oficial-bridge', { body, headers });
+    if (error) {
+      let message = error.message || 'Falha na integração direta.';
+      const ctx = (error as any).context;
+      try { if (ctx && typeof ctx.json === 'function') { const detail = await ctx.json(); if (detail?.erro) message = detail.erro; } } catch {}
+      throw new Error(message);
+    }
+    if (!data?.ok) throw new Error(data?.erro || 'Operação não autorizada.');
+    return data;
+  };
 
   useEffect(() => {
     let montado = true;
     (async () => {
       setLoading(true);
-      setErro('');
-
       const [srv, freq, tur] = await Promise.all([
-        supabase.from('ServidorCenso')
-          .select('rf,nome,cargo,periodo,escola,ativo,turma_atribuida,sala_atribuida')
-          .order('nome'),
-        supabase.from('CensoFrequenciaServidor')
-          .select('ano,mes,rf,nome,categoria,lotacao,cargo,carga_horaria,local_trabalho,pagina_pdf')
-          .eq('ano', 2026)
-          .eq('mes', 9)
-          .order('pagina_pdf'),
-        supabase.from('Turma')
-          .select('id,nome,professora,periodo,tipo')
-          .order('nome'),
+        supabase.from('ServidorCenso').select('rf,nome,cargo,periodo,escola,ativo,turma_atribuida,sala_atribuida').order('nome'),
+        supabase.from('CensoFrequenciaServidor').select('ano,mes,rf,nome,categoria,lotacao,cargo,carga_horaria,local_trabalho,pagina_pdf').eq('ano', 2026).eq('mes', 9).order('pagina_pdf'),
+        supabase.from('Turma').select('id,nome,professora,periodo,tipo').order('nome'),
       ]);
-
       if (!montado) return;
       const falha = srv.error || freq.error || tur.error;
-      if (falha) {
-        setErro(`Erro ao carregar as bases: ${falha.message}`);
-      } else {
-        setServidores((srv.data ?? []) as Servidor[]);
-        setFrequencias((freq.data ?? []) as Frequencia[]);
-        setTurmas((tur.data ?? []) as Turma[]);
-      }
+      if (falha) setErro(`Erro ao carregar as bases: ${falha.message}`);
+      else { setServidores((srv.data ?? []) as Servidor[]); setFrequencias((freq.data ?? []) as Frequencia[]); setTurmas((tur.data ?? []) as Turma[]); }
       setLoading(false);
     })();
-
     return () => { montado = false; };
   }, []);
 
-  const docentesFreq = useMemo(
-    () => frequencias.filter(f => ehDocente(f.cargo || '')),
-    [frequencias],
-  );
-
-  const nomesDuplicados = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const f of docentesFreq) {
-      const k = norm(f.nome);
-      m.set(k, (m.get(k) ?? 0) + 1);
+  useEffect(() => {
+    if (!token) { setSessaoOk(false); return; }
+    if (!expiraEm || new Date(expiraEm).getTime() <= Date.now()) {
+      sessionStorage.removeItem(TOKEN_KEY); sessionStorage.removeItem(TOKEN_EXP_KEY); setToken(''); setExpiraEm(''); setSessaoOk(false); return;
     }
-    return m;
-  }, [docentesFreq]);
+    let ativo = true;
+    bridge({ action: 'status' }, token).then(() => { if (ativo) setSessaoOk(true); }).catch(() => { if (!ativo) return; sessionStorage.removeItem(TOKEN_KEY); sessionStorage.removeItem(TOKEN_EXP_KEY); setToken(''); setExpiraEm(''); setSessaoOk(false); });
+    return () => { ativo = false; };
+  }, []);
 
-  const servidorPorRf = useMemo(() => {
-    const m = new Map<string, Servidor>();
-    for (const s of servidores) m.set(dig(s.rf), s);
-    return m;
-  }, [servidores]);
-
-  const foraDaFrequencia = useMemo(() => {
-    const rfFreq = new Set(docentesFreq.map(f => dig(f.rf)));
-    return servidores
-      .filter(s => ehDocente(s.cargo))
-      .filter(s => !rfFreq.has(dig(s.rf)))
-      .sort((a, b) => a.nome.localeCompare(b.nome));
-  }, [servidores, docentesFreq]);
+  const docentesFreq = useMemo(() => frequencias.filter(f => ehDocente(f.cargo || '')), [frequencias]);
+  const servidorPorRf = useMemo(() => { const m = new Map<string, Servidor>(); for (const s of servidores) m.set(dig(s.rf), s); return m; }, [servidores]);
+  const nomesDuplicados = useMemo(() => { const m = new Map<string, number>(); for (const f of docentesFreq) m.set(norm(f.nome), (m.get(norm(f.nome)) ?? 0) + 1); return m; }, [docentesFreq]);
 
   const linhas = useMemo<Linha[]>(() => docentesFreq.map(freq => {
-    const servidor = servidorPorRf.get(dig(freq.rf)) ?? {
-      rf: freq.rf,
-      nome: freq.nome,
-      cargo: freq.cargo || '',
-      periodo: '',
-      escola: freq.local_trabalho || 'EMEIEF LUIZ GONZAGA',
-      ativo: true,
-      turma_atribuida: '',
-      sala_atribuida: '',
-    };
-
-    const duplicidadeNome = (nomesDuplicados.get(norm(freq.nome)) ?? 0) > 1;
-    const f = fichaDoServidor(servidor, ficha, duplicidadeNome);
+    const servidor = servidorPorRf.get(dig(freq.rf)) ?? { rf: freq.rf, nome: freq.nome, cargo: freq.cargo || '', periodo: '', escola: freq.local_trabalho || SCHOOL, ativo: true, turma_atribuida: '', sala_atribuida: '' };
     const ts = turmasDoServidor(servidor, turmas);
-    const modalidade = modalidadeSugerida(servidor, freq, ts);
+    return { servidor, frequencia: freq, turmas: ts, modalidade: modalidadeSugerida(servidor, freq, ts), vinculosMesmoNome: nomesDuplicados.get(norm(freq.nome)) ?? 1 };
+  }), [docentesFreq, servidorPorRf, turmas, nomesDuplicados]);
 
-    const cpf = campo(f, ['CPF:', 'CPF']);
-    const nascimento = campo(f, ['Data Nascimento', 'Data de Nascimento']);
-    const email = campo(f, ['Endereço de e-mail', 'E-mail', 'Email']);
-    const telefone = campo(f, ['TELEFONE CELULAR 1:', 'TELEFONE CELULAR 1', 'Telefone Celular 1']);
-    const endereco = campo(f, ['Endereço:', 'Endereço']);
-    const bairro = campo(f, ['BAIRRO:', 'BAIRRO']);
-    const cep = campo(f, ['CEP:', 'CEP']);
-    const municipio = campo(f, ['MUNICÍPIO:', 'MUNICÍPIO', 'Municipio']);
-    const uf = campo(f, ['ESTADO']);
-    const mae = campo(f, ['Nome da Mãe', 'Nome da Mae']);
-    const pai = campo(f, ['Nome do Pai']);
-    const naturalidade = campo(f, ['Município de Nascimento:', 'Município de Nascimento', 'Municipio de Nascimento']);
-    const etnia = campo(f, ['Etnia']);
-    const formacao = campo(f, [
-      'Favor informar formação acadêmica:',
-      'Favor informar formação acadêmica',
-      'Favor informar formação acadêmica: [Linha 2]',
-    ]);
-    const pos = campo(f, ['Informar curso Pós-Graduação', 'Pós-Graduação']);
+  const foraDaFrequencia = useMemo(() => { const rfs = new Set(docentesFreq.map(f => dig(f.rf))); return servidores.filter(s => ehDocente(s.cargo) && !rfs.has(dig(s.rf))); }, [servidores, docentesFreq]);
+  const filtradas = useMemo(() => { const q = norm(busca); if (!q) return linhas; return linhas.filter(l => norm([l.servidor.nome, l.servidor.rf, l.frequencia.cargo, l.frequencia.lotacao, l.turmas.map(t => t.nome).join(' '), l.modalidade].join(' ')).includes(q)); }, [linhas, busca]);
 
-    const checks: Array<[string, any]> = [
-      ['CPF', cpf],
-      ['Nascimento', nascimento],
-      ['E-mail', email],
-      ['Telefone', telefone],
-      ['Endereço', endereco],
-      ['Bairro', bairro],
-      ['CEP', cep],
-      ['Município', municipio],
-      ['Filiação 1', mae],
-      ['Naturalidade', naturalidade],
-      ['Formação', formacao],
-      ['Turma/modalidade', ts.length || modalidade],
-    ];
-
-    const faltantes = checks.filter(([, v]) => !v).map(([k]) => k);
-    const completude = Math.round(((checks.length - faltantes.length) / checks.length) * 100);
-    const status: Status = !f ? 'sem_cadastro' : faltantes.length <= 2 ? 'pronto' : 'pendente';
-
-    return {
-      servidor,
-      frequencia: freq,
-      ficha: f,
-      turmas: ts,
-      modalidade,
-      cpf,
-      nascimento,
-      email,
-      telefone,
-      endereco,
-      bairro,
-      cep,
-      municipio,
-      uf,
-      mae,
-      pai,
-      naturalidade,
-      etnia,
-      formacao,
-      pos,
-      faltantes,
-      completude,
-      status,
-      vinculosMesmoNome: nomesDuplicados.get(norm(freq.nome)) ?? 1,
-    };
-  }), [docentesFreq, servidorPorRf, nomesDuplicados, ficha, turmas]);
-
-  const filtradas = useMemo(() => {
-    const q = norm(busca);
-    return linhas.filter(l => {
-      if (filtro !== 'todos' && l.status !== filtro) return false;
-      if (!q) return true;
-      return norm([
-        l.servidor.nome,
-        l.servidor.rf,
-        l.servidor.cargo,
-        l.servidor.periodo,
-        l.frequencia.lotacao,
-        l.turmas.map(t => t.nome).join(' '),
-      ].join(' ')).includes(q);
-    });
-  }, [linhas, filtro, busca]);
-
-  const selecionado = linhas.find(l => dig(l.servidor.rf) === dig(rfSelecionado)) ?? null;
-
-  const resumo = useMemo(() => ({
-    folhas: frequencias.length,
-    docentes: linhas.length,
-    pronto: linhas.filter(l => l.status === 'pronto').length,
-    pendente: linhas.filter(l => l.status === 'pendente').length,
-    sem: linhas.filter(l => l.status === 'sem_cadastro').length,
-  }), [frequencias, linhas]);
-
-  const importarFicha = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const desbloquear = async () => {
+    if (!username || !senha) { setAviso('Informe novamente sua senha do Diário para liberar a integração direta.'); return; }
+    setDesbloqueando(true); setAviso('');
     try {
-      const wb = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
-      const rows = XLSX.utils.sheet_to_json<FichaRow>(wb.Sheets[wb.SheetNames[0]], { defval: '', raw: false });
-      if (!rows.length) throw new Error('Nenhuma resposta encontrada na primeira aba.');
-
-      setFicha(rows);
-      setNomeFicha(file.name);
-      try {
-        sessionStorage.setItem(FICHA_KEY, JSON.stringify(rows));
-        sessionStorage.setItem(FICHA_NOME_KEY, file.name);
-      } catch {}
-
-      setAviso(`Ficha carregada: ${rows.length} respostas. RF é a chave principal; nome só é usado quando não há ambiguidade.`);
-    } catch (err: any) {
-      setAviso(`Erro ao importar a ficha: ${err?.message ?? err}`);
-    } finally {
-      e.target.value = '';
-    }
+      const data = await bridge({ action: 'auth', username, password: senha }, '');
+      sessionStorage.setItem(TOKEN_KEY, data.token); sessionStorage.setItem(TOKEN_EXP_KEY, data.expiraEm); setToken(data.token); setExpiraEm(data.expiraEm); setSessaoOk(true); setSenha(''); setAviso('Integração direta segura liberada nesta sessão.');
+    } catch (e: any) { setAviso(e?.message || 'Não foi possível liberar a integração.'); }
+    finally { setDesbloqueando(false); }
   };
 
-  const copiarRf = async (rf: string) => {
-    const valor = dig(rf);
+  const bloquear = async () => {
+    try { if (token) await bridge({ action: 'logout' }); } catch {}
+    sessionStorage.removeItem(TOKEN_KEY); sessionStorage.removeItem(TOKEN_EXP_KEY); setToken(''); setExpiraEm(''); setSessaoOk(false); setDraft(null); setLinhaEmEdicao(null); setAviso('Sessão segura do Censo encerrada.');
+  };
+
+  const prepararDireto = async (l: Linha) => {
+    if (!sessaoOk || !token) { setAviso('Desbloqueie primeiro a integração direta segura com sua senha do Diário.'); document.getElementById('censo-seguranca')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+    setPreparandoRf(l.servidor.rf); setAviso(''); setResultado(null); setConfirmacao(false);
     try {
-      await navigator.clipboard.writeText(valor);
-      setAviso(`RF ${valor} copiado.`);
-    } catch {
-      setAviso(`RF atual: ${valor}`);
-    }
+      const data = await bridge({ action: 'prepare', rf: dig(l.servidor.rf) }) as PrepareResponse;
+      setLinhaEmEdicao(l); setDraft(construirDraft(l, data)); setFonteMatch(data.local?.profileMatch || 'ficha consolidada');
+      setTimeout(() => document.getElementById('censo-direto-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+    } catch (e: any) { setAviso(e?.message || 'Não foi possível preparar este vínculo.'); }
+    finally { setPreparandoRf(''); }
   };
 
-  const payloadOficial = (l: Linha) => ({
-    version: 1,
-    criadoEm: new Date().toISOString(),
-    rf: dig(l.servidor.rf),
-    nome: l.servidor.nome,
-    unidade: 'EMEIEF LUIZ GONZAGA',
-    modalidade: l.modalidade,
-    periodo: l.servidor.periodo,
-    turma: l.turmas.map(t => t.nome).join(', '),
-    cpf: l.cpf,
-    nascimento: l.nascimento,
-    telefone: l.telefone,
-    email: l.email,
-    filiacao1: l.mae,
-    filiacao2: l.pai,
-    naturalidade: l.naturalidade,
-    cep: l.cep,
-    endereco: l.endereco,
-    bairro: l.bairro,
-    municipio: l.municipio,
-    uf: l.uf,
-    formacao: l.formacao,
-    posGraduacao: l.pos,
-  });
+  const patch = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft(d => d ? ({ ...d, [key]: value }) : d);
+  const toggleDef = (value: string) => {
+    if (!draft) return;
+    let next = draft.deficiencias.includes(value) ? draft.deficiencias.filter(x => x !== value) : [...draft.deficiencias, value];
+    if (value === 'Não possuo deficiência' && !draft.deficiencias.includes(value)) next = ['Não possuo deficiência'];
+    if (value !== 'Não possuo deficiência') next = next.filter(x => x !== 'Não possuo deficiência');
+    patch('deficiencias', next);
+  };
+  const atualizarCurso = (i: number, key: keyof CursoSuperior, value: string | boolean) => { if (!draft) return; patch('cursosSuperiores', draft.cursosSuperiores.map((c, idx) => idx === i ? ({ ...c, [key]: value }) : c)); };
+  const atualizarPos = (i: number, key: keyof PosGraduacao, value: string | boolean) => { if (!draft) return; patch('posGraduacoes', draft.posGraduacoes.map((c, idx) => idx === i ? ({ ...c, [key]: value }) : c)); };
 
-  const preencherOficial = (l: Linha) => {
-    const payload = payloadOficial(l);
-    window.postMessage({ source: 'diario-censo', type: 'prepare', payload }, '*');
-    try { localStorage.setItem('censo_autofill_preview', JSON.stringify(payload)); } catch {}
-
-    if (!extensaoAtiva) {
-      void copiarRf(l.servidor.rf);
-      setAviso('Extensão de autopreenchimento não detectada. O formulário foi aberto e o RF foi copiado como fallback.');
-    } else {
-      setAviso('Pacote enviado à extensão. O formulário oficial será aberto, validado pelo RF e preenchido sem envio automático.');
-    }
-
-    setTimeout(() => window.open(FORM_URL, '_blank', 'noopener,noreferrer'), 120);
+  const validarDraft = () => {
+    if (!draft) return ['Cadastro não preparado'];
+    const faltam: string[] = [];
+    const required: Array<[string, string]> = [['Modalidade', draft.modalidade], ['CPF', draft.cpf], ['Data de nascimento', draft.dataNasc], ['Sexo', draft.sexo], ['Cor/Raça', draft.corRaca], ['Telefone', draft.telefone], ['E-mail', draft.email], ['Nacionalidade', draft.nacionalidade], ['CEP', draft.cep], ['Rua', draft.rua], ['Bairro', draft.bairro], ['Município', draft.municipio], ['UF', draft.uf], ['Grau de formação', draft.grauFormacao]];
+    required.forEach(([k, v]) => { if (!txt(v)) faltam.push(k); });
+    if (!draft.deficiencias.length) faltam.push('Deficiência/Não possuo deficiência');
+    if (dig(draft.cpf).length !== 11) faltam.push('CPF com 11 dígitos');
+    return [...new Set(faltam)];
   };
 
-  const removerFicha = () => {
-    setFicha([]);
-    setNomeFicha('');
-    sessionStorage.removeItem(FICHA_KEY);
-    sessionStorage.removeItem(FICHA_NOME_KEY);
-    setAviso('Ficha removida desta sessão.');
+  const enviarDireto = async () => {
+    if (!draft || !linhaEmEdicao) return;
+    const faltam = validarDraft();
+    if (faltam.length) { setAviso(`Antes de enviar, revise: ${faltam.join(', ')}.`); return; }
+    if (!confirmacao) { setAviso('Marque a declaração de conferência antes do envio oficial.'); return; }
+    setEnviando(true); setAviso(''); setResultado(null);
+    try { const data = await bridge({ action: 'submit', dados: draft, confirmacaoFinal: true, requestId: crypto.randomUUID() }); setResultado(data.result ?? data); setConfirmacao(false); setAviso('Envio concluído pelo canal direto. O retorno oficial foi registrado para auditoria.'); }
+    catch (e: any) { setAviso(e?.message || 'Falha no envio. Nada deve ser reenviado sem conferir o aviso.'); }
+    finally { setEnviando(false); }
   };
 
   if (loading) return <Loading />;
+  const expiraLabel = expiraEm ? new Date(expiraEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+  const faltamDraft = draft ? validarDraft() : [];
 
   return (
     <div style={{ marginTop: 4 }}>
-      <section style={{
-        background: theme.card,
-        border: `1px solid ${theme.border}`,
-        borderRadius: theme.radiusMd,
-        boxShadow: theme.shadow,
-        padding: 20,
-        marginBottom: 15,
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
-          <div>
-            <h1 style={{ margin: 0, color: theme.text, fontSize: 24 }}>👩‍🏫 Censo Docentes 2026</h1>
-            <p style={{ color: theme.textSecondary, margin: '7px 0 0', maxWidth: 860, lineHeight: 1.55 }}>
-              Frequência oficial de setembro + cadastro funcional + ficha cadastral + turmas do Diário.
-              A folha de frequência agora é a validação principal dos vínculos efetivamente presentes na unidade.
-            </p>
-          </div>
-          <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            <span style={{ color: theme.primaryText, background: 'var(--ghost-bg)', border: `1px solid ${theme.border}`, borderRadius: 999, padding: '6px 10px', fontSize: 11, fontWeight: 850 }}>
-              EMEIEF LUIZ GONZAGA
-            </span>
-            <span style={{
-              color: extensaoAtiva ? theme.success : theme.warning,
-              background: extensaoAtiva ? `${theme.success}18` : `${theme.warning}18`,
-              border: `1px solid ${extensaoAtiva ? theme.success : theme.warning}55`,
-              borderRadius: 999,
-              padding: '6px 10px',
-              fontSize: 11,
-              fontWeight: 850,
-            }}>
-              {extensaoAtiva ? '🤖 Autopreenchimento ativo' : '🧩 Autopreenchimento não detectado'}
-            </span>
-          </div>
+      <section style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: theme.radiusMd, boxShadow: theme.shadow, padding: 20, marginBottom: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+          <div><h1 style={{ margin: 0, color: theme.text, fontSize: 24 }}>👩‍🏫 Censo Docentes 2026</h1><p style={{ color: theme.textSecondary, margin: '7px 0 0', maxWidth: 850, lineHeight: 1.55 }}>Frequência oficial de setembro + cadastro funcional + ficha cadastral consolidada + formulário oficial da Secretaria.</p></div>
+          <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}><span style={{ color: theme.primaryText, background: 'var(--ghost-bg)', border: `1px solid ${theme.border}`, borderRadius: 999, padding: '6px 10px', fontSize: 11, fontWeight: 850 }}>{SCHOOL}</span><span style={{ color: sessaoOk ? theme.success : theme.warning, background: `${sessaoOk ? theme.success : theme.warning}18`, border: `1px solid ${sessaoOk ? theme.success : theme.warning}55`, borderRadius: 999, padding: '6px 10px', fontSize: 11, fontWeight: 850 }}>{sessaoOk ? '🔐 Integração direta segura ativa' : '🔒 Integração direta bloqueada'}</span></div>
         </div>
-
-        <input id="censo-ficha-file" type="file" accept=".xlsx,.xls" onChange={importarFicha} style={{ display: 'none' }} />
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 16 }}>
-          <label htmlFor="censo-ficha-file" style={{ ...btn('primary'), cursor: 'pointer' }}>📥 Importar ficha cadastral</label>
-          {nomeFicha && <button style={btn('ghost')} onClick={removerFicha}>Remover ficha</button>}
-          <button style={btn('success')} onClick={() => gerarCsv(linhas)}>⬇ Exportar conferência CSV</button>
-          <a href={FORM_URL} target="_blank" rel="noopener noreferrer" style={{ ...btn('sky'), textDecoration: 'none' }}>🔗 Formulário oficial</a>
-        </div>
-
-        <div style={{ color: theme.textSecondary, fontSize: 11.5, lineHeight: 1.85, marginTop: 11 }}>
-          <div><strong>Frequência:</strong> setembro/2026 carregada no sistema — {frequencias.length} folhas, {docentesFreq.length} vínculos docentes.</div>
-          <div><strong>Ficha cadastral:</strong> {nomeFicha ? `${nomeFicha} — ${ficha.length} respostas` : 'ainda não importada nesta sessão.'}</div>
-          <div><strong>Regra:</strong> a lista principal vem da frequência; o cadastro funcional complementa período/turma e a ficha fornece os dados pessoais.</div>
-        </div>
-
-        {aviso && <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: 'var(--ghost-bg)', border: `1px solid ${theme.border}`, color: theme.text, fontSize: 11.5 }}>{aviso}</div>}
-        {erro && <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: `${theme.danger}12`, border: `1px solid ${theme.danger}44`, color: theme.danger, fontSize: 11.5 }}>{erro}</div>}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 15 }}><button style={btn('success')} onClick={() => gerarCsv(linhas)}>⬇ Exportar conferência CSV</button><a href={FORM_URL} target="_blank" rel="noopener noreferrer" style={{ ...btn('ghost'), textDecoration: 'none' }}>Fallback: abrir formulário oficial</a></div>
+        {aviso && <div style={{ marginTop: 11, padding: 10, borderRadius: 8, background: 'var(--ghost-bg)', border: `1px solid ${theme.border}`, color: theme.text, fontSize: 11.5 }}>{aviso}</div>}
+        {erro && <div style={{ marginTop: 11, padding: 10, borderRadius: 8, background: `${theme.danger}12`, border: `1px solid ${theme.danger}44`, color: theme.danger, fontSize: 11.5 }}>{erro}</div>}
       </section>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(145px,1fr))', gap: 9, marginBottom: 14 }}>
-        <Resumo titulo="Folhas de frequência" valor={resumo.folhas} cor={theme.primaryText} sub="Setembro/2026" />
-        <Resumo titulo="Docentes confirmados" valor={resumo.docentes} cor={theme.success} sub="Presentes na frequência" />
-        <Resumo titulo="Com pendências" valor={resumo.pendente} cor={theme.warning} sub="Complementar/conferir" />
-        <Resumo titulo="Sem ficha" valor={resumo.sem} cor={theme.danger} sub="Importar ficha cadastral" />
-        <Resumo titulo="Fora da frequência" valor={foraDaFrequencia.length} cor={foraDaFrequencia.length ? theme.warning : theme.success} sub="Ativos no cadastro, ausentes no PDF" />
-      </div>
-
-      {foraDaFrequencia.length > 0 && (
-        <section style={{ background: theme.card, border: `1px solid ${theme.warning}55`, borderRadius: theme.radiusMd, padding: 12, marginBottom: 14 }}>
-          <button
-            onClick={() => setMostrarFora(v => !v)}
-            style={{ border: 0, background: 'transparent', color: theme.warning, fontWeight: 850, cursor: 'pointer', padding: 0 }}
-          >
-            ⚠️ {foraDaFrequencia.length} vínculo(s) docente(s) ainda marcado(s) como ativo(s) no cadastro funcional, mas sem folha de setembro {mostrarFora ? '▲' : '▼'}
-          </button>
-          {mostrarFora && (
-            <div style={{ marginTop: 9, display: 'grid', gap: 6 }}>
-              {foraDaFrequencia.map(s => (
-                <div key={s.rf} style={{ background: 'var(--ghost-bg)', borderRadius: 8, padding: '8px 10px', color: theme.textSecondary, fontSize: 11.5 }}>
-                  <strong style={{ color: theme.text }}>{s.nome}</strong> — RF {formatRf(s.rf)} — {s.cargo} — {s.periodo || 'período não informado'}
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-      )}
-
-      <section style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: theme.radiusMd, boxShadow: theme.shadow, padding: 13, marginBottom: 14 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px,1fr) 190px', gap: 9 }}>
-          <input style={{ ...input, width: '100%' }} value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar professor, RF, cargo, turma..." />
-          <select style={{ ...input, width: '100%' }} value={filtro} onChange={e => setFiltro(e.target.value as typeof filtro)}>
-            <option value="todos">Todos</option>
-            <option value="pronto">Quase prontos</option>
-            <option value="pendente">Pendentes</option>
-            <option value="sem_cadastro">Sem ficha</option>
-          </select>
+      <section id="censo-seguranca" style={{ background: theme.card, border: `1px solid ${sessaoOk ? theme.success : theme.warning}55`, borderRadius: theme.radiusMd, boxShadow: theme.shadow, padding: 15, marginBottom: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div><div style={{ color: theme.text, fontWeight: 900, fontSize: 14 }}>🔐 Canal direto protegido</div><div style={{ color: theme.textSecondary, fontSize: 11.5, marginTop: 4, maxWidth: 760, lineHeight: 1.5 }}>Os dados pessoais são buscados somente quando você prepara um RF. O envio exige nova autenticação, conferência visual e confirmação final.</div></div>
+          {sessaoOk ? <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><span style={{ color: theme.success, fontSize: 11.5, fontWeight: 800 }}>Ativa até {expiraLabel}</span><button style={btn('ghost', { small: true })} onClick={bloquear}>Encerrar sessão segura</button></div> : <div style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}><input type="password" autoComplete="current-password" style={{ ...input, width: 220 }} value={senha} onChange={e => setSenha(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void desbloquear(); }} placeholder="Senha do Diário" /><button style={btn('primary')} disabled={desbloqueando || !senha} onClick={desbloquear}>{desbloqueando ? 'Liberando...' : 'Liberar integração direta'}</button></div>}
         </div>
       </section>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 9, marginBottom: 14 }}><Resumo titulo="Folhas de frequência" valor={frequencias.length} cor={theme.primaryText} sub="Setembro/2026" /><Resumo titulo="Vínculos docentes" valor={linhas.length} cor={theme.success} sub="Base principal" /><Resumo titulo="Fora da frequência" valor={foraDaFrequencia.length} cor={foraDaFrequencia.length ? theme.warning : theme.success} sub="Cadastro ativo, sem folha" /></div>
+
+      <section style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: theme.radiusMd, boxShadow: theme.shadow, padding: 13, marginBottom: 14 }}><input style={{ ...input, width: '100%' }} value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar professor, RF, cargo, turma..." /></section>
 
       <section style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: theme.radiusMd, boxShadow: theme.shadow, overflow: 'hidden' }}>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1110 }}>
-            <thead>
-              <tr style={{ background: 'var(--ghost-bg)' }}>
-                {['Professor', 'RF', 'Frequência', 'Período', 'Turma/atuação', 'Modalidade', 'Dados', 'Situação', 'Ações'].map(h => (
-                  <th key={h} style={{ padding: '11px 8px', textAlign: 'left', color: theme.textSecondary, fontSize: 10.5, borderBottom: `1px solid ${theme.border}` }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtradas.map((l, idx) => (
-                <tr key={`${l.servidor.rf}-${l.servidor.nome}`} style={{ borderBottom: `1px solid ${theme.borderLight}`, background: idx % 2 === 0 ? 'var(--row-even)' : 'var(--row-odd)' }}>
-                  <td style={{ padding: '10px 8px', fontSize: 12 }}>
-                    <button
-                      onClick={() => setRfSelecionado(l.servidor.rf)}
-                      style={{ border: 0, background: 'transparent', padding: 0, color: theme.primaryText, cursor: 'pointer', fontWeight: 850, textAlign: 'left', fontSize: 12 }}
-                    >
-                      {l.servidor.nome}
-                    </button>
-                    <div style={{ color: theme.textMuted, fontSize: 9.5, marginTop: 3 }}>{l.frequencia.cargo || l.servidor.cargo}</div>
-                    {l.vinculosMesmoNome > 1 && (
-                      <div style={{ color: theme.warning, fontSize: 9.5, marginTop: 3, fontWeight: 800 }}>
-                        ⚠️ {l.vinculosMesmoNome} RFs ativos na frequência — tratar por vínculo
-                      </div>
-                    )}
-                  </td>
-                  <td style={{ padding: '10px 8px', color: theme.text, fontWeight: 850, fontSize: 12 }}>{formatRf(l.servidor.rf)}</td>
-                  <td style={{ padding: '10px 8px', color: theme.success, fontSize: 11, fontWeight: 800 }}>
-                    ✓ pág. {l.frequencia.pagina_pdf ?? '—'}<div style={{ color: theme.textMuted, fontSize: 9.5, marginTop: 2 }}>{l.frequencia.carga_horaria ?? '—'} h</div>
-                  </td>
-                  <td style={{ padding: '10px 8px', color: theme.textSecondary, fontSize: 11 }}>{l.servidor.periodo || '—'}</td>
-                  <td style={{ padding: '10px 8px', color: theme.textSecondary, fontSize: 11 }}>{l.turmas.length ? l.turmas.map(t => t.nome).join(', ') : '⚠️ conferir'}</td>
-                  <td style={{ padding: '10px 8px', color: theme.textSecondary, fontSize: 11 }}>{l.modalidade || '⚠️ conferir'}</td>
-                  <td style={{ padding: '10px 8px', minWidth: 105 }}>
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                      <div style={{ height: 7, flex: 1, borderRadius: 9, background: 'var(--ghost-bg)', overflow: 'hidden', border: `1px solid ${theme.borderLight}` }}>
-                        <div style={{ height: '100%', width: `${l.completude}%`, background: l.completude >= 80 ? theme.success : l.completude >= 55 ? theme.warning : theme.danger }} />
-                      </div>
-                      <span style={{ fontSize: 10, color: theme.textSecondary, fontWeight: 850 }}>{l.completude}%</span>
-                    </div>
-                  </td>
-                  <td style={{ padding: '10px 8px' }}><Badge status={l.status} /></td>
-                  <td style={{ padding: '10px 8px', whiteSpace: 'nowrap' }}>
-                    <button style={{ ...btn('ghost', { small: true }), marginRight: 4 }} onClick={() => setRfSelecionado(l.servidor.rf)}>Ver</button>
-                    <button style={btn('sky', { small: true })} onClick={() => preencherOficial(l)}>{extensaoAtiva ? 'Preencher oficial' : 'Abrir + RF'}</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1000 }}><thead><tr style={{ background: 'var(--ghost-bg)' }}>{['Professor', 'RF', 'Frequência', 'Período', 'Turma/atuação', 'Modalidade sugerida', 'Ação'].map(h => <th key={h} style={{ padding: '11px 8px', textAlign: 'left', color: theme.textSecondary, fontSize: 10.5, borderBottom: `1px solid ${theme.border}` }}>{h}</th>)}</tr></thead><tbody>{filtradas.map((l, idx) => <tr key={`${l.servidor.rf}-${l.servidor.nome}`} style={{ borderBottom: `1px solid ${theme.borderLight}`, background: idx % 2 === 0 ? 'var(--row-even)' : 'var(--row-odd)' }}><td style={{ padding: '10px 8px', fontSize: 12, color: theme.text }}><strong>{l.servidor.nome}</strong><div style={{ color: theme.textMuted, fontSize: 9.5, marginTop: 3 }}>{l.frequencia.cargo || l.servidor.cargo}</div>{l.vinculosMesmoNome > 1 && <div style={{ color: theme.warning, fontSize: 9.5, marginTop: 3, fontWeight: 800 }}>⚠️ {l.vinculosMesmoNome} RFs na frequência — tratar por vínculo</div>}</td><td style={{ padding: '10px 8px', color: theme.text, fontWeight: 850, fontSize: 12 }}>{formatRf(l.servidor.rf)}</td><td style={{ padding: '10px 8px', color: theme.success, fontSize: 11, fontWeight: 800 }}>✓ pág. {l.frequencia.pagina_pdf ?? '—'}<div style={{ color: theme.textMuted, fontSize: 9.5 }}>{l.frequencia.carga_horaria ?? '—'} h</div></td><td style={{ padding: '10px 8px', color: theme.textSecondary, fontSize: 11 }}>{l.servidor.periodo || '—'}</td><td style={{ padding: '10px 8px', color: theme.textSecondary, fontSize: 11 }}>{l.turmas.length ? l.turmas.map(t => t.nome).join(', ') : '⚠️ conferir'}</td><td style={{ padding: '10px 8px', color: l.modalidade ? theme.textSecondary : theme.warning, fontSize: 11 }}>{l.modalidade || 'conferir'}</td><td style={{ padding: '10px 8px', whiteSpace: 'nowrap' }}><button style={btn('primary', { small: true })} disabled={preparandoRf === l.servidor.rf} onClick={() => prepararDireto(l)}>{preparandoRf === l.servidor.rf ? 'Preparando...' : 'Preparar direto'}</button></td></tr>)}</tbody></table></div>
         {!filtradas.length && <div style={{ padding: 28, color: theme.textMuted, textAlign: 'center' }}>Nenhum docente encontrado.</div>}
       </section>
 
-      {selecionado && (
-        <section style={{ marginTop: 14, background: theme.card, border: `1px solid ${theme.primaryText}`, borderRadius: theme.radiusMd, boxShadow: theme.shadow, padding: 17 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-            <div>
-              <h2 style={{ margin: 0, color: theme.text, fontSize: 18 }}>{selecionado.servidor.nome}</h2>
-              <div style={{ marginTop: 5, color: theme.textSecondary, fontSize: 11.5 }}>
-                RF <strong>{formatRf(selecionado.servidor.rf)}</strong> · {selecionado.servidor.periodo || 'período não informado'} ·
-                frequência pág. {selecionado.frequencia.pagina_pdf ?? '—'} · carga {selecionado.frequencia.carga_horaria ?? '—'} h
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button style={btn('ghost', { small: true })} onClick={() => copiarRf(selecionado.servidor.rf)}>Copiar RF</button>
-              <button style={btn('primary', { small: true })} onClick={() => preencherOficial(selecionado)}>Preencher oficial</button>
-              <button style={btn('ghost', { small: true })} onClick={() => setRfSelecionado('')}>Fechar</button>
-            </div>
-          </div>
+      {draft && linhaEmEdicao && <section id="censo-direto-editor" style={{ marginTop: 16, background: theme.card, border: `2px solid ${theme.primaryText}`, borderRadius: theme.radiusMd, boxShadow: theme.shadow, padding: 17 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'flex-start' }}><div><h2 style={{ margin: 0, color: theme.text, fontSize: 19 }}>Conferência oficial — {draft.nome}</h2><div style={{ marginTop: 5, color: theme.textSecondary, fontSize: 11.5 }}>RF <strong>{formatRf(draft.rf)}</strong> · CPF {maskCpf(draft.cpf)} · frequência pág. {linhaEmEdicao.frequencia.pagina_pdf ?? '—'} · fonte local: {fonteMatch || 'consolidada'}</div></div><button style={btn('ghost', { small: true })} onClick={() => { setDraft(null); setLinhaEmEdicao(null); setResultado(null); }}>Fechar</button></div>
+        <div style={{ marginTop: 11, padding: 10, borderRadius: 8, background: `${theme.warning}0F`, border: `1px solid ${theme.warning}55`, color: theme.textSecondary, fontSize: 11.5, lineHeight: 1.5 }}><strong style={{ color: theme.text }}>Conferência humana obrigatória:</strong> Sexo, Cor/Raça, deficiência/TEA e grau de formação não são deduzidos pelo sistema. Cor/Raça só é pré-selecionada quando a fonte já contém exatamente uma opção oficial.</div>
 
-          <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: `${theme.success}10`, border: `1px solid ${theme.success}44`, color: theme.textSecondary, fontSize: 11.5 }}>
-            <strong style={{ color: theme.text }}>Validação funcional:</strong> este RF consta na folha de frequência oficial de setembro/2026.
-            <div style={{ marginTop: 4 }}><strong style={{ color: theme.text }}>Lotação:</strong> {selecionado.frequencia.lotacao || '—'}</div>
-          </div>
+        <h3 style={{ color: theme.text, fontSize: 14, margin: '16px 0 9px' }}>1. Instituição e dados pessoais</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(210px,1fr))', gap: 9 }}><Field labelText="Unidade Escolar" value={draft.unidadeEscolar} readOnly /><SelectField labelText="Modalidade *" value={draft.modalidade} onChange={v => patch('modalidade', v)} options={MODALIDADES} /><Field labelText="Nome completo" value={draft.nome} onChange={v => patch('nome', v)} /><Field labelText="CPF" value={draft.cpf} readOnly /><Field labelText="Data de nascimento *" value={draft.dataNasc} onChange={v => patch('dataNasc', v)} type="date" /><SelectField labelText="Sexo *" value={draft.sexo} onChange={v => patch('sexo', v)} options={SEXOS} /><SelectField labelText="Cor/Raça *" value={draft.corRaca} onChange={v => patch('corRaca', v)} options={CORES_RACAS} /><Field labelText="Telefone/Celular *" value={draft.telefone} onChange={v => patch('telefone', v)} /><Field labelText="E-mail *" value={draft.email} onChange={v => patch('email', v)} type="email" /><Field labelText="Filiação 1" value={draft.nomeMae} onChange={v => patch('nomeMae', v)} /><Field labelText="Filiação 2" value={draft.nomePai} onChange={v => patch('nomePai', v)} /><SelectField labelText="Nacionalidade *" value={draft.nacionalidade} onChange={v => patch('nacionalidade', v)} options={NACIONALIDADES} />{draft.nacionalidade === 'Estrangeiro(a)' && <Field labelText="País" value={draft.paisEstrangeiro} onChange={v => patch('paisEstrangeiro', v)} />}<Field labelText="Naturalidade (cidade)" value={draft.naturalidade} onChange={v => patch('naturalidade', v)} /><Field labelText="UF nascimento" value={draft.ufNascimento} onChange={v => patch('ufNascimento', v.toUpperCase().slice(0, 2))} /></div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: 8, marginTop: 13 }}>
-            {[
-              ['CPF', selecionado.cpf],
-              ['Nascimento', selecionado.nascimento],
-              ['E-mail', selecionado.email],
-              ['Telefone', selecionado.telefone],
-              ['Endereço', selecionado.endereco],
-              ['Bairro / CEP', `${selecionado.bairro || '—'} / ${selecionado.cep || '—'}`],
-              ['Município / UF', `${selecionado.municipio || '—'} / ${selecionado.uf || '—'}`],
-              ['Filiação 1', selecionado.mae],
-              ['Filiação 2', selecionado.pai],
-              ['Naturalidade', selecionado.naturalidade],
-              ['Etnia — referência; não converter em Cor/Raça', selecionado.etnia],
-              ['Formação', selecionado.formacao],
-              ['Pós-graduação', selecionado.pos],
-            ].map(([k, v]) => (
-              <div key={k} style={{ padding: 10, borderRadius: 8, border: `1px solid ${theme.border}`, background: 'var(--ghost-bg)' }}>
-                <div style={{ color: theme.textMuted, fontSize: 9, fontWeight: 850, textTransform: 'uppercase' }}>{k}</div>
-                <div style={{ color: v && v !== '— / —' ? theme.text : theme.danger, marginTop: 4, fontSize: 12, fontWeight: 680, wordBreak: 'break-word' }}>
-                  {v || '⚠️ não localizado'}
-                </div>
-              </div>
-            ))}
-          </div>
+        <h3 style={{ color: theme.text, fontSize: 14, margin: '16px 0 9px' }}>2. Endereço residencial</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 9 }}><Field labelText="CEP *" value={draft.cep} onChange={v => patch('cep', v)} /><Field labelText="Rua/Avenida *" value={draft.rua} onChange={v => patch('rua', v)} /><Field labelText="Nº/Complemento" value={draft.numero} onChange={v => patch('numero', v)} /><Field labelText="Bairro *" value={draft.bairro} onChange={v => patch('bairro', v)} /><Field labelText="Município *" value={draft.municipio} onChange={v => patch('municipio', v)} /><Field labelText="UF *" value={draft.uf} onChange={v => patch('uf', v.toUpperCase().slice(0, 2))} /></div>
 
-          <div style={{ marginTop: 9, padding: 10, borderRadius: 8, border: `1px solid ${selecionado.faltantes.length ? theme.warning : theme.success}55`, background: `${selecionado.faltantes.length ? theme.warning : theme.success}0F`, color: theme.textSecondary, fontSize: 11.5 }}>
-            <strong style={{ color: theme.text }}>Atuação:</strong> {selecionado.turmas.length ? selecionado.turmas.map(t => `${t.nome}${t.periodo ? ` (${t.periodo})` : ''}`).join(', ') : '⚠️ conferir'}
-            {' · '}
-            <strong style={{ color: theme.text }}>Modalidade:</strong> {selecionado.modalidade || '⚠️ conferir'}
-            <div style={{ marginTop: 6 }}><strong style={{ color: theme.text }}>Pendências:</strong> {selecionado.faltantes.length ? selecionado.faltantes.join(' · ') : 'nenhuma nas fontes cruzadas.'}</div>
-            <div style={{ color: theme.textMuted, marginTop: 5 }}>
-              Sexo, Cor/Raça, deficiência/TEA, nacionalidade e a declaração final não são deduzidos. O autopreenchimento nunca envia o formulário sozinho.
-            </div>
-          </div>
-        </section>
-      )}
+        <h3 style={{ color: theme.text, fontSize: 14, margin: '16px 0 9px' }}>3. Deficiência / TEA / Altas Habilidades *</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 6 }}>{DEFICIENCIAS.map(d => <label key={d} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '7px 8px', borderRadius: 7, border: `1px solid ${theme.border}`, color: theme.textSecondary, fontSize: 11.5, cursor: 'pointer' }}><input type="checkbox" checked={draft.deficiencias.includes(d)} onChange={() => toggleDef(d)} /> {d}</label>)}</div>
+
+        <h3 style={{ color: theme.text, fontSize: 14, margin: '16px 0 9px' }}>4. Escolaridade e pós-graduação</h3>
+        <SelectField labelText="Maior grau de formação *" value={draft.grauFormacao} onChange={v => patch('grauFormacao', v)} options={GRAUS} />
+        <div style={{ marginTop: 12, color: theme.textSecondary, fontSize: 11.5, fontWeight: 850 }}>Curso(s) superior(es) — máximo 3</div>
+        <div style={{ display: 'grid', gap: 8, marginTop: 7 }}>{draft.cursosSuperiores.map((c, i) => <div key={i} style={{ border: `1px solid ${theme.border}`, borderRadius: 8, padding: 10, background: 'var(--ghost-bg)' }}><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 7 }}><Field labelText="Tipo" value={c.tipo} onChange={v => atualizarCurso(i, 'tipo', v)} placeholder="Ex.: Licenciatura" /><Field labelText="Área" value={c.area} onChange={v => atualizarCurso(i, 'area', v)} /><Field labelText="Curso" value={c.curso} onChange={v => atualizarCurso(i, 'curso', v)} /><Field labelText="Instituição" value={c.instituicao} onChange={v => atualizarCurso(i, 'instituicao', v)} /><Field labelText="Ano conclusão" value={c.ano} onChange={v => atualizarCurso(i, 'ano', v)} /></div><label style={{ display: 'flex', gap: 7, alignItems: 'center', color: theme.textSecondary, fontSize: 11, marginTop: 8 }}><input type="checkbox" checked={c.entregue} onChange={e => atualizarCurso(i, 'entregue', e.target.checked)} /> Documento entregue</label><button style={{ ...btn('ghost', { small: true }), marginTop: 7 }} onClick={() => patch('cursosSuperiores', draft.cursosSuperiores.filter((_, idx) => idx !== i))}>Remover curso</button></div>)}{draft.cursosSuperiores.length < 3 && <button style={btn('ghost', { small: true })} onClick={() => patch('cursosSuperiores', [...draft.cursosSuperiores, cursoSuperiorVazio()])}>+ Adicionar curso superior</button>}</div>
+
+        <div style={{ marginTop: 13 }}><label style={{ display: 'flex', gap: 7, alignItems: 'center', color: theme.textSecondary, fontSize: 11.5 }}><input type="checkbox" checked={!draft.possuiPos} onChange={e => patch('possuiPos', !e.target.checked)} /> Não possui pós-graduação concluída</label></div>
+        {draft.possuiPos && <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>{draft.posGraduacoes.map((c, i) => <div key={i} style={{ border: `1px solid ${theme.border}`, borderRadius: 8, padding: 10, background: 'var(--ghost-bg)' }}><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 7 }}><Field labelText="Tipo da pós" value={c.tipo} onChange={v => atualizarPos(i, 'tipo', v)} placeholder="Ex.: Especialização" /><Field labelText="Área/Curso" value={c.area} onChange={v => atualizarPos(i, 'area', v)} /><Field labelText="Ano conclusão" value={c.ano} onChange={v => atualizarPos(i, 'ano', v)} /></div><label style={{ display: 'flex', gap: 7, alignItems: 'center', color: theme.textSecondary, fontSize: 11, marginTop: 8 }}><input type="checkbox" checked={c.entregue} onChange={e => atualizarPos(i, 'entregue', e.target.checked)} /> Documento entregue</label><button style={{ ...btn('ghost', { small: true }), marginTop: 7 }} onClick={() => patch('posGraduacoes', draft.posGraduacoes.filter((_, idx) => idx !== i))}>Remover pós</button></div>)}{draft.posGraduacoes.length < 6 && <button style={btn('ghost', { small: true })} onClick={() => patch('posGraduacoes', [...draft.posGraduacoes, posVazia()])}>+ Adicionar pós-graduação</button>}</div>}
+
+        <label style={{ display: 'grid', gap: 5, marginTop: 13 }}><span style={{ color: theme.textSecondary, fontSize: 10.5, fontWeight: 800 }}>Outros cursos específicos (mín. 80h) — separados por vírgula</span><input style={{ ...input, width: '100%' }} value={draft.cursosEspecificos.join(', ')} onChange={e => patch('cursosEspecificos', e.target.value.split(',').map(x => x.trim()).filter(Boolean))} placeholder="Ex.: Alfabetização, Educação Especial" /></label>
+
+        <div style={{ marginTop: 15, padding: 12, borderRadius: 8, border: `1px solid ${faltamDraft.length ? theme.warning : theme.success}55`, background: `${faltamDraft.length ? theme.warning : theme.success}0F` }}><div style={{ color: faltamDraft.length ? theme.warning : theme.success, fontSize: 11.5, fontWeight: 850 }}>{faltamDraft.length ? `Pendências antes do envio: ${faltamDraft.join(' · ')}` : '✓ Campos obrigatórios conferidos.'}</div><label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', color: theme.text, fontSize: 12, marginTop: 10, lineHeight: 1.45, cursor: 'pointer' }}><input type="checkbox" checked={confirmacao} onChange={e => setConfirmacao(e.target.checked)} style={{ marginTop: 2 }} /><span><strong>Declaro que conferi os dados acima e autorizo este envio ao formulário oficial.</strong> O sistema não envia automaticamente sem esta marcação.</span></label><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}><button style={btn('success')} disabled={enviando || faltamDraft.length > 0 || !confirmacao} onClick={enviarDireto}>{enviando ? 'Enviando...' : '✅ Enviar ao formulário oficial'}</button><a href={FORM_URL} target="_blank" rel="noopener noreferrer" style={{ ...btn('ghost'), textDecoration: 'none' }}>Abrir formulário manual</a></div></div>
+        {resultado && <div style={{ marginTop: 12, padding: 12, borderRadius: 8, border: `1px solid ${theme.success}55`, background: `${theme.success}10`, color: theme.textSecondary, fontSize: 11.5 }}><strong style={{ color: theme.success }}>✓ Retorno oficial recebido.</strong>{typeof resultado === 'string' && /^https?:\/\//i.test(resultado) ? <div style={{ marginTop: 7 }}><a href={resultado} target="_blank" rel="noopener noreferrer" style={{ color: theme.primaryText, fontWeight: 800 }}>Abrir comprovante/PDF oficial</a></div> : <div style={{ marginTop: 7 }}>O retorno foi registrado na auditoria interna.</div>}</div>}
+      </section>}
     </div>
   );
 }
