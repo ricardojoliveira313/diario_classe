@@ -6,7 +6,7 @@ const edge = fs.readFileSync(new URL('../../supabase/functions/censo-oficial-bri
 const checks = [
   ['front exige reautenticação', page.includes("action:'auth'") || page.includes("action: 'auth'")],
   ['token fica em sessionStorage', page.includes('sessionStorage.setItem(TOKEN_KEY') && !page.includes("localStorage.setItem(TOKEN_KEY")],
-  ['front exige confirmação humana', page.includes('confirmacaoFinal:true') && page.includes('assumo total responsabilidade pela veracidade dos dados fornecidos')],
+  ['front exige confirmação humana', /confirmacaoFinal\s*:\s*true/.test(page) && page.includes('assumo total responsabilidade pela veracidade dos dados fornecidos')],
   ['front não depende da extensão', !page.includes('censo-extension') && !page.includes('diario-censo')],
   ['backend restringe origem', edge.includes('origemPermitida') && edge.includes('Origem não autorizada')],
   ['CORS aceita cabeçalhos do cliente Supabase', edge.includes('authorization, x-client-info, apikey, content-type, x-censo-token')],
