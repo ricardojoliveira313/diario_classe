@@ -31,11 +31,14 @@ const checks = [
   ['consulta Educacenso usa função protegida separada', page.includes("supabase.functions.invoke('censo-educacenso-base'") && educacensoEdge.includes('validateToken')],
   ['consulta Educacenso restringe origem', educacensoEdge.includes('origemPermitida') && educacensoEdge.includes('Origem não autorizada')],
   ['consulta Educacenso usa snapshot atual por CPF', educacensoEdge.includes('EducacensoProfissionalAtual?cpf=eq.') && educacensoEdge.includes('cpf.length !== 11')],
-  ['sexo vem do Educacenso quando válido', page.includes('const sexoEdu = inOptions(educacenso?.sexo, SEXOS)') && page.includes('sexo: sexoEdu')],
-  ['cor raça vem do Educacenso com mapeamento', page.includes('cor_raca_oficial') && page.includes("norm('Não declarado')") && page.includes("return 'Não declarada'")],
+  ['sexo vem do Educacenso quando válido', /sexoEdu\s*=\s*inOptions\(educacenso\?\.sexo,\s*SEXOS\)/.test(page) && /sexo\s*:\s*sexoEdu/.test(page)],
+  ['cor raça vem do Educacenso com mapeamento', page.includes('cor_raca_oficial') && /norm\(['"]Não declarado['"]\)/.test(page) && /return\s*['"]Não declarada['"]/.test(page)],
   ['nacionalidade e grau usam valores oficiais do snapshot', page.includes('nacionalidade_oficial') && page.includes('grau_formacao_oficial')],
   ['pós e cursos 80h usam snapshot recente', page.includes('pos_graduacao_raw') && page.includes('cursos_especificos_raw') && page.includes('parsePosEducacenso') && page.includes('parseCursosEducacenso')],
   ['fonte Educacenso fica visível na conferência', page.includes('Base Educacenso aplicada') && page.includes('referenciaData')],
+  ['ficha cadastral alimenta graduação', page.includes('academicoReferencia') && page.includes('formacaoPrincipal') && page.includes('resolveGraduacao') && page.includes('resolveInstituicao')],
+  ['ano de conclusão da ficha é aproveitado', page.includes('anosFicha') && page.includes('anoConclusao')],
+  ['UF nascimento não é presumida sem fonte', page.includes('UF de nascimento não existe na relação atual do Educacenso nem na ficha cadastrada')],
 ];
 
 const failed = checks.filter(([, ok]) => !ok);
