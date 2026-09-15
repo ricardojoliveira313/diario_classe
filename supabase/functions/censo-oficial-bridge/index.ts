@@ -11,9 +11,19 @@ const TIPOS_SUPERIOR = new Set(['Bacharelado','Licenciatura','Sequencial/Curta D
 const UFS = new Set(['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO']);
 const TIPOS_POS = new Set(['Especialização','Mestrado','Doutorado']);
 const DEFICIENCIAS = new Set(['Baixa Visão','Cegueira','Surdez','Surdocegueira','Deficiência Auditiva','Deficiência Física','Deficiência Intelectual','Deficiência Múltipla','TEA','Visão Monocular','Altas Habilidades / Superdotação','Não possuo deficiência']);
-const CURSOS_ESPECIFICOS = new Set([
-  'Creche (0 a 3 anos)','Pré-escola (4 e 5 anos)','Alfabetização','Anos iniciais do ensino fundamental','Anos finais do ensino fundamental','Ensino médio','Educação de jovens e adultos','Educação especial','Educação indígena','Educação do campo','Educação ambiental','Educação em direitos humanos','Educação bilíngue de surdos','Educação e Tecnologia de Informação e Comunicação (TIC)','Educação integral em tempo integral','Gênero e diversidade sexual','Direitos da criança e do adolescente','Educação para as relações étnico-raciais e história e cultura afro-brasileira e africana','Gestão escolar','Outros','Nenhum'
-]);
+const CURSOS_ESPECIFICOS = new Set(['Creche (0 a 3 anos)','Pré-escola (4 e 5 anos)','Alfabetização','Anos iniciais do ensino fundamental','Anos finais do ensino fundamental','Ensino médio','Educação de jovens e adultos','Educação especial','Educação indígena','Educação do campo','Educação ambiental','Educação em direitos humanos','Educação bilíngue de surdos','Educação e Tecnologia de Informação e Comunicação (TIC)','Educação integral em tempo integral','Gênero e diversidade sexual','Direitos da criança e do adolescente','Educação para as relações étnico-raciais e história e cultura afro-brasileira e africana','Gestão escolar','Outros','Nenhum']);
+
+// Fallback conservador para quando a lista oficial de graduação falhar temporariamente.
+// Mantém Pedagogia preenchível a partir da ficha cadastrada sem impedir os demais tipos.
+const GRADUACAO_FALLBACK = [
+  {tipo:'Licenciatura',area:'Educação',curso:'Pedagogia'},
+  {tipo:'Bacharelado',area:'',curso:''},
+  {tipo:'Sequencial/Curta Duração',area:'',curso:''},
+  {tipo:'Tecnológico',area:'',curso:''},
+];
+const MUNICIPIO_UF: Record<string,string> = {
+  'SANTO ANDRE':'SP','SAO PAULO':'SP','SAO CAETANO DO SUL':'SP','DIADEMA':'SP','MAUA':'SP','POCAO':'PE'
+};
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -54,17 +64,18 @@ async function officialCall(fn:string,args:unknown[]=[]){
   const request=[fn,JSON.stringify(args),null,[0],null,null,true,0];const body=`request=${encodeURIComponent(JSON.stringify(request))}`;const ctrl=new AbortController();const timer=setTimeout(()=>ctrl.abort(),25000);
   try{const r=await fetch(`${OFFICIAL_BASE}/callback?nocache_id=${Date.now()}_${crypto.randomUUID()}`,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded;charset=UTF-8','x-same-domain':'1'},body,signal:ctrl.signal});const t=await r.text();if(!r.ok)throw new Error(`Formulário oficial HTTP ${r.status}.`);return parseAppsScript(t)}finally{clearTimeout(timer)}
 }
+async function retryOfficial<T>(call:()=>Promise<T>,attempts=3):Promise<T>{let last:any;for(let i=0;i<attempts;i++){try{return await call()}catch(e){last=e;if(i<attempts-1)await new Promise(r=>setTimeout(r,250*(i+1)))}}throw last}
+let optionsCache:{at:number,value:{graduacao:any[];instituicoes:any[];pos:any[]}}|null=null;
 async function officialOptions(){
+  if(optionsCache&&Date.now()-optionsCache.at<10*60*1000)return optionsCache.value;
   const [graduacao,instituicoes,pos]=await Promise.all([
-    officialCall('obterOpcoesGraduacao').catch(()=>[]),
-    officialCall('obterOpcoesInstituicoes').catch(()=>[]),
-    officialCall('obterOpcoesPosGraduacao').catch(()=>[]),
+    retryOfficial(()=>officialCall('obterOpcoesGraduacao')).catch(()=>[]),
+    retryOfficial(()=>officialCall('obterOpcoesInstituicoes')).catch(()=>[]),
+    retryOfficial(()=>officialCall('obterOpcoesPosGraduacao')).catch(()=>[]),
   ]);
-  return {
-    graduacao:Array.isArray(graduacao)?graduacao:[],
-    instituicoes:Array.isArray(instituicoes)?instituicoes:[],
-    pos:Array.isArray(pos)?pos:[],
-  };
+  const grad=Array.isArray(graduacao)&&graduacao.length?graduacao:GRADUACAO_FALLBACK;
+  const value={graduacao:grad,instituicoes:Array.isArray(instituicoes)?instituicoes:[],pos:Array.isArray(pos)?pos:[]};
+  optionsCache={at:Date.now(),value};return value;
 }
 
 async function authenticate(username:string,password:string){
@@ -90,7 +101,12 @@ async function localSources(rf:string,official:any){
   if(!profile){profile=latest(all.filter(p=>norm(p.nome)===norm(official?.nome)));if(profile)profileMatch='nome'}
   let fichaRows=await rest(`CensoFichaServidor?ano=eq.2026&rf=eq.${encodeURIComponent(dig(rf))}&select=rf,nome,cpf,fonte_timestamp,metodo_match,dados&limit=1`) as any[];
   if((!fichaRows||!fichaRows.length)&&official?.cpf)fichaRows=await rest(`CensoFichaServidor?ano=eq.2026&cpf=eq.${encodeURIComponent(dig(official.cpf))}&select=rf,nome,cpf,fonte_timestamp,metodo_match,dados&limit=1`) as any[];
-  const ficha=Array.isArray(fichaRows)?fichaRows[0]||null:null;let formacoes:any[]=[];if(profile?.id){const f=await rest(`formacoes?profile_id=eq.${encodeURIComponent(profile.id)}&select=tipo,curso,universidade,rede_ensino,modalidade,inicio,termino&order=created_at.asc`) as any[];formacoes=Array.isArray(f)?f:[]}
+  let ficha=Array.isArray(fichaRows)?fichaRows[0]||null:null;
+  if(ficha?.dados&&!String(ficha.dados.ufNascimento||'').trim()){
+    const cidade=norm(ficha.dados.municipioNascimento||profile?.municipio_nascimento||'');const ufNascimento=MUNICIPIO_UF[cidade]||'';
+    if(ufNascimento)ficha={...ficha,dados:{...ficha.dados,ufNascimento}};
+  }
+  let formacoes:any[]=[];if(profile?.id){const f=await rest(`formacoes?profile_id=eq.${encodeURIComponent(profile.id)}&select=tipo,curso,universidade,rede_ensino,modalidade,inicio,termino&order=created_at.asc`) as any[];formacoes=Array.isArray(f)?f:[]}
   return {profile,profileMatch,ficha,formacoes};
 }
 function arraySomentePermitidos(v:unknown,permitidos:Set<string>){return Array.isArray(v)&&v.every(x=>permitidos.has(String(x)))}
