@@ -2,6 +2,7 @@ import fs from 'node:fs';
 
 const page = fs.readFileSync(new URL('../src/pages/EducacensoDocentes.tsx', import.meta.url), 'utf8');
 const edge = fs.readFileSync(new URL('../../supabase/functions/censo-oficial-bridge/index.ts', import.meta.url), 'utf8');
+const educacensoEdge = fs.readFileSync(new URL('../../supabase/functions/censo-educacenso-base/index.ts', import.meta.url), 'utf8');
 
 const checks = [
   ['front exige reautenticação', page.includes("action:'auth'") || page.includes("action: 'auth'")],
@@ -10,7 +11,7 @@ const checks = [
   ['front não depende da extensão', !page.includes('censo-extension') && !page.includes('diario-censo')],
   ['backend restringe origem', edge.includes('origemPermitida') && edge.includes('Origem não autorizada')],
   ['CORS aceita cabeçalhos Supabase', edge.includes('authorization, x-client-info, apikey, content-type, x-censo-token')],
-  ['preflight 204 sem corpo', edge.includes("new Response(null,{status:204")],
+  ['preflight 204 sem corpo', edge.includes('new Response(null,{status:204') || edge.includes('new Response(null, { status: 204')],
   ['backend restringe usuário administrativo', /norm\(username\)!==['"]RICOJOLIVEIRA['"]/.test(edge)],
   ['backend valida RF na frequência', edge.includes('CensoFrequenciaServidor?ano=eq.2026&mes=eq.9')],
   ['backend reconfirma identidade', edge.includes('buscarServidorCenso') && edge.includes('Nome/CPF não correspondem ao RF')],
@@ -27,6 +28,14 @@ const checks = [
   ['obrigatórios refletem cliente oficial', /if\s*\(!draft\.modalidade\)\s*faltam\.push\('Modalidade'\)/.test(page) && /if\s*\(!draft\.email\)\s*faltam\.push\('E-mail'\)/.test(page) && /if\s*\(!draft\.grauFormacao\)\s*faltam\.push\('Grau de Formação'\)/.test(page)],
   ['proteção contra envio duplicado', /duplicate\(d\.rf,d\.modalidade\)/.test(edge)],
   ['auditoria de envio', edge.includes('CensoEnvioLog') && edge.includes("'enviado'")],
+  ['consulta Educacenso usa função protegida separada', page.includes("supabase.functions.invoke('censo-educacenso-base'") && educacensoEdge.includes('validateToken')],
+  ['consulta Educacenso restringe origem', educacensoEdge.includes('origemPermitida') && educacensoEdge.includes('Origem não autorizada')],
+  ['consulta Educacenso usa snapshot atual por CPF', educacensoEdge.includes('EducacensoProfissionalAtual?cpf=eq.') && educacensoEdge.includes('cpf.length !== 11')],
+  ['sexo vem do Educacenso quando válido', page.includes('const sexoEdu = inOptions(educacenso?.sexo, SEXOS)') && page.includes('sexo: sexoEdu')],
+  ['cor raça vem do Educacenso com mapeamento', page.includes('cor_raca_oficial') && page.includes("norm('Não declarado')") && page.includes("return 'Não declarada'")],
+  ['nacionalidade e grau usam valores oficiais do snapshot', page.includes('nacionalidade_oficial') && page.includes('grau_formacao_oficial')],
+  ['pós e cursos 80h usam snapshot recente', page.includes('pos_graduacao_raw') && page.includes('cursos_especificos_raw') && page.includes('parsePosEducacenso') && page.includes('parseCursosEducacenso')],
+  ['fonte Educacenso fica visível na conferência', page.includes('Base Educacenso aplicada') && page.includes('referenciaData')],
 ];
 
 const failed = checks.filter(([, ok]) => !ok);
