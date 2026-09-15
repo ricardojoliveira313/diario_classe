@@ -24,7 +24,7 @@ const checks = [
   ['texto interno oficial de altas habilidades', page.includes('Altas Habilidades / Superdotação') && edge.includes('Altas Habilidades / Superdotação')],
   ['curso TIC usa value oficial', page.includes('Educação e Tecnologia de Informação e Comunicação (TIC)') && edge.includes('Educação e Tecnologia de Informação e Comunicação (TIC)')],
   ['relações étnico-raciais usa value oficial completo', page.includes('Educação para as relações étnico-raciais e história e cultura afro-brasileira e africana')],
-  ['obrigatórios refletem cliente oficial', page.includes("if(!draft.modalidade)faltam.push('Modalidade')") && page.includes("if(!draft.email)faltam.push('E-mail')") && page.includes("if(!draft.grauFormacao)faltam.push('Grau de Formação')")],
+  ['obrigatórios refletem cliente oficial', /if\s*\(!draft\.modalidade\)\s*faltam\.push\('Modalidade'\)/.test(page) && /if\s*\(!draft\.email\)\s*faltam\.push\('E-mail'\)/.test(page) && /if\s*\(!draft\.grauFormacao\)\s*faltam\.push\('Grau de Formação'\)/.test(page)],
   ['proteção contra envio duplicado', /duplicate\(d\.rf,d\.modalidade\)/.test(edge)],
   ['auditoria de envio', edge.includes('CensoEnvioLog') && edge.includes("'enviado'")],
 ];
