@@ -204,6 +204,17 @@
         nav > div > div:first-of-type { display: none !important; }
       }
       .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      /* Censo Docentes: RF e ações não podem quebrar em duas linhas. */
+      body:has(a[href="/educacenso-docentes"][aria-current="page"]) table th:nth-child(2),
+      body:has(a[href="/educacenso-docentes"][aria-current="page"]) table td:nth-child(2) {
+        white-space: nowrap;
+        min-width: 88px;
+      }
+      body:has(a[href="/educacenso-docentes"][aria-current="page"]) table th:last-child,
+      body:has(a[href="/educacenso-docentes"][aria-current="page"]) table td:last-child {
+        white-space: nowrap;
+        min-width: 124px;
+      }
       /* Nav items scroll sem barra visível */
       .nav-scroll { overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; }
       .nav-scroll::-webkit-scrollbar { display: none; }
