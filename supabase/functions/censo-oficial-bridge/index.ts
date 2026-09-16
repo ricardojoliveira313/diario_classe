@@ -13,8 +13,6 @@ const TIPOS_POS = new Set(['Especialização','Mestrado','Doutorado']);
 const DEFICIENCIAS = new Set(['Baixa Visão','Cegueira','Surdez','Surdocegueira','Deficiência Auditiva','Deficiência Física','Deficiência Intelectual','Deficiência Múltipla','TEA','Visão Monocular','Altas Habilidades / Superdotação','Não possuo deficiência']);
 const CURSOS_ESPECIFICOS = new Set(['Creche (0 a 3 anos)','Pré-escola (4 e 5 anos)','Alfabetização','Anos iniciais do ensino fundamental','Anos finais do ensino fundamental','Ensino médio','Educação de jovens e adultos','Educação especial','Educação indígena','Educação do campo','Educação ambiental','Educação em direitos humanos','Educação bilíngue de surdos','Educação e Tecnologia de Informação e Comunicação (TIC)','Educação integral em tempo integral','Gênero e diversidade sexual','Direitos da criança e do adolescente','Educação para as relações étnico-raciais e história e cultura afro-brasileira e africana','Gestão escolar','Outros','Nenhum']);
 
-// Fallback conservador para quando a lista oficial de graduação falhar temporariamente.
-// Mantém Pedagogia preenchível a partir da ficha cadastrada sem impedir os demais tipos.
 const GRADUACAO_FALLBACK = [
   {tipo:'Licenciatura',area:'Educação',curso:'Pedagogia'},
   {tipo:'Bacharelado',area:'',curso:''},
@@ -65,6 +63,18 @@ async function officialCall(fn:string,args:unknown[]=[]){
   try{const r=await fetch(`${OFFICIAL_BASE}/callback?nocache_id=${Date.now()}_${crypto.randomUUID()}`,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded;charset=UTF-8','x-same-domain':'1'},body,signal:ctrl.signal});const t=await r.text();if(!r.ok)throw new Error(`Formulário oficial HTTP ${r.status}.`);return parseAppsScript(t)}finally{clearTimeout(timer)}
 }
 async function retryOfficial<T>(call:()=>Promise<T>,attempts=3):Promise<T>{let last:any;for(let i=0;i<attempts;i++){try{return await call()}catch(e){last=e;if(i<attempts-1)await new Promise(r=>setTimeout(r,250*(i+1)))}}throw last}
+function graduacaoNormalizada(rows:any[]){
+  const base=Array.isArray(rows)?rows.filter(Boolean):[];
+  if(!base.length)return [...GRADUACAO_FALLBACK];
+  const pedagogia=base.filter((x:any)=>norm(x?.curso)==='PEDAGOGIA'||norm(x?.curso).includes('PEDAGOGIA'));
+  const preferida=pedagogia.find((x:any)=>norm(x?.tipo)==='LICENCIATURA'&&norm(x?.area).includes('EDUCACAO'))
+    ||pedagogia.find((x:any)=>norm(x?.tipo)==='LICENCIATURA')||pedagogia[0]||null;
+  const semPedagogiaExata=base.filter((x:any)=>norm(x?.curso)!=='PEDAGOGIA');
+  const canonica=preferida
+    ? {tipo:String(preferida.tipo||'Licenciatura'),area:String(preferida.area||'Educação'),curso:'Pedagogia'}
+    : {tipo:'Licenciatura',area:'Educação',curso:'Pedagogia'};
+  return [...semPedagogiaExata,canonica];
+}
 let optionsCache:{at:number,value:{graduacao:any[];instituicoes:any[];pos:any[]}}|null=null;
 async function officialOptions(){
   if(optionsCache&&Date.now()-optionsCache.at<10*60*1000)return optionsCache.value;
@@ -73,7 +83,7 @@ async function officialOptions(){
     retryOfficial(()=>officialCall('obterOpcoesInstituicoes')).catch(()=>[]),
     retryOfficial(()=>officialCall('obterOpcoesPosGraduacao')).catch(()=>[]),
   ]);
-  const grad=Array.isArray(graduacao)&&graduacao.length?graduacao:GRADUACAO_FALLBACK;
+  const grad=graduacaoNormalizada(Array.isArray(graduacao)?graduacao:[]);
   const value={graduacao:grad,instituicoes:Array.isArray(instituicoes)?instituicoes:[],pos:Array.isArray(pos)?pos:[]};
   optionsCache={at:Date.now(),value};return value;
 }
