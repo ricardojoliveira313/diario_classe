@@ -90,6 +90,15 @@ function identidadeFichaValida(dados: any, registro: any, cpf: string) {
   return true;
 }
 
+function academicoHistoricoConfiavel(dados: any, registro: any, cpf: string) {
+  if (!identidadeFichaValida(dados, registro, cpf)) return false;
+  const fonteAtual = norm(dados?._fonte_cadastro_atual);
+  const origem = dados?._origem_ficha_importada;
+  if (fonteAtual === 'PROFILES' && origem && !identidadeFichaValida(origem, registro, cpf)) return false;
+  if (dados?._academico_bloqueado) return false;
+  return true;
+}
+
 function areaPosLocal(curso: unknown) {
   const n = norm(curso);
   if (!n) return '';
@@ -98,6 +107,8 @@ function areaPosLocal(curso: unknown) {
     n.includes('PEDAGOG') || n.includes('EDUCAC') || n.includes('LIBRAS') ||
     n.includes('DOCENCIA') || n.includes('ALFABET') || n.includes('ENSINO')
   ) return 'Educação';
+  if (n.includes('HISTORIA DA ARTE') || n.includes('ARTE')) return 'Artes e humanidades';
+  if (n.includes('TECNOLOG') || n.includes('DIGITAL') || n.includes('TIC')) return 'Computação e Tecnologias da Informação e Comunicação (TIC)';
   return '';
 }
 
@@ -147,18 +158,31 @@ Deno.serve(async (req: Request) => {
     }
 
     let registro = encontrados[0] || null;
-    let posFonte: 'educacenso' | 'ficha_cadastral' | null = registro ? 'educacenso' : null;
+    let posFonte: 'educacenso' | 'ficha_cadastral' | 'nao_informado' | null = registro ? 'educacenso' : null;
+    let avisoConsolidacao: string | null = null;
 
     if (registro && (!String(registro.pos_graduacao_raw ?? '').trim() || String(registro.pos_graduacao_raw).trim() === '-')) {
       const ficha = await fichaPorCpf(cpf, registro);
       const dados = ficha?.dados || null;
-      const possui = norm(dados?.posPossui) === 'SIM';
-      const cursos = Array.isArray(dados?.posCursos) ? dados.posCursos : [];
-      if (possui && cursos.length) {
-        const linhas = cursos.map((curso:any) => areaPosLocal(curso)).filter(Boolean).map((area:string) => `Especialização - ${area}`);
-        if (linhas.length) {
-          registro = { ...registro, pos_graduacao_raw: linhas.join(' | '), pos_graduacao_fonte: 'ficha_cadastral', pos_graduacao_ficha_data: ficha?.fonte_timestamp || null };
+      if (dados && !academicoHistoricoConfiavel(dados, registro, cpf)) {
+        posFonte = 'nao_informado';
+        avisoConsolidacao = 'A pós-graduação da ficha histórica foi ignorada porque a identidade acadêmica de origem não corresponde ao profissional atual.';
+      } else {
+        const possui = norm(dados?.posPossui) === 'SIM';
+        const cursos = Array.isArray(dados?.posCursos) ? dados.posCursos : [];
+        if (possui && cursos.length) {
+          const linhas = cursos.map((curso:any) => areaPosLocal(curso)).filter(Boolean).map((area:string) => `Especialização - ${area}`);
+          if (linhas.length) {
+            registro = { ...registro, pos_graduacao_raw: linhas.join(' | '), pos_graduacao_fonte: 'ficha_cadastral', pos_graduacao_ficha_data: ficha?.fonte_timestamp || null };
+            posFonte = 'ficha_cadastral';
+          } else {
+            posFonte = 'nao_informado';
+          }
+        } else if (norm(dados?.posPossui) === 'NAO') {
+          registro = { ...registro, pos_graduacao_raw: '-' };
           posFonte = 'ficha_cadastral';
+        } else {
+          posFonte = 'nao_informado';
         }
       }
     }
@@ -170,6 +194,7 @@ Deno.serve(async (req: Request) => {
       referenciaData: registro?.referencia_data || null,
       arquivoNome: registro?.arquivo_nome || null,
       posFonte,
+      avisoConsolidacao,
     });
   } catch (e) {
     console.error('censo-educacenso-base', e);
