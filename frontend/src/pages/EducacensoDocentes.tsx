@@ -116,6 +116,19 @@ function cursosFicha(f:Record<string,any>){
   return uniq(values).slice(0,3);
 }
 function anosFicha(f:Record<string,any>){return academicoEntries(f).filter((e:any)=>norm(e?.campo).includes('TERMINO DO CURSO')).map((e:any)=>anoConclusao(e?.valor)).filter(Boolean)}
+function anosPosFicha(f:Record<string,any>){
+  const porColuna=new Map<number,string>();
+  for(const e of academicoEntries(f)){
+    const coluna=Number(e?.coluna||0);
+    if([37,43,45].includes(coluna))porColuna.set(coluna,anoConclusao(e?.valor));
+  }
+  return[37,43,45].map(coluna=>porColuna.get(coluna)||'');
+}
+function preencherAnosPos(rows:PosGraduacao[],f:Record<string,any>){
+  const anos=anosPosFicha(f),conhecidos=anos.filter(Boolean);
+  if(rows.length===1&&conhecidos.length===1)return rows.map(p=>({...p,ano:p.ano||conhecidos[0]}));
+  return rows.map((p,i)=>({...p,ano:p.ano||anos[i]||''}));
+}
 function resolveGraduacao(raw:string,opcoes:OpcoesOficiais){
   const matches=opcoes.graduacao.filter(x=>norm(x.curso)===norm(raw));
   const combos=uniq(matches.map(x=>`${txt(x.tipo)}|||${txt(x.area)}|||${txt(x.curso)}`));
@@ -152,8 +165,8 @@ function construirDraft(l:Linha,r:PrepareResponse,educacenso:EducacensoRegistro|
   const p=r.local?.profile||{},f=r.local?.ficha?.dados||{},official=r.official||{};
   const endereco=splitEndereco(first(f.endereco,p.endereco));const superiores=montarSuperiores(r);
   const areasPosOficiais=uniq((r.opcoesOficiais?.pos||[]).map(x=>x.area));const areasPos=areasPosOficiais.length?areasPosOficiais:[...AREAS_POS];
-  const posEdu=parsePosEducacenso(educacenso?.pos_graduacao_raw,areasPos);const posCursos=Array.isArray(f.posCursos)?f.posCursos.map(txt).filter(Boolean):[];
-  const posLocal:PosGraduacao[]=posCursos.slice(0,6).map((curso:string)=>({...posVazia(),area:inOptions(curso,areasPos)}));
+  const posEdu=preencherAnosPos(parsePosEducacenso(educacenso?.pos_graduacao_raw,areasPos),f);const posCursos=Array.isArray(f.posCursos)?f.posCursos.map(txt).filter(Boolean):[];const anosPos=anosPosFicha(f);
+  const posLocal:PosGraduacao[]=posCursos.slice(0,6).map((curso:string,i:number)=>({...posVazia(),area:inOptions(curso,areasPos),ano:anosPos[i]||''}));
   const temSnapshot=!!educacenso,posRawEdu=txt(educacenso?.pos_graduacao_raw),possuiPos=temSnapshot?(posRawEdu!==''&&posRawEdu!=='-'):txt(f.posPossui)?norm(f.posPossui)!=='NAO':true;
   const posGraduacoes=temSnapshot?posEdu:(posLocal.length?posLocal:[posVazia()]);
   const etnia=txt(f.etniaReferencia||p.etnia),sexoEdu=inOptions(educacenso?.sexo,SEXOS),corEdu=mapCorRaca(educacenso?.cor_raca_oficial),nacionalidadeEdu=inOptions(educacenso?.nacionalidade_oficial,NACIONALIDADES),grauEdu=inOptions(educacenso?.grau_formacao_oficial,GRAUS);
