@@ -20,6 +20,7 @@ const checks = [
   ['graduação usa selects encadeados', page.includes('areasGrad(c)') && page.includes('cursosGrad(c)') && page.includes('categoriasInst(c)') && page.includes('instituicoesInst(c)')],
   ['graduação possui ano conclusão', page.includes('Ano Conclusão') && edge.includes('ano:c.ano')],
   ['pós possui ano conclusão', edge.includes("area:p.area||'',ano:p.ano||''")],
+  ['ano da pós é aproveitado da ficha cadastral', page.includes('anosPosFicha') && page.includes('preencherAnosPos') && page.includes('[37,43,45]')],
   ['payload de graduação replica contrato oficial', edge.includes("tipo:c.tipo||'',area:c.area||'',curso:c.curso||'',instituicao:c.instituicao||'',ano:c.ano||'',entregue:Boolean(c.entregue)")],
   ['payload não envia UF/categoria dentro do curso', !edge.includes('ufInstituicao:c.ufInstituicao') && !edge.includes('categoriaOrg:c.categoriaOrg')],
   ['texto interno oficial de altas habilidades', page.includes('Altas Habilidades / Superdotação') && edge.includes('Altas Habilidades / Superdotação')],
