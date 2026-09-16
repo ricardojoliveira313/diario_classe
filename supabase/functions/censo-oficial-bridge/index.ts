@@ -105,19 +105,43 @@ async function attendance(rf:string){const rows=await rest(`CensoFrequenciaServi
 let profilesCache:{at:number,rows:any[]}|null=null;
 async function profiles(){if(profilesCache&&Date.now()-profilesCache.at<300000)return profilesCache.rows;const rows=await rest('profiles?select=id,nome,email,data_nascimento,cpf,endereco,bairro,cep,municipio,estado,telefone_celular_1,telefone_celular_2,telefone_fixo,cargo_funcao,horario_trabalho,registro_funcional_rf,etnia,nome_mae,nome_pai,municipio_nascimento,updated_at&limit=500') as any[];profilesCache={at:Date.now(),rows:Array.isArray(rows)?rows:[]};return profilesCache.rows}
 function latest(rows:any[]){return[...rows].sort((a,b)=>new Date(b.updated_at||0).getTime()-new Date(a.updated_at||0).getTime())[0]||null}
+function valorPresente(v:unknown){return String(v??'').trim()!==''}
+function dadosPerfilParaFicha(profile:any){
+  if(!profile)return{};
+  const map:Record<string,unknown>={
+    nome:profile.nome,cpf:dig(profile.cpf),email:profile.email,dataNascimento:profile.data_nascimento,
+    endereco:profile.endereco,bairro:profile.bairro,cep:profile.cep,municipio:profile.municipio,estado:profile.estado,
+    telefone1:profile.telefone_celular_1,telefone2:profile.telefone_celular_2,telefoneFixo:profile.telefone_fixo,
+    nomeMae:profile.nome_mae,nomePai:profile.nome_pai,municipioNascimento:profile.municipio_nascimento,etniaReferencia:profile.etnia,
+    cargoFuncao:profile.cargo_funcao,horarioTrabalho:profile.horario_trabalho,
+  };
+  return Object.fromEntries(Object.entries(map).filter(([,v])=>valorPresente(v)));
+}
 async function localSources(rf:string,official:any){
   const all=await profiles();let profile=latest(all.filter(p=>dig(p.registro_funcional_rf)===dig(rf))),profileMatch=profile?'rf':'';
   if(!profile){profile=latest(all.filter(p=>official?.cpf&&dig(p.cpf)===dig(official.cpf)));if(profile)profileMatch='cpf'}
   if(!profile){profile=latest(all.filter(p=>norm(p.nome)===norm(official?.nome)));if(profile)profileMatch='nome'}
-  let fichaRows=await rest(`CensoFichaServidor?ano=eq.2026&rf=eq.${encodeURIComponent(dig(rf))}&select=rf,nome,cpf,fonte_timestamp,metodo_match,dados&limit=1`) as any[];
-  if((!fichaRows||!fichaRows.length)&&official?.cpf)fichaRows=await rest(`CensoFichaServidor?ano=eq.2026&cpf=eq.${encodeURIComponent(dig(official.cpf))}&select=rf,nome,cpf,fonte_timestamp,metodo_match,dados&limit=1`) as any[];
+  let fichaRows=await rest(`CensoFichaServidor?ano=eq.2026&rf=eq.${encodeURIComponent(dig(rf))}&select=rf,nome,cpf,fonte_timestamp,metodo_match,dados&order=fonte_timestamp.desc&limit=1`) as any[];
+  if((!fichaRows||!fichaRows.length)&&official?.cpf)fichaRows=await rest(`CensoFichaServidor?ano=eq.2026&cpf=eq.${encodeURIComponent(dig(official.cpf))}&select=rf,nome,cpf,fonte_timestamp,metodo_match,dados&order=fonte_timestamp.desc&limit=1`) as any[];
   let ficha=Array.isArray(fichaRows)?fichaRows[0]||null:null;
+  const fichaData=ficha?.fonte_timestamp?new Date(ficha.fonte_timestamp).getTime():0;
+  const perfilData=profile?.updated_at?new Date(profile.updated_at).getTime():0;
+  const perfilMaisRecente=!!profile&&perfilData>fichaData;
+  if(profile&&(!ficha||perfilMaisRecente)){
+    const dados={...(ficha?.dados||{}),...dadosPerfilParaFicha(profile)};
+    ficha={
+      ...(ficha||{}),rf:dig(rf),nome:profile.nome||official?.nome||ficha?.nome||'',cpf:dig(profile.cpf||official?.cpf||ficha?.cpf),
+      fonte_timestamp:profile.updated_at||ficha?.fonte_timestamp||null,
+      metodo_match:`cadastro_mais_recente:${profileMatch||'perfil'}`,dados,
+    };
+  }
   if(ficha?.dados&&!String(ficha.dados.ufNascimento||'').trim()){
     const cidade=norm(ficha.dados.municipioNascimento||profile?.municipio_nascimento||'');const ufNascimento=MUNICIPIO_UF[cidade]||'';
     if(ufNascimento)ficha={...ficha,dados:{...ficha.dados,ufNascimento}};
   }
   let formacoes:any[]=[];if(profile?.id){const f=await rest(`formacoes?profile_id=eq.${encodeURIComponent(profile.id)}&select=tipo,curso,universidade,rede_ensino,modalidade,inicio,termino&order=created_at.asc`) as any[];formacoes=Array.isArray(f)?f:[]}
-  return {profile,profileMatch,ficha,formacoes};
+  const fonteCadastro=perfilMaisRecente||(!fichaData&&perfilData)?{tipo:'perfil',data:profile?.updated_at||null}:{tipo:ficha?'ficha':profile?'perfil':'nenhuma',data:ficha?.fonte_timestamp||profile?.updated_at||null};
+  return {profile,profileMatch,ficha,formacoes,fonteCadastro};
 }
 function arraySomentePermitidos(v:unknown,permitidos:Set<string>){return Array.isArray(v)&&v.every(x=>permitidos.has(String(x)))}
 function tupleGradValida(c:any,graduacao:any[]){return graduacao.some((x:any)=>String(x?.tipo||'')===String(c?.tipo||'')&&String(x?.area||'')===String(c?.area||'')&&String(x?.curso||'')===String(c?.curso||''))}
