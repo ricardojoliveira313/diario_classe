@@ -117,23 +117,60 @@ function dadosPerfilParaFicha(profile:any){
   };
   return Object.fromEntries(Object.entries(map).filter(([,v])=>valorPresente(v)));
 }
+function dataKey(v:unknown){
+  const s=String(v??'').trim();if(!s)return'';
+  const iso=s.match(/^(\d{4})-(\d{2})-(\d{2})/);if(iso)return `${iso[1]}${iso[2]}${iso[3]}`;
+  const br=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(br)return `${br[3]}${br[2].padStart(2,'0')}${br[1].padStart(2,'0')}`;
+  return dig(s).slice(0,8);
+}
+function identidadeCompativel(dados:any,official:any){
+  if(!dados)return false;
+  const nome=String(dados.nome??'').trim(),nomeOficial=String(official?.nome??'').trim();
+  const cpf=dig(dados.cpf),cpfOficial=dig(official?.cpf);
+  const nasc=dataKey(dados.dataNascimento??dados.data_nascimento),nascOficial=dataKey(official?.dataNascimento);
+  if(nome&&nomeOficial&&norm(nome)!==norm(nomeOficial))return false;
+  if(cpf&&cpfOficial&&cpf!==cpfOficial)return false;
+  if(nasc&&nascOficial&&nasc!==nascOficial)return false;
+  return true;
+}
+function perfilCompativel(profile:any,official:any){return identidadeCompativel({nome:profile?.nome,cpf:profile?.cpf,dataNascimento:profile?.data_nascimento},official)}
+function normalizarAcademicoParaCenso(dados:any){
+  if(!dados||!Array.isArray(dados.academicoReferencia))return dados;
+  const entries=dados.academicoReferencia.map((e:any)=>({...e}));
+  const segunda=entries.find((e:any)=>norm(e?.campo).includes('POSSUI 2')&&norm(e?.campo).includes('FORMACAO'));
+  if(norm(segunda?.valor)==='SIM'){
+    const fimSegundaFormacao=entries.find((e:any)=>Number(e?.coluna)===43);
+    const fimSegundaPos=entries.find((e:any)=>Number(e?.coluna)===45);
+    if(fimSegundaPos){if(fimSegundaFormacao)fimSegundaFormacao.coluna=143;fimSegundaPos.coluna=43}
+  }
+  return {...dados,academicoReferencia:entries};
+}
+function removerAcademicoInseguro(dados:any){
+  if(!dados)return dados;const copia={...dados};
+  for(const k of ['formacaoPrincipal','universidades','posCursos','posPossui','mestradoPossui','ensinoMedioMagisterio','academicoReferencia'])delete copia[k];
+  copia._academico_bloqueado='identidade divergente entre ficha histórica e cadastro oficial';return copia;
+}
 async function localSources(rf:string,official:any){
-  const all=await profiles();let profile=latest(all.filter(p=>dig(p.registro_funcional_rf)===dig(rf))),profileMatch=profile?'rf':'';
-  if(!profile){profile=latest(all.filter(p=>official?.cpf&&dig(p.cpf)===dig(official.cpf)));if(profile)profileMatch='cpf'}
-  if(!profile){profile=latest(all.filter(p=>norm(p.nome)===norm(official?.nome)));if(profile)profileMatch='nome'}
+  const all=await profiles();
+  let profile=latest(all.filter(p=>official?.cpf&&dig(p.cpf)===dig(official.cpf)&&perfilCompativel(p,official))),profileMatch=profile?'cpf':'';
+  if(!profile){profile=latest(all.filter(p=>dig(p.registro_funcional_rf)===dig(rf)&&perfilCompativel(p,official)));if(profile)profileMatch='rf'}
+  if(!profile){profile=latest(all.filter(p=>norm(p.nome)===norm(official?.nome)&&perfilCompativel(p,official)));if(profile)profileMatch='nome'}
   let fichaRows=await rest(`CensoFichaServidor?ano=eq.2026&rf=eq.${encodeURIComponent(dig(rf))}&select=rf,nome,cpf,fonte_timestamp,metodo_match,dados&order=fonte_timestamp.desc&limit=1`) as any[];
   if((!fichaRows||!fichaRows.length)&&official?.cpf)fichaRows=await rest(`CensoFichaServidor?ano=eq.2026&cpf=eq.${encodeURIComponent(dig(official.cpf))}&select=rf,nome,cpf,fonte_timestamp,metodo_match,dados&order=fonte_timestamp.desc&limit=1`) as any[];
   let ficha=Array.isArray(fichaRows)?fichaRows[0]||null:null;
+  if(ficha?.dados){
+    const atual=norm(ficha.dados._fonte_cadastro_atual),origem=ficha.dados._origem_ficha_importada;
+    const origemIncompativel=atual==='PROFILES'&&origem&&!identidadeCompativel(origem,official);
+    const atualIncompativel=!identidadeCompativel(ficha.dados,official);
+    if(origemIncompativel||atualIncompativel)ficha={...ficha,metodo_match:`${ficha.metodo_match||'ficha'}:academico_bloqueado`,dados:removerAcademicoInseguro(ficha.dados)};
+    else ficha={...ficha,dados:normalizarAcademicoParaCenso(ficha.dados)};
+  }
   const fichaData=ficha?.fonte_timestamp?new Date(ficha.fonte_timestamp).getTime():0;
   const perfilData=profile?.updated_at?new Date(profile.updated_at).getTime():0;
   const perfilMaisRecente=!!profile&&perfilData>fichaData;
   if(profile&&(!ficha||perfilMaisRecente)){
     const dados={...(ficha?.dados||{}),...dadosPerfilParaFicha(profile)};
-    ficha={
-      ...(ficha||{}),rf:dig(rf),nome:profile.nome||official?.nome||ficha?.nome||'',cpf:dig(profile.cpf||official?.cpf||ficha?.cpf),
-      fonte_timestamp:profile.updated_at||ficha?.fonte_timestamp||null,
-      metodo_match:`cadastro_mais_recente:${profileMatch||'perfil'}`,dados,
-    };
+    ficha={...(ficha||{}),rf:dig(rf),nome:profile.nome||official?.nome||ficha?.nome||'',cpf:dig(profile.cpf||official?.cpf||ficha?.cpf),fonte_timestamp:profile.updated_at||ficha?.fonte_timestamp||null,metodo_match:`cadastro_mais_recente:${profileMatch||'perfil'}`,dados};
   }
   if(ficha?.dados&&!String(ficha.dados.ufNascimento||'').trim()){
     const cidade=norm(ficha.dados.municipioNascimento||profile?.municipio_nascimento||'');const ufNascimento=MUNICIPIO_UF[cidade]||'';
