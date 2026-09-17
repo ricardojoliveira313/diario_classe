@@ -164,8 +164,8 @@ async function localSources(rf:string,official:any){
   if((!fichaRows||!fichaRows.length)&&official?.cpf)fichaRows=await rest(`CensoFichaServidor?ano=eq.2026&cpf=eq.${encodeURIComponent(dig(official.cpf))}&select=rf,nome,cpf,fonte_timestamp,metodo_match,dados&order=fonte_timestamp.desc&limit=1`) as any[];
   let ficha=Array.isArray(fichaRows)?fichaRows[0]||null:null;
   if(ficha?.dados){
-    const atual=norm(ficha.dados._fonte_cadastro_atual),origem=ficha.dados._origem_ficha_importada;
-    const origemIncompativel=atual==='PROFILES'&&origem&&!identidadeCompativel(origem,official);
+    const origem=ficha.dados._origem_ficha_importada;
+    const origemIncompativel=!!origem&&!identidadeCompativel(origem,official);
     const atualIncompativel=!identidadeCompativel(ficha.dados,official);
     if(origemIncompativel||atualIncompativel)ficha={...ficha,metodo_match:`${ficha.metodo_match||'ficha'}:academico_bloqueado`,dados:removerAcademicoInseguro(ficha.dados)};
     else ficha={...ficha,dados:normalizarAcademicoParaCenso(ficha.dados)};
@@ -203,7 +203,19 @@ function required(d:any,opcoes:{graduacao:any[];instituicoes:any[];pos:any[]}){
   if(String(d.ufNascimento||'')&&!UFS.has(String(d.ufNascimento)))p.push('UF Nascimento inválida');
   if(Array.isArray(d.deficiencias)&&d.deficiencias.length){if(!arraySomentePermitidos(d.deficiencias,DEFICIENCIAS))p.push('Deficiência inválida');if(d.deficiencias.includes('Não possuo deficiência')&&d.deficiencias.length>1)p.push('Deficiência inconsistente')}
   if(Array.isArray(d.cursosEspecificos)&&d.cursosEspecificos.length){if(!arraySomentePermitidos(d.cursosEspecificos,CURSOS_ESPECIFICOS))p.push('Curso específico inválido');if(d.cursosEspecificos.includes('Nenhum')&&d.cursosEspecificos.length>1)p.push('Cursos específicos inconsistentes')}
-  if(Array.isArray(d.cursosSuperiores)){if(d.cursosSuperiores.length>3)p.push('Máximo de 3 cursos superiores');d.cursosSuperiores.forEach((c:any,i:number)=>{if(!(c?.tipo||c?.area||c?.curso))return;if(!TIPOS_SUPERIOR.has(String(c.tipo||'')))p.push(`Tipo do ${i+1}º curso`);if(opcoes.graduacao.length&&!tupleGradValida(c,opcoes.graduacao))p.push(`Combinação do ${i+1}º curso`);if(String(c.ufInstituicao||'')&&!UFS.has(String(c.ufInstituicao)))p.push(`UF instituição do ${i+1}º curso`);if(opcoes.instituicoes.length&&!instValida(c,opcoes.instituicoes))p.push(`Instituição do ${i+1}º curso`)})}
+  const cursos=Array.isArray(d.cursosSuperiores)?d.cursosSuperiores:[];
+  if(cursos.length>3)p.push('Máximo de 3 cursos superiores');
+  const cursosInformados=cursos.filter((c:any)=>String(c?.tipo||c?.area||c?.curso||c?.ano||c?.ufInstituicao||c?.categoriaOrg||c?.instituicao||'').trim());
+  if(String(d.grauFormacao||'')==='Ensino Superior'&&!cursosInformados.length)p.push('Curso Superior');
+  cursosInformados.forEach((c:any,i:number)=>{
+    if(!String(c?.tipo||'').trim())p.push(`Tipo do ${i+1}º curso`);
+    if(!String(c?.area||'').trim())p.push(`Área do ${i+1}º curso`);
+    if(!String(c?.curso||'').trim())p.push(`Curso do ${i+1}º curso`);
+    if(String(c?.tipo||'').trim()&&!TIPOS_SUPERIOR.has(String(c.tipo)))p.push(`Tipo do ${i+1}º curso`);
+    if(String(c?.tipo||'').trim()&&String(c?.area||'').trim()&&String(c?.curso||'').trim()&&opcoes.graduacao.length&&!tupleGradValida(c,opcoes.graduacao))p.push(`Combinação do ${i+1}º curso`);
+    if(String(c?.ufInstituicao||'')&&!UFS.has(String(c.ufInstituicao)))p.push(`UF instituição do ${i+1}º curso`);
+    if(opcoes.instituicoes.length&&!instValida(c,opcoes.instituicoes))p.push(`Instituição do ${i+1}º curso`);
+  });
   if(typeof d.possuiPos!=='boolean')p.push('Situação da Pós-Graduação');
   if(Array.isArray(d.posGraduacoes)){if(d.posGraduacoes.length>6)p.push('Máximo de 6 pós-graduações');const areas=new Set(opcoes.pos.map((x:any)=>String(x?.area||'')).filter(Boolean));if(d.possuiPos===true&&!d.posGraduacoes.length)p.push('Pós-Graduação');if(d.possuiPos===false&&d.posGraduacoes.length)p.push('Pós-Graduação inconsistente');d.posGraduacoes.forEach((x:any,i:number)=>{if(d.possuiPos!==true)return;if(!TIPOS_POS.has(String(x?.tipo||'')))p.push(`Tipo da ${i+1}ª pós`);if(!String(x?.area||'').trim()||(areas.size&&!areas.has(String(x.area))))p.push(`Área da ${i+1}ª pós`);if(!/^\d{4}$/.test(String(x?.ano||'')))p.push(`Ano da ${i+1}ª pós`)})}else if(d.possuiPos===true)p.push('Pós-Graduação');
   return [...new Set(p)];

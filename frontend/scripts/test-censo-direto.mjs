@@ -3,6 +3,7 @@ import fs from 'node:fs';
 const page = fs.readFileSync(new URL('../src/pages/EducacensoDocentes.tsx', import.meta.url), 'utf8');
 const edge = fs.readFileSync(new URL('../../supabase/functions/censo-oficial-bridge/index.ts', import.meta.url), 'utf8');
 const educacensoEdge = fs.readFileSync(new URL('../../supabase/functions/censo-educacenso-base/index.ts', import.meta.url), 'utf8');
+const submitGuard = fs.readFileSync(new URL('../../supabase/functions/censo-submit-guard/index.ts', import.meta.url), 'utf8');
 
 const checks = [
   ['front exige reautenticação', page.includes("action:'auth'") || page.includes("action: 'auth'")],
@@ -21,13 +22,16 @@ const checks = [
   ['graduação usa selects encadeados', page.includes('areasGrad(c)') && page.includes('cursosGrad(c)') && page.includes('categoriasInst(c)') && page.includes('instituicoesInst(c)')],
   ['graduação possui ano conclusão', page.includes('Ano Conclusão') && edge.includes('ano:c.ano')],
   ['pós possui ano conclusão', edge.includes("area:p.area||'',ano:p.ano||''")],
-  ['ano da pós é aproveitado da ficha cadastral', page.includes('anosPosFicha') && page.includes('preencherAnosPos') && page.includes('[37,43,45]')],
+  ['ano da pós não é associado por posição da ficha', !page.includes('anosPosFicha') && !page.includes('preencherAnosPos') && !page.includes('[37,43,45]')],
   ['payload de graduação replica contrato oficial', edge.includes("tipo:c.tipo||'',area:c.area||'',curso:c.curso||'',instituicao:c.instituicao||'',ano:c.ano||'',entregue:Boolean(c.entregue)")],
   ['payload não envia UF/categoria dentro do curso', !edge.includes('ufInstituicao:c.ufInstituicao') && !edge.includes('categoriaOrg:c.categoriaOrg')],
   ['texto interno oficial de altas habilidades', page.includes('Altas Habilidades / Superdotação') && edge.includes('Altas Habilidades / Superdotação')],
   ['curso TIC usa value oficial', page.includes('Educação e Tecnologia de Informação e Comunicação (TIC)') && edge.includes('Educação e Tecnologia de Informação e Comunicação (TIC)')],
   ['relações étnico-raciais usa value oficial completo', page.includes('Educação para as relações étnico-raciais e história e cultura afro-brasileira e africana')],
   ['obrigatórios refletem cliente oficial', /if\s*\(!draft\.modalidade\)\s*faltam\.push\('Modalidade'\)/.test(page) && /if\s*\(!draft\.email\)\s*faltam\.push\('E-mail'\)/.test(page) && /if\s*\(!draft\.grauFormacao\)\s*faltam\.push\('Grau de Formação'\)/.test(page)],
+  ['ensino superior exige curso no front', page.includes("draft.grauFormacao==='Ensino Superior'&&!cursosInformados.length") && page.includes("faltam.push('Curso Superior')")],
+  ['envio oficial passa pelo guard acadêmico', page.includes("body.action==='submit'?'censo-submit-guard':'censo-oficial-bridge'") && submitGuard.includes("grauFormacao||'')!=='Ensino Superior'") && submitGuard.includes("return['Curso Superior']")],
+  ['guard exige tipo área e curso', submitGuard.includes('Tipo do ${i+1}º curso') && submitGuard.includes('Área do ${i+1}º curso') && submitGuard.includes('Curso do ${i+1}º curso')],
   ['proteção contra envio duplicado', /duplicate\(d\.rf,d\.modalidade\)/.test(edge)],
   ['auditoria de envio', edge.includes('CensoEnvioLog') && edge.includes("'enviado'")],
   ['auditoria registra campos censitários sem replicar dados pessoais', edge.includes('dadosCensitariosEnviados') && edge.includes('posGraduacoes:payload.posGraduacoes') && !/dadosCensitariosEnviados=\{[^}]*cpf:/.test(edge)],
@@ -39,7 +43,7 @@ const checks = [
   ['nacionalidade e grau usam valores oficiais do snapshot', page.includes('nacionalidade_oficial') && page.includes('grau_formacao_oficial')],
   ['pós e cursos 80h usam snapshot recente', page.includes('pos_graduacao_raw') && page.includes('cursos_especificos_raw') && page.includes('parsePosEducacenso') && page.includes('parseCursosEducacenso')],
   ['fonte Educacenso fica visível na conferência', page.includes('Base Educacenso aplicada') && page.includes('referenciaData')],
-  ['ficha cadastral alimenta graduação', page.includes('academicoReferencia') && page.includes('formacaoPrincipal') && page.includes('resolveGraduacao') && page.includes('resolveInstituicao')],
+  ['ficha cadastral alimenta curso sem parear instituição e ano por índice', page.includes('academicoReferencia') && page.includes('formacaoPrincipal') && page.includes('resolveGraduacao') && !page.includes('ano:anos[i]') && !page.includes('universidades[i]')],
   ['graduação prioriza campos oficiais estruturados', edge.includes('tipo_oficial,area_oficial,curso_oficial') && page.includes('resolveGraduacaoEstruturada') && page.includes('x.tipo_oficial')],
   ['somente formações validadas alimentam o formulário', edge.includes('status_validacao=in.(validado,importado_confiavel)')],
   ['pós textual local não é convertida por heurística', !page.includes('areaPosLocal') && !educacensoEdge.includes('areaPosLocal') && !educacensoEdge.includes('Especialização - ${area}')],
@@ -54,10 +58,11 @@ const checks = [
   ['pós estruturada exige tipo e área oficiais batendo com o formulário', /resolvePosEstruturada[\s\S]{0,300}?inOptions\(first\(x\.tipo_oficial,x\.tipo\),TIPOS_POS\)/.test(page) && /resolvePosEstruturada[\s\S]{0,300}?inOptions\(txt\(x\.area_oficial\),areasPos\)/.test(page) && /resolvePosEstruturada[\s\S]{0,300}?if\(!tipo\|\|!area\)return null/.test(page)],
   ['data de conclusão implausível pela idade é descartada, não adivinhada', page.includes('IDADE_MINIMA_CONCLUSAO') && page.includes('anoConclusaoPlausivel') && page.includes('limparAnosImplausiveis') && page.includes("return Number(ano)>=anoNasc+IDADE_MINIMA_CONCLUSAO")],
   ['aviso de idade implausível chega à tela de conferência', page.includes('avisoIdade') && page.includes('incompatíveis com a data de nascimento')],
-  ['pós antes da graduação (ou doutorado antes do mestrado) é descartada', page.includes('limparCronologiaPos') && page.includes("anoP<anoGradMin") && page.includes("p.tipo==='Doutorado'&&Number.isFinite(anoMestrado)&&anoP<anoMestrado")],
+  ['pós antes da graduação (ou doutorado antes do mestrado) é descartada', page.includes('limparCronologiaPos') && page.includes('anoP<anoGradMin') && page.includes("p.tipo==='Doutorado'&&Number.isFinite(anoMestrado)&&anoP<anoMestrado")],
   ['fora da frequência considera apenas servidor ativo', page.includes('s=>s.ativo&&ehDocente(s.cargo)')],
-  ['ano de conclusão da ficha é aproveitado', page.includes('anosFicha') && page.includes('anoConclusao')],
-  ['UF nascimento não é presumida sem fonte', page.includes('UF de nascimento não existe na relação atual do Educacenso nem na ficha cadastrada')],
+  ['anos da ficha ficam para conferência sem pareamento posicional', page.includes('anosFicha') && page.includes('Ano(s) encontrados para conferência') && !page.includes('ano:anos[i]')],
+  ['UF nascimento não é presumida sem fonte', page.includes('UF de nascimento não consta de forma explícita nas fontes confiáveis disponíveis')],
+  ['origem acadêmica divergente é bloqueada independentemente da fonte cadastral', edge.includes('const origemIncompativel=!!origem&&!identidadeCompativel(origem,official)') && educacensoEdge.includes('if (origem && !identidadeFichaValida(origem, registro, cpf)) return false;')],
 ];
 
 const failed = checks.filter(([, ok]) => !ok);
