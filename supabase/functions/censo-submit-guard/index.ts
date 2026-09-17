@@ -13,6 +13,21 @@ function headers(req:Request){
   return h;
 }
 function json(req:Request,data:unknown,status=200){return new Response(JSON.stringify(data),{status,headers:headers(req)})}
+
+function camposAcademicosFaltantes(d:any){
+  const faltam:string[]=[];
+  if(String(d?.grauFormacao||'')!=='Ensino Superior')return faltam;
+  const cursos=Array.isArray(d?.cursosSuperiores)?d.cursosSuperiores:[];
+  const informados=cursos.filter((c:any)=>String(c?.tipo||c?.area||c?.curso||c?.ano||c?.ufInstituicao||c?.categoriaOrg||c?.instituicao||'').trim());
+  if(!informados.length)return['Curso Superior'];
+  informados.forEach((c:any,i:number)=>{
+    if(!String(c?.tipo||'').trim())faltam.push(`Tipo do ${i+1}º curso`);
+    if(!String(c?.area||'').trim())faltam.push(`Área do ${i+1}º curso`);
+    if(!String(c?.curso||'').trim())faltam.push(`Curso do ${i+1}º curso`);
+  });
+  return[...new Set(faltam)];
+}
+
 function camposObrigatoriosFaltantes(d:any){
   const faltam:string[]=[];
   if(!String(d?.unidadeEscolar||'').trim())faltam.push('Unidade Escolar');
@@ -22,17 +37,7 @@ function camposObrigatoriosFaltantes(d:any){
   if(!String(d?.email||'').trim())faltam.push('E-mail');
   if(!Array.isArray(d?.deficiencias)||!d.deficiencias.length)faltam.push('Deficiência / TEA / Altas Habilidades');
   if(!String(d?.grauFormacao||'').trim())faltam.push('Grau de Formação');
-
-  if(String(d?.grauFormacao||'')==='Ensino Superior'){
-    const cursos=Array.isArray(d?.cursosSuperiores)?d.cursosSuperiores:[];
-    const informados=cursos.filter((c:any)=>String(c?.tipo||c?.area||c?.curso||c?.ano||c?.ufInstituicao||c?.categoriaOrg||c?.instituicao||'').trim());
-    if(!informados.length)faltam.push('Curso Superior');
-    informados.forEach((c:any,i:number)=>{
-      if(!String(c?.tipo||'').trim())faltam.push(`Tipo do ${i+1}º curso`);
-      if(!String(c?.area||'').trim())faltam.push(`Área do ${i+1}º curso`);
-      if(!String(c?.curso||'').trim())faltam.push(`Curso do ${i+1}º curso`);
-    });
-  }
+  faltam.push(...camposAcademicosFaltantes(d));
 
   if(typeof d?.possuiPos!=='boolean')faltam.push('Situação da Pós-Graduação');
   if(d?.possuiPos===true){
