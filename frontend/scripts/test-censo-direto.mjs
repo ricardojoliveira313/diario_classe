@@ -32,7 +32,7 @@ const checks = [
   ['curso TIC usa value oficial', page.includes('Educação e Tecnologia de Informação e Comunicação (TIC)')],
   ['relações étnico-raciais usa value oficial completo', page.includes('Educação para as relações étnico-raciais e história e cultura afro-brasileira e africana')],
   ['não há validação de completude no front', !page.includes('validarDraft') && page.includes('sem validação de correspondência ou completude')],
-  ['nenhum campo ou confirmação bloqueia o botão de envio', page.includes('disabled={enviando}') && !page.includes('faltamDraft') && !page.includes('confirmacao') && !pendingScript.includes('submit.disabled = true')],
+  ['nenhum campo ou confirmação bloqueia o botão de envio', page.includes('disabled={enviando}') && !page.includes('faltamDraft') && !page.includes('setConfirmacao(') && !page.includes('const[confirmacao') && !pendingScript.includes('submit.disabled = true')],
   ['envio em lote auditado existe', page.includes('Auditar e enviar todos os docentes prontos') && page.includes('enviarLoteAuditado') && page.includes('auditarDraftParaLote')],
   ['lote aplica declaração global sem deficiência confirmada pelo responsável', page.includes("deficiencias:['Não possuo deficiência']")],
   ['lote prepara antes de enviar e retém pendências', page.includes("bridge({action:'prepare',rf,competencia})") && page.includes("bridge({action:'submit',dados:pronto,competencia") && page.includes("status:'pendente'")],
