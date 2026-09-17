@@ -60,6 +60,7 @@ const checks = [
   ['situação desconhecida da pós não vira declaração negativa', page.includes('possuiPos:boolean|null') && edge.includes('naoPossuiPos:d.possuiPos===false')],
   ['pós da planilha é aplicada sem descarte cronológico', page.includes('posMestre(m)') && page.includes('temPosNaPlanilha?{pos:posCheckIdade.itens,descartados:0}')],
   ['modalidade da planilha preenche o rascunho e continua editável', page.includes("modalidade:first(temMestre?m['Modalidade sugerida']:'',l.modalidade,modalidadeSugerida") && page.includes('onChange={v=>patch(\'modalidade\',v)}')],
+  ['turma só associa por nome completo exato da folha de frequência', page.includes('function nomesCompletosIguais') && page.includes("norm(a),nb=norm(b);return!!na&&!!nb&&na===nb") && page.includes('turmasDoServidor(servidor,freq,turmas)') && !page.includes('function contemNome')],
   ['lista de trabalho nasce exclusivamente da folha de frequência', page.includes("const docentesFreq=useMemo(()=>frequencias.filter") && page.includes("const linhas=useMemo<Linha[]>(()=>docentesFreq.map")],
   ['não existe envio automático em lote', !page.includes('enviarLoteAuditado') && !page.includes('Auditar e enviar todos os docentes prontos') && page.includes('Não existe envio automático em lote.')],
   ['envio permanece manual por professor', page.includes('O sistema não envia este formulário sozinho.') && page.includes("onClick={enviarDireto}") && page.includes('Salvar e enviar ao formulário oficial')],
