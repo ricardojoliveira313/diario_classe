@@ -99,19 +99,6 @@ function academicoHistoricoConfiavel(dados: any, registro: any, cpf: string) {
   return true;
 }
 
-function areaPosLocal(curso: unknown) {
-  const n = norm(curso);
-  if (!n) return '';
-  if (
-    n.includes('PSICOPEDAG') || n.includes('NEUROPSICOPEDAG') || n.includes('LUDOPEDAG') ||
-    n.includes('PEDAGOG') || n.includes('EDUCAC') || n.includes('LIBRAS') ||
-    n.includes('DOCENCIA') || n.includes('ALFABET') || n.includes('ENSINO')
-  ) return 'Educação';
-  if (n.includes('HISTORIA DA ARTE') || n.includes('ARTE')) return 'Artes e humanidades';
-  if (n.includes('TECNOLOG') || n.includes('DIGITAL') || n.includes('TIC')) return 'Computação e Tecnologias da Informação e Comunicação (TIC)';
-  return '';
-}
-
 async function fichaPorCpf(cpf: string, registro: any) {
   let rows = await rest(`CensoFichaServidor?ano=eq.2026&cpf=eq.${encodeURIComponent(cpf)}&select=rf,nome,cpf,fonte_timestamp,metodo_match,dados&order=fonte_timestamp.desc&limit=2`) as any[];
   let ficha = Array.isArray(rows) ? rows.find((x:any) => identidadeFichaValida(x?.dados, registro, cpf)) || null : null;
@@ -157,11 +144,13 @@ Deno.serve(async (req: Request) => {
       return json(req, { ok: false, erro: 'Mais de um profissional foi localizado para o mesmo CPF na fotografia atual do Educacenso.' }, 409);
     }
 
-    let registro = encontrados[0] || null;
-    let posFonte: 'educacenso' | 'ficha_cadastral' | 'nao_informado' | null = registro ? 'educacenso' : null;
+    const registro = encontrados[0] || null;
+    const posRaw = String(registro?.pos_graduacao_raw ?? '').trim();
+    let posFonte: 'educacenso' | 'ficha_cadastral' | 'nao_informado' | null = registro && posRaw && posRaw !== '-' ? 'educacenso' : null;
+    let possuiPosFicha: boolean | null = null;
     let avisoConsolidacao: string | null = null;
 
-    if (registro && (!String(registro.pos_graduacao_raw ?? '').trim() || String(registro.pos_graduacao_raw).trim() === '-')) {
+    if (!posRaw || posRaw === '-') {
       const ficha = await fichaPorCpf(cpf, registro);
       const dados = ficha?.dados || null;
       if (dados && !academicoHistoricoConfiavel(dados, registro, cpf)) {
@@ -169,22 +158,22 @@ Deno.serve(async (req: Request) => {
         avisoConsolidacao = 'A pós-graduação da ficha histórica foi ignorada porque a identidade acadêmica de origem não corresponde ao profissional atual.';
       } else {
         const possui = norm(dados?.posPossui) === 'SIM';
-        const cursos = Array.isArray(dados?.posCursos) ? dados.posCursos : [];
-        if (possui && cursos.length) {
-          const linhas = cursos.map((curso:any) => areaPosLocal(curso)).filter(Boolean).map((area:string) => `Especialização - ${area}`);
-          if (linhas.length) {
-            registro = { ...registro, pos_graduacao_raw: linhas.join(' | '), pos_graduacao_fonte: 'ficha_cadastral', pos_graduacao_ficha_data: ficha?.fonte_timestamp || null };
-            posFonte = 'ficha_cadastral';
-          } else {
-            posFonte = 'nao_informado';
-          }
+        if (possui) {
+          possuiPosFicha = true;
+          posFonte = 'nao_informado';
+          avisoConsolidacao = 'A ficha cadastral confirma que o professor possui pós-graduação, mas não permite determinar com segurança o Tipo, a Área oficial e o Ano. Preencha esses campos manualmente.';
         } else if (norm(dados?.posPossui) === 'NAO') {
-          registro = { ...registro, pos_graduacao_raw: '-' };
+          possuiPosFicha = false;
           posFonte = 'ficha_cadastral';
         } else {
           posFonte = 'nao_informado';
         }
       }
+    }
+
+    if (!registro) {
+      const semFotografia = 'CPF não localizado na fotografia atual do Educacenso. Sexo, deficiência e cursos de 80 horas permanecem em branco para conferência manual.';
+      avisoConsolidacao = avisoConsolidacao ? `${semFotografia} ${avisoConsolidacao}` : semFotografia;
     }
 
     return json(req, {
@@ -194,6 +183,7 @@ Deno.serve(async (req: Request) => {
       referenciaData: registro?.referencia_data || null,
       arquivoNome: registro?.arquivo_nome || null,
       posFonte,
+      possuiPosFicha,
       avisoConsolidacao,
     });
   } catch (e) {
