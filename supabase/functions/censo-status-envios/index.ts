@@ -98,6 +98,8 @@ Deno.serve(async (req: Request) => {
         status: 'enviado',
         criadoEm: String(row?.criado_em || ''),
         comprovanteUrl: comprovanteUrl(row?.resposta),
+        confirmadoSecretaria: Boolean(row?.resposta?.reconciliacao_oficial),
+        confirmacaoMensagem: String(row?.resposta?.mensagem || ''),
       });
     }
 

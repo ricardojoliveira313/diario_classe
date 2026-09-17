@@ -177,6 +177,27 @@ async function localSources(rf:string,official:any){
   return {profile,profileMatch,ficha,formacoes,fonteCadastro,mestre};
 }
 async function audit(rf:string,nome:string,usuario:string,status:string,resposta:any,modalidade?:string,requestId?:string){try{await rest('CensoEnvioLog',{method:'POST',headers:{'content-type':'application/json','prefer':'return=minimal'},body:JSON.stringify({rf:dig(rf),nome:String(nome||'').slice(0,200),usuario,status,resposta,modalidade:modalidade||null,request_id:/^[0-9a-f-]{36}$/i.test(String(requestId||''))?requestId:null})})}catch{}}
+async function reconcileOfficialFilled(rf:string,nomeFrequencia:string,usuario:string,competencia:Competencia){
+  try{
+    const existente=await rest(`CensoEnvioLog?rf=eq.${encodeURIComponent(dig(rf))}&status=eq.enviado&select=id&limit=1`) as any[];
+    if(Array.isArray(existente)&&existente.length)return false;
+    const mestreRows=await rest(`CensoDocenteMestre?ano=eq.2026&rf=eq.${encodeURIComponent(dig(rf))}&select=nome,dados&limit=1`) as any[];
+    const mestre=Array.isArray(mestreRows)?mestreRows[0]||null:null;
+    const modalidade=String(mestre?.dados?.['Modalidade sugerida']||'').trim();
+    const nome=String(mestre?.nome||mestre?.dados?.['Nome Completo']||nomeFrequencia||'').trim();
+    await audit(rf,nome,usuario,'enviado',{
+      reconciliacao_oficial:true,
+      origem:'consulta_formulario_oficial_secretaria',
+      mensagem:'Este RF já possui um cadastro realizado no Censo!',
+      confirmado_em:new Date().toISOString(),
+      comprovante_local_disponivel:false,
+      competencia,
+    },modalidade);
+    return true;
+  }catch{
+    return false;
+  }
+}
 
 Deno.serve(async(req)=>{
   const origin=req.headers.get('origin')||'';if(!origemPermitida(origin))return json(req,{ok:false,erro:'Origem não autorizada.'},403);
@@ -188,7 +209,7 @@ Deno.serve(async(req)=>{
     if(action==='status')return json(req,{ok:true,modo:'direto-seguro',usuario:session.usuario});
     if(action==='logout'){const hash=await sha256(req.headers.get('x-censo-token')||'');await rest(`CensoSessaoToken?token_hash=eq.${encodeURIComponent(hash)}`,{method:'DELETE'});return json(req,{ok:true})}
     if(action==='lookup'||action==='prepare'){
-      const rf=dig(body.rf);if(!rf)return json(req,{ok:false,erro:'RF obrigatório.'},400);const competencia=await resolveCompetencia(body.competencia);if(!competencia)return json(req,{ok:false,erro:'Não há competência de frequência disponível.'},409);const freq=await attendance(rf,competencia);if(!freq)return json(req,{ok:false,erro:`RF não consta como vínculo docente na frequência oficial de ${competenciaLabel(competencia)}.`},403);const official=await officialCall('buscarServidorCenso',[rf]);if(!official?.sucesso)return json(req,{ok:false,erro:official?.mensagem||'RF não localizado no formulário oficial.'},404);if(action==='lookup')return json(req,{ok:true,official,attendance:freq,competencia});
+      const rf=dig(body.rf);if(!rf)return json(req,{ok:false,erro:'RF obrigatório.'},400);const competencia=await resolveCompetencia(body.competencia);if(!competencia)return json(req,{ok:false,erro:'Não há competência de frequência disponível.'},409);const freq=await attendance(rf,competencia);if(!freq)return json(req,{ok:false,erro:`RF não consta como vínculo docente na frequência oficial de ${competenciaLabel(competencia)}.`},403);const official=await officialCall('buscarServidorCenso',[rf]);if(!official?.sucesso){if(official?.jaPreenchido===true){const reconciliado=await reconcileOfficialFilled(rf,String(freq?.nome||''),String(session.usuario||''),competencia);return json(req,{ok:false,jaPreenchido:true,reconciliado,erro:official?.mensagem||'Este RF já possui um cadastro realizado no Censo.'},409)}return json(req,{ok:false,erro:official?.mensagem||'RF não localizado no formulário oficial.'},404)}if(action==='lookup')return json(req,{ok:true,official,attendance:freq,competencia});
       const [local,opcoesOficiais]=await Promise.all([localSources(rf,official),officialOptions()]);return json(req,{ok:true,official,attendance:freq,competencia,local,unidadeEscolar:SCHOOL,opcoesOficiais});
     }
     if(action==='submit'){
