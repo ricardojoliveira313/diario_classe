@@ -31,7 +31,7 @@ const checks = [
   ['texto interno oficial de altas habilidades', page.includes('Altas Habilidades / Superdotação')],
   ['curso TIC usa value oficial', page.includes('Educação e Tecnologia de Informação e Comunicação (TIC)')],
   ['relações étnico-raciais usa value oficial completo', page.includes('Educação para as relações étnico-raciais e história e cultura afro-brasileira e africana')],
-  ['não há validação de completude no front', !page.includes('validarDraft') && page.includes('sem validação de correspondência ou completude')],
+  ['não há validação de completude no front', !page.includes('validarDraft') && !page.includes('faltamDraft') && page.includes('disabled={enviando}')],
   ['nenhum campo ou confirmação bloqueia o botão de envio', page.includes('disabled={enviando}') && !page.includes('faltamDraft') && !page.includes('setConfirmacao(') && !page.includes('const[confirmacao') && !pendingScript.includes('submit.disabled = true')],
   ['RF já preenchido é registrado sem ser tratado como envio validado', edge.includes('reconcileOfficialFilled') && edge.includes('official?.jaPreenchido===true') && edge.includes("'confirmado_secretaria'") && edge.includes('conteudo_validado:false')],
   ['status distingue envio comprovado, cadastro existente e revisão necessária', statusEdge.includes('revisao_necessaria') && statusEdge.includes('confirmado_secretaria') && page.includes('REVISÃO NECESSÁRIA') && page.includes('CONTEÚDO NÃO VALIDADO')],
