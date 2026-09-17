@@ -40,14 +40,15 @@ jobs:
       - name: Instalar dependências e validar build
         working-directory: frontend
         run: |
-          npm ci --no-audit --no-fund
+          npm install --no-audit --no-fund
           npm run build
 
-      - name: Commitar alteração
+      - name: Restaurar lockfile e commitar alteração
         run: |
+          git checkout -- frontend/package-lock.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           rm -f .github/workflows/patch-modalidade-censo.yml
-          git add -A
+          git add frontend/src/pages/EducacensoDocentes.tsx .github/workflows/patch-modalidade-censo.yml
           git commit -m "feat: preencher modalidade automaticamente no Censo"
           git push origin HEAD:fix/censo-ficha-mais-recente-primeiro
