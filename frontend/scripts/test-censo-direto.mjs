@@ -4,6 +4,7 @@ const page = fs.readFileSync(new URL('../src/pages/EducacensoDocentes.tsx', impo
 const edge = fs.readFileSync(new URL('../../supabase/functions/censo-oficial-bridge/index.ts', import.meta.url), 'utf8');
 const educacensoEdge = fs.readFileSync(new URL('../../supabase/functions/censo-educacenso-base/index.ts', import.meta.url), 'utf8');
 const submitGuard = fs.readFileSync(new URL('../../supabase/functions/censo-submit-guard/index.ts', import.meta.url), 'utf8');
+const pendingScript = fs.readFileSync(new URL('../public/censo-pendencias.js', import.meta.url), 'utf8');
 
 const checks = [
   ['front exige reautenticação', page.includes("action:'auth'") || page.includes("action: 'auth'")],
@@ -16,7 +17,7 @@ const checks = [
   ['backend restringe usuário administrativo', /norm\(username\)!==['"]RICOJOLIVEIRA['"]/.test(edge)],
   ['competência da frequência não fica fixa em setembro', !page.includes(".eq('ano',2026).eq('mes',9)") && !edge.includes('ano=eq.2026&mes=eq.9') && edge.includes('resolveCompetencia')],
   ['backend valida RF na competência selecionada', edge.includes('attendance(rf,competencia)') && edge.includes('competenciaLabel(competencia)')],
-  ['backend reconfirma identidade', edge.includes('buscarServidorCenso') && edge.includes('Nome/CPF não correspondem ao RF')],
+  ['backend não reconfirma identidade no submit', !edge.includes('Nome/CPF não correspondem ao RF') && !edge.includes("status,'bloqueado_identidade'")],
   ['backend não exige confirmação final', !/body\.confirmacaoFinal!==true/.test(edge) && !/body\?\.confirmacaoFinal!==true/.test(submitGuard)],
   ['listas dinâmicas vêm do formulário oficial', edge.includes("officialCall('obterOpcoesGraduacao')") && edge.includes("officialCall('obterOpcoesInstituicoes')") && edge.includes("officialCall('obterOpcoesPosGraduacao')")],
   ['graduação usa selects encadeados', page.includes('areasGrad(c)') && page.includes('cursosGrad(c)') && page.includes('categoriasInst(c)') && page.includes('instituicoesInst(c)')],
@@ -30,13 +31,13 @@ const checks = [
   ['curso TIC usa value oficial', page.includes('Educação e Tecnologia de Informação e Comunicação (TIC)')],
   ['relações étnico-raciais usa value oficial completo', page.includes('Educação para as relações étnico-raciais e história e cultura afro-brasileira e africana')],
   ['não há validação de completude no front', !page.includes('validarDraft') && page.includes('sem validação de correspondência ou completude')],
-  ['nenhum campo ou confirmação bloqueia o botão de envio', page.includes('disabled={enviando}') && !page.includes('faltamDraft') && !page.includes('confirmacao')],
+  ['nenhum campo ou confirmação bloqueia o botão de envio', page.includes('disabled={enviando}') && !page.includes('faltamDraft') && !page.includes('confirmacao') && !pendingScript.includes('submit.disabled = true')],
   ['envio oficial passa pelo guard sem bloqueio acadêmico', page.includes("body.action==='submit'?'censo-submit-guard':'censo-oficial-bridge'") && !submitGuard.includes('const faltam=camposObrigatoriosFaltantes') && !edge.includes('const problems=required(d,opcoes)')],
   ['planilha mestre é consultada por RF', edge.includes('CensoDocenteMestre?ano=eq.2026&rf=eq.') && edge.includes('mestreRows')],
   ['planilha mestre é a fonte prioritária do rascunho', page.includes('cursosMestre') && page.includes('posMestre') && page.includes('Banco Mestre Censo Docentes 2026 + complemento Educacenso')],
   ['data brasileira da planilha é normalizada para o campo de data', page.includes('function dataIso') && page.includes("const dataNasc=dataIso(first(temMestre?m['Data Nasc.']")],
   ['valores da planilha continuam visíveis mesmo fora da lista oficial', page.includes("const visiveis=value&&!options.includes(value)?[value,...options]:options")],
-  ['proteção contra envio duplicado', /duplicate\(d\.rf,d\.modalidade\)/.test(edge)],
+  ['submit não bloqueia por duplicidade', !/duplicate\(d\.rf,d\.modalidade\)/.test(edge) && !edge.includes('já foi enviado nos últimos 5 minutos')],
   ['auditoria de envio', edge.includes('CensoEnvioLog') && edge.includes("'enviado'")],
   ['auditoria registra campos censitários sem replicar dados pessoais', edge.includes('dadosCensitariosEnviados') && edge.includes('posGraduacoes:payload.posGraduacoes') && !/dadosCensitariosEnviados=\{[^}]*cpf:/.test(edge)],
   ['consulta Educacenso usa função protegida separada', page.includes("supabase.functions.invoke('censo-educacenso-base'") && educacensoEdge.includes('validateToken')],
