@@ -50,6 +50,8 @@ const checks = [
   ['modalidade sugerida exige confirmação manual', page.includes("modalidade:'',cpf:") && page.includes('Sugestão automática:') && page.includes('Selecione para confirmar')],
   ['status de envio usa RF confirmado e não a modalidade sugerida', page.includes('enviosPorRf') && page.includes('enviosDaLinha') && !page.includes("enviosMap.get(`${dig(l.servidor.rf)}|||${l.modalidade}`)")],
   ['aviso de consolidação fica visível', page.includes('avisoConsolidacao') && page.includes('Conferência necessária')],
+  ['pós prioriza base acadêmica estruturada', page.includes('montarPosEstruturada') && page.includes('resolvePosEstruturada') && page.includes('temPosEstruturada?posEstruturada')],
+  ['pós estruturada exige tipo e área oficiais batendo com o formulário', /resolvePosEstruturada[\s\S]{0,300}?inOptions\(first\(x\.tipo_oficial,x\.tipo\),TIPOS_POS\)/.test(page) && /resolvePosEstruturada[\s\S]{0,300}?inOptions\(txt\(x\.area_oficial\),areasPos\)/.test(page) && /resolvePosEstruturada[\s\S]{0,300}?if\(!tipo\|\|!area\)return null/.test(page)],
   ['fora da frequência considera apenas servidor ativo', page.includes('s=>s.ativo&&ehDocente(s.cargo)')],
   ['ano de conclusão da ficha é aproveitado', page.includes('anosFicha') && page.includes('anoConclusao')],
   ['UF nascimento não é presumida sem fonte', page.includes('UF de nascimento não existe na relação atual do Educacenso nem na ficha cadastrada')],
