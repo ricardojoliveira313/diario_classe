@@ -266,12 +266,16 @@ interface PendenciaFrequencia {
   inicio: string;
   fim: string;
   diasLetivos: number;
+  ausenciasSugeridas: number;
   motivo: string;
 }
 
 interface ResumoFrequenciaPeriodo {
   diasLetivos: number;
+  diasLetivosApurados: number;
   ausenciasRegistradas: number;
+  fimApurado: string;
+  mesesFechadosSemLancamento: string[];
   pendencias: PendenciaFrequencia[];
 }
 
@@ -300,7 +304,12 @@ function analisarFrequenciaPeriodo(
   const inicio = new Date(`${inicioISO}T12:00:00`);
   const fim = new Date(`${fimISO}T12:00:00`);
   const cursor = new Date(inicio.getFullYear(), inicio.getMonth(), 1, 12);
+  const hoje = new Date();
+  const competenciaAtual = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
   let ausenciasRegistradas = 0;
+  let diasLetivosApurados = 0;
+  let fimApurado = fimISO;
+  const mesesFechadosSemLancamento: string[] = [];
   const pendencias: PendenciaFrequencia[] = [];
 
   while (cursor <= fim) {
@@ -314,36 +323,44 @@ function analisarFrequenciaPeriodo(
     const diasTrecho = contarDiasLetivosPeriodo(inicioTrecho, fimTrecho) ?? 0;
     const registro = porCompetencia.get(chave);
     const frequencia = String(registro?.frequencia ?? '');
-    const registroConferido = Boolean(
-      registro && (Number(registro.faltas ?? 0) > 0 || registro.conferido_sem_faltas === true),
-    );
+    const competenciaAberta = chave === competenciaAtual;
+    const antesDoTrecho = inicioTrecho === primeiroDiaMes
+      ? 0
+      : (contarDiasLetivosPeriodo(primeiroDiaMes, diaAnteriorISO(inicioTrecho)) ?? 0);
+    const ateOFimDoTrecho = contarDiasLetivosPeriodo(primeiroDiaMes, fimTrecho) ?? 0;
+    const marcacoes = frequencia.startsWith('DIAS:')
+      ? frequencia.slice(5).split('').slice(antesDoTrecho, ateOFimDoTrecho)
+      : [];
+    const ausenciasTrecho = marcacoes.length
+      ? marcacoes.filter(status => status === 'F' || status === 'J' || status === 'A').length
+      : Math.max(0, Number(registro?.faltas ?? 0) || 0);
 
-    if (diasTrecho > 0 && registroConferido && frequencia.startsWith('DIAS:')) {
-      const antesDoTrecho = inicioTrecho === primeiroDiaMes
-        ? 0
-        : (contarDiasLetivosPeriodo(primeiroDiaMes, diaAnteriorISO(inicioTrecho)) ?? 0);
-      const ateOFimDoTrecho = contarDiasLetivosPeriodo(primeiroDiaMes, fimTrecho) ?? 0;
-      const marcacoes = frequencia.slice(5).split('').slice(antesDoTrecho, ateOFimDoTrecho);
-      ausenciasRegistradas += marcacoes.filter(status => status === 'F' || status === 'J' || status === 'A').length;
-    } else if (diasTrecho > 0 && registroConferido && inicioTrecho === primeiroDiaMes && fimTrecho === ultimoDiaMes) {
-      ausenciasRegistradas += Number(registro?.faltas ?? 0);
-    } else if (diasTrecho > 0) {
+    if (diasTrecho > 0 && competenciaAberta) {
+      fimApurado = diaAnteriorISO(primeiroDiaMes);
       pendencias.push({
         chave,
         label: `${MESES_EXTENSO[mes][0].toUpperCase()}${MESES_EXTENSO[mes].slice(1)}/${ano}`,
         inicio: inicioTrecho,
         fim: fimTrecho,
         diasLetivos: diasTrecho,
+        ausenciasSugeridas: ausenciasTrecho,
         motivo: registro
-          ? 'lançamento ainda não confirmado para este aluno'
-          : 'mês sem lançamento de frequência para este aluno',
+          ? 'mês ainda aberto; confira o lançamento parcial'
+          : 'mês aberto sem lançamento de frequência para este aluno',
       });
+    } else if (diasTrecho > 0) {
+      diasLetivosApurados += diasTrecho;
+      ausenciasRegistradas += ausenciasTrecho;
+      if (!registro) {
+        mesesFechadosSemLancamento.push(`${MESES_EXTENSO[mes][0].toUpperCase()}${MESES_EXTENSO[mes].slice(1)}/${ano}`);
+      }
     }
 
     cursor.setMonth(cursor.getMonth() + 1);
   }
 
-  return { diasLetivos, ausenciasRegistradas, pendencias };
+  if (!pendencias.length) diasLetivosApurados = diasLetivos;
+  return { diasLetivos, diasLetivosApurados, ausenciasRegistradas, fimApurado, mesesFechadosSemLancamento, pendencias };
 }
 
 function TabelaNotas({ grupo, anexo = false, repetirCabecalho = true }: { grupo: GrupoNotas; anexo?: boolean; repetirCabecalho?: boolean }) {
@@ -479,8 +496,9 @@ export default function Historico() {
       pendencia => (complementos[pendencia.chave] ?? '').trim() === '',
     );
     if (faltantes.length > 0) {
-      setTransferenciaPresencas('');
-      setTransferenciaAusencias('');
+      setTransferenciaDiasLetivos(String(resumo.diasLetivosApurados));
+      setTransferenciaAusencias(String(resumo.ausenciasRegistradas));
+      setTransferenciaPresencas(String(Math.max(0, resumo.diasLetivosApurados - resumo.ausenciasRegistradas)));
       return;
     }
 
@@ -495,6 +513,7 @@ export default function Historico() {
       setTransferenciaAusencias('');
       return;
     }
+    setTransferenciaDiasLetivos(String(resumo.diasLetivos));
     setTransferenciaAusencias(String(ausencias));
     setTransferenciaPresencas(String(resumo.diasLetivos - ausencias));
   };
@@ -512,7 +531,6 @@ export default function Historico() {
     }
 
     setResumoFrequenciaPeriodo(resumo);
-    setTransferenciaDiasLetivos(String(resumo.diasLetivos));
     if (!transferenciaPeriodo.trim()) {
       setTransferenciaPeriodo(`${formatarData(transferenciaDataInicio)} a ${formatarData(transferenciaDataFim)}`);
     }
@@ -923,13 +941,6 @@ export default function Historico() {
       setErro('Informe um RA válido antes de salvar ou imprimir.');
       return false;
     }
-    const pendenciasNaoConferidas = resumoFrequenciaPeriodo?.pendencias.filter(
-      pendencia => (complementosFrequencia[pendencia.chave] ?? '').trim() === '',
-    ) ?? [];
-    if (pendenciasNaoConferidas.length > 0) {
-      setErro(`Confira as ausências pendentes de ${pendenciasNaoConferidas.map(item => item.label).join(' e ')} antes de salvar ou imprimir.`);
-      return false;
-    }
     setSalvando(true);
     setErro(null);
     setSucesso(null);
@@ -1007,6 +1018,13 @@ export default function Historico() {
   };
 
   const imprimir = async () => {
+    const pendenciasNaoConferidas = resumoFrequenciaPeriodo?.pendencias.filter(
+      pendencia => (complementosFrequencia[pendencia.chave] ?? '').trim() === '',
+    ) ?? [];
+    if (pendenciasNaoConferidas.length > 0) {
+      setErro(`O resultado até ${formatarData(resumoFrequenciaPeriodo?.fimApurado ?? '')} já está calculado. Informe somente as ausências de ${pendenciasNaoConferidas.map(item => item.label).join(' e ')} antes de imprimir.`);
+      return;
+    }
     const salvo = await salvarHistorico();
     if (salvo) window.print();
   };
@@ -1462,19 +1480,27 @@ export default function Historico() {
                 </div>
                 {resumoFrequenciaPeriodo && (
                   <div className="nao-imprimir" style={{ marginBottom: 8, padding: '12px', background: 'var(--ghost-bg)', border: `1px solid ${resumoFrequenciaPeriodo.pendencias.length ? theme.warning : theme.success}`, borderRadius: theme.radius }}>
-                    <div style={{ fontWeight: 900, color: theme.text, marginBottom: 7 }}>Conferência da frequência do período</div>
+                    <div style={{ fontWeight: 900, color: theme.text, marginBottom: 7 }}>Resultado automático da frequência</div>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: resumoFrequenciaPeriodo.pendencias.length ? 10 : 0 }}>
                       <span style={{ padding: '5px 8px', borderRadius: 6, background: theme.card, color: theme.text, fontSize: 12 }}>
-                        <strong>{resumoFrequenciaPeriodo.diasLetivos}</strong> dias letivos
+                        <strong>{resumoFrequenciaPeriodo.diasLetivosApurados}</strong> dias letivos calculados até {formatarData(resumoFrequenciaPeriodo.fimApurado)}
                       </span>
                       <span style={{ padding: '5px 8px', borderRadius: 6, background: theme.card, color: theme.text, fontSize: 12 }}>
-                        <strong>{resumoFrequenciaPeriodo.ausenciasRegistradas}</strong> ausências já confirmadas na aba Faltas
+                        <strong>{Math.max(0, resumoFrequenciaPeriodo.diasLetivosApurados - resumoFrequenciaPeriodo.ausenciasRegistradas)}</strong> presenças calculadas
+                      </span>
+                      <span style={{ padding: '5px 8px', borderRadius: 6, background: theme.card, color: theme.text, fontSize: 12 }}>
+                        <strong>{resumoFrequenciaPeriodo.ausenciasRegistradas}</strong> ausências calculadas
                       </span>
                     </div>
+                    {resumoFrequenciaPeriodo.mesesFechadosSemLancamento.length > 0 && (
+                      <div style={{ color: theme.textSecondary, fontSize: 11.5, marginBottom: 8 }}>
+                        Mês(es) já encerrado(s) sem falta registrada: <strong>{resumoFrequenciaPeriodo.mesesFechadosSemLancamento.join(', ')}</strong>. Foram computados automaticamente com zero ausência.
+                      </div>
+                    )}
                     {resumoFrequenciaPeriodo.pendencias.length > 0 ? (
                       <>
                         <div style={{ color: theme.warning, fontWeight: 800, fontSize: 12, marginBottom: 8 }}>
-                          Há períodos sem frequência confirmada. Informe as ausências reais de cada trecho; digite 0 quando tiver certeza de que não houve falta.
+                          O resultado acima já está preenchido. Falta apenas complementar o mês atual, que ainda está aberto.
                         </div>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(245px, 1fr))', gap: 8 }}>
                           {resumoFrequenciaPeriodo.pendencias.map(pendencia => (
@@ -1483,23 +1509,38 @@ export default function Historico() {
                               <span style={{ fontSize: 10.5, color: theme.textMuted }}>
                                 {formatarData(pendencia.inicio)} a {formatarData(pendencia.fim)} · {pendencia.diasLetivos} dias letivos · {pendencia.motivo}
                               </span>
-                              <input
-                                aria-label={`Ausências complementares de ${pendencia.label}`}
-                                type="number"
-                                min={0}
-                                max={pendencia.diasLetivos}
-                                inputMode="numeric"
-                                style={input}
-                                value={complementosFrequencia[pendencia.chave] ?? ''}
-                                onChange={event => atualizarComplementoFrequencia(pendencia, event.target.value)}
-                                placeholder="Informe as ausências (0 também confirma)"
-                              />
+                              {pendencia.ausenciasSugeridas > 0 && (
+                                <span style={{ fontSize: 10.5, color: theme.primaryText }}>
+                                  Já constam {pendencia.ausenciasSugeridas} ausência(s) no lançamento parcial.
+                                </span>
+                              )}
+                              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                                <input
+                                  aria-label={`Ausências do mês aberto de ${pendencia.label}`}
+                                  type="number"
+                                  min={0}
+                                  max={pendencia.diasLetivos}
+                                  inputMode="numeric"
+                                  style={{ ...input, flex: '1 1 180px' }}
+                                  value={complementosFrequencia[pendencia.chave] ?? ''}
+                                  onChange={event => atualizarComplementoFrequencia(pendencia, event.target.value)}
+                                  placeholder="Quantas ausências houve neste período?"
+                                />
+                                <button type="button" style={btn('success', { small: true })} onClick={() => atualizarComplementoFrequencia(pendencia, '0')}>
+                                  Não houve faltas (0)
+                                </button>
+                                {pendencia.ausenciasSugeridas > 0 && (
+                                  <button type="button" style={btn('sky', { small: true })} onClick={() => atualizarComplementoFrequencia(pendencia, String(pendencia.ausenciasSugeridas))}>
+                                    Usar {pendencia.ausenciasSugeridas} já lançada(s)
+                                  </button>
+                                )}
+                              </div>
                             </label>
                           ))}
                         </div>
                         {resumoFrequenciaPeriodo.pendencias.some(pendencia => (complementosFrequencia[pendencia.chave] ?? '').trim() === '') && (
                           <div style={{ color: theme.danger, fontWeight: 800, fontSize: 11.5, marginTop: 8 }}>
-                            Presenças e ausências finais permanecerão vazias até todos os períodos acima serem conferidos.
+                            A tabela já mostra o resultado automático até {formatarData(resumoFrequenciaPeriodo.fimApurado)}. Ao informar {resumoFrequenciaPeriodo.pendencias.map(item => item.label).join(' e ')}, ela será atualizada para o período completo de {resumoFrequenciaPeriodo.diasLetivos} dias letivos.
                           </div>
                         )}
                       </>
