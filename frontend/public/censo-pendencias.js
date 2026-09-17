@@ -250,9 +250,10 @@
       panel.appendChild(block);
     }
 
-    if (submit && pendings.length) {
-      submit.disabled = true;
-      submit.title = 'Existem pendências de preenchimento. Clique nas pendências acima para localizar os campos.';
+    if (submit) {
+      submit.title = pendings.length
+        ? 'Há campos para conferir, mas eles não bloqueiam o envio.'
+        : '';
     }
   }
 
