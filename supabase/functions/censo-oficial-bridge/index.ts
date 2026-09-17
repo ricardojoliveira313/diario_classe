@@ -179,16 +179,18 @@ async function localSources(rf:string,official:any){
 async function audit(rf:string,nome:string,usuario:string,status:string,resposta:any,modalidade?:string,requestId?:string){try{await rest('CensoEnvioLog',{method:'POST',headers:{'content-type':'application/json','prefer':'return=minimal'},body:JSON.stringify({rf:dig(rf),nome:String(nome||'').slice(0,200),usuario,status,resposta,modalidade:modalidade||null,request_id:/^[0-9a-f-]{36}$/i.test(String(requestId||''))?requestId:null})})}catch{}}
 async function reconcileOfficialFilled(rf:string,nomeFrequencia:string,usuario:string,competencia:Competencia){
   try{
-    const existente=await rest(`CensoEnvioLog?rf=eq.${encodeURIComponent(dig(rf))}&status=eq.enviado&select=id&limit=1`) as any[];
+    const existente=await rest(`CensoEnvioLog?rf=eq.${encodeURIComponent(dig(rf))}&status=in.(enviado,confirmado_secretaria,revisao_necessaria)&select=id,status&order=criado_em.desc&limit=1`) as any[];
     if(Array.isArray(existente)&&existente.length)return false;
     const mestreRows=await rest(`CensoDocenteMestre?ano=eq.2026&rf=eq.${encodeURIComponent(dig(rf))}&select=nome,dados&limit=1`) as any[];
     const mestre=Array.isArray(mestreRows)?mestreRows[0]||null:null;
     const modalidade=String(mestre?.dados?.['Modalidade sugerida']||'').trim();
     const nome=String(mestre?.nome||mestre?.dados?.['Nome Completo']||nomeFrequencia||'').trim();
-    await audit(rf,nome,usuario,'enviado',{
+    await audit(rf,nome,usuario,'confirmado_secretaria',{
       reconciliacao_oficial:true,
       origem:'consulta_formulario_oficial_secretaria',
       mensagem:'Este RF já possui um cadastro realizado no Censo!',
+      conteudo_validado:false,
+      observacao_status:'A Secretaria confirma apenas a existência do cadastro; o conteúdo não foi validado.',
       confirmado_em:new Date().toISOString(),
       comprovante_local_disponivel:false,
       competencia,
