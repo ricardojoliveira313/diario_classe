@@ -21,7 +21,6 @@ Deno.serve(async(req:Request)=>{
   try{
     const body=await req.json().catch(()=>({}));
     if(String(body?.action||'')!=='submit')return json(req,{ok:false,erro:'Ação não suportada por esta proteção.'},400);
-    if(body?.confirmacaoFinal!==true)return json(req,{ok:false,erro:'Marque a declaração de conferência antes do envio.',campos:['Declaração de conferência']},400);
     const token=req.headers.get('x-censo-token')||'';
     if(!token)return json(req,{ok:false,erro:'Sessão segura do Censo não informada.'},401);
     const r=await fetch(`${SUPABASE_URL}/functions/v1/censo-oficial-bridge`,{method:'POST',headers:{'content-type':'application/json','apikey':SERVICE_KEY,'authorization':`Bearer ${SERVICE_KEY}`,'x-censo-token':token},body:JSON.stringify(body)});
