@@ -92,9 +92,8 @@ function identidadeFichaValida(dados: any, registro: any, cpf: string) {
 
 function academicoHistoricoConfiavel(dados: any, registro: any, cpf: string) {
   if (!identidadeFichaValida(dados, registro, cpf)) return false;
-  const fonteAtual = norm(dados?._fonte_cadastro_atual);
   const origem = dados?._origem_ficha_importada;
-  if (fonteAtual === 'PROFILES' && origem && !identidadeFichaValida(origem, registro, cpf)) return false;
+  if (origem && !identidadeFichaValida(origem, registro, cpf)) return false;
   if (dados?._academico_bloqueado) return false;
   return true;
 }
@@ -155,7 +154,7 @@ Deno.serve(async (req: Request) => {
       const dados = ficha?.dados || null;
       if (dados && !academicoHistoricoConfiavel(dados, registro, cpf)) {
         posFonte = 'nao_informado';
-        avisoConsolidacao = 'A pós-graduação da ficha histórica foi ignorada porque a identidade acadêmica de origem não corresponde ao profissional atual.';
+        avisoConsolidacao = 'A parte acadêmica da ficha histórica foi ignorada porque a identidade de origem não corresponde ao profissional atual. O Educacenso continua sendo usado para os campos oficiais que ele informa; curso, instituição, ano e pós que dependam dessa ficha devem ser confirmados em fonte confiável antes do envio.';
       } else {
         const possui = norm(dados?.posPossui) === 'SIM';
         if (possui) {
@@ -169,6 +168,14 @@ Deno.serve(async (req: Request) => {
           posFonte = 'nao_informado';
         }
       }
+    }
+
+    if (registro && norm(registro.grau_formacao_oficial) === 'ENSINO SUPERIOR') {
+      const complemento = String(registro.formacao_complementacao_raw ?? '').trim();
+      const avisoCurso = complemento && complemento !== '-'
+        ? `O Educacenso confirma Ensino Superior e registra como formação/complementação: ${complemento}. Isso não identifica, sozinho, o curso de graduação. O curso superior deve vir de formação estruturada validada ou ser confirmado manualmente.`
+        : 'O Educacenso confirma Ensino Superior, mas não identifica o curso de graduação. O curso superior deve vir de formação estruturada validada ou ser confirmado manualmente.';
+      avisoConsolidacao = avisoConsolidacao ? `${avisoConsolidacao} ${avisoCurso}` : avisoCurso;
     }
 
     if (!registro) {
