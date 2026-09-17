@@ -116,6 +116,20 @@ const IDADE_MINIMA_CONCLUSAO=15;
 function anoNascimentoNum(dataNasc:unknown){const s=txt(dataNasc);const iso=s.match(/^(\d{4})-\d{2}-\d{2}/);if(iso)return Number(iso[1]);const br=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(br)return Number(br[3]);return NaN}
 function anoConclusaoPlausivel(ano:string,dataNasc:unknown){if(!ano)return true;const anoNasc=anoNascimentoNum(dataNasc);if(!Number.isFinite(anoNasc))return true;return Number(ano)>=anoNasc+IDADE_MINIMA_CONCLUSAO}
 function limparAnosImplausiveis<T extends{ano:string}>(itens:T[],dataNasc:unknown):{itens:T[];descartados:number}{let descartados=0;const limpos=itens.map(it=>{if(it.ano&&!anoConclusaoPlausivel(it.ano,dataNasc)){descartados++;return{...it,ano:''}}return it});return{itens:limpos,descartados}}
+function limparCronologiaPos(superiores:CursoSuperior[],pos:PosGraduacao[]):{pos:PosGraduacao[];descartados:number}{
+  const anosGrad=superiores.map(c=>Number(c.ano)).filter(Number.isFinite);
+  const anoGradMin=anosGrad.length?Math.min(...anosGrad):NaN;
+  const anoMestrado=Number(pos.find(p=>p.tipo==='Mestrado'&&p.ano)?.ano||NaN);
+  let descartados=0;
+  const limpos=pos.map(p=>{
+    if(!p.ano)return p;
+    const anoP=Number(p.ano);
+    if(Number.isFinite(anoGradMin)&&anoP<anoGradMin){descartados++;return{...p,ano:''}}
+    if(p.tipo==='Doutorado'&&Number.isFinite(anoMestrado)&&anoP<anoMestrado){descartados++;return{...p,ano:''}}
+    return p;
+  });
+  return{pos:limpos,descartados};
+}
 function academicoEntries(f:Record<string,any>){return Array.isArray(f.academicoReferencia)?[...f.academicoReferencia].sort((a:any,b:any)=>Number(a?.coluna||0)-Number(b?.coluna||0)):[]}
 function cursosFicha(f:Record<string,any>){
   const values:string[]=[];
@@ -208,11 +222,15 @@ function construirDraft(l:Linha,r:PrepareResponse,base:EducacensoLookup|null):{d
   const possuiPos:boolean|null=temPosEstruturada?true:temIndicacaoPosEducacenso?true:possuiPosFicha!==null?possuiPosFicha:posRawEdu==='-'?false:null;
   const posGraduacoesBrutas=temPosEstruturada?posEstruturada:temPosEducacenso?posEdu:possuiPos===true?[posVazia()]:[];
   const superioresCheck=limparAnosImplausiveis(superioresBrutos,dataNasc);
-  const posCheck=limparAnosImplausiveis(posGraduacoesBrutas,dataNasc);
-  const superiores=superioresCheck.itens,posGraduacoes=posCheck.itens;
-  const avisoIdade=(superioresCheck.descartados+posCheck.descartados)>0
-    ?`Uma ou mais datas de conclusão foram descartadas automaticamente por serem incompatíveis com a data de nascimento (conclusão antes dos ${IDADE_MINIMA_CONCLUSAO} anos de idade). Confirme manualmente o ano correto antes de enviar.`
-    :'';
+  const posCheckIdade=limparAnosImplausiveis(posGraduacoesBrutas,dataNasc);
+  const posCheckCronologia=limparCronologiaPos(superioresCheck.itens,posCheckIdade.itens);
+  const superiores=superioresCheck.itens,posGraduacoes=posCheckCronologia.pos;
+  const descartesIdade=superioresCheck.descartados+posCheckIdade.descartados;
+  const descartesCronologia=posCheckCronologia.descartados;
+  const avisoIdade=[
+    descartesIdade>0?`Uma ou mais datas de conclusão foram descartadas automaticamente por serem incompatíveis com a data de nascimento (conclusão antes dos ${IDADE_MINIMA_CONCLUSAO} anos de idade).`:'',
+    descartesCronologia>0?'Uma ou mais datas de pós-graduação foram descartadas por virem antes da graduação (ou Doutorado antes do Mestrado) -- ordem cronológica incompatível.':'',
+  ].filter(Boolean).join(' ')+((descartesIdade+descartesCronologia)>0?' Confirme manualmente o ano correto antes de enviar.':'');
   const etnia=txt(f.etniaReferencia||p.etnia),sexoEdu=inOptions(educacenso?.sexo,SEXOS),corEdu=mapCorRaca(educacenso?.cor_raca_oficial),nacionalidadeEdu=inOptions(educacenso?.nacionalidade_oficial,NACIONALIDADES),grauEdu=inOptions(educacenso?.grau_formacao_oficial,GRAUS);
   const grauLocal=superiores.some(c=>c.curso)?'Ensino Superior':norm(f.ensinoMedioMagisterio).includes('MAGISTERIO')?'Magistério':'';
   const draft:Draft={

@@ -54,6 +54,7 @@ const checks = [
   ['pós estruturada exige tipo e área oficiais batendo com o formulário', /resolvePosEstruturada[\s\S]{0,300}?inOptions\(first\(x\.tipo_oficial,x\.tipo\),TIPOS_POS\)/.test(page) && /resolvePosEstruturada[\s\S]{0,300}?inOptions\(txt\(x\.area_oficial\),areasPos\)/.test(page) && /resolvePosEstruturada[\s\S]{0,300}?if\(!tipo\|\|!area\)return null/.test(page)],
   ['data de conclusão implausível pela idade é descartada, não adivinhada', page.includes('IDADE_MINIMA_CONCLUSAO') && page.includes('anoConclusaoPlausivel') && page.includes('limparAnosImplausiveis') && page.includes("return Number(ano)>=anoNasc+IDADE_MINIMA_CONCLUSAO")],
   ['aviso de idade implausível chega à tela de conferência', page.includes('avisoIdade') && page.includes('incompatíveis com a data de nascimento')],
+  ['pós antes da graduação (ou doutorado antes do mestrado) é descartada', page.includes('limparCronologiaPos') && page.includes("anoP<anoGradMin") && page.includes("p.tipo==='Doutorado'&&Number.isFinite(anoMestrado)&&anoP<anoMestrado")],
   ['fora da frequência considera apenas servidor ativo', page.includes('s=>s.ativo&&ehDocente(s.cargo)')],
   ['ano de conclusão da ficha é aproveitado', page.includes('anosFicha') && page.includes('anoConclusao')],
   ['UF nascimento não é presumida sem fonte', page.includes('UF de nascimento não existe na relação atual do Educacenso nem na ficha cadastrada')],
