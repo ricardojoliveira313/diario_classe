@@ -2,6 +2,7 @@ import fs from 'node:fs';
 
 const page = fs.readFileSync(new URL('../src/pages/EducacensoDocentes.tsx', import.meta.url), 'utf8');
 const edge = fs.readFileSync(new URL('../../supabase/functions/censo-oficial-bridge/index.ts', import.meta.url), 'utf8');
+const statusEdge = fs.readFileSync(new URL('../../supabase/functions/censo-status-envios/index.ts', import.meta.url), 'utf8');
 const educacensoEdge = fs.readFileSync(new URL('../../supabase/functions/censo-educacenso-base/index.ts', import.meta.url), 'utf8');
 const submitGuard = fs.readFileSync(new URL('../../supabase/functions/censo-submit-guard/index.ts', import.meta.url), 'utf8');
 const pendingScript = fs.readFileSync(new URL('../public/censo-pendencias.js', import.meta.url), 'utf8');
@@ -36,6 +37,8 @@ const checks = [
   ['lote aplica declaração global sem deficiência confirmada pelo responsável', page.includes("deficiencias:['Não possuo deficiência']")],
   ['lote prepara antes de enviar e retém pendências', page.includes("bridge({action:'prepare',rf,competencia})") && page.includes("bridge({action:'submit',dados:pronto,competencia") && page.includes("status:'pendente'")],
   ['lote não repete automaticamente falha de envio', page.includes('O sistema não repetirá este envio automaticamente.')],
+  ['RF já preenchido é reconciliado automaticamente no log', edge.includes('reconcileOfficialFilled') && edge.includes('official?.jaPreenchido===true') && edge.includes('reconciliacao_oficial:true')],
+  ['status distingue confirmação da Secretaria de envio local', statusEdge.includes('confirmadoSecretaria') && page.includes('CONFIRMADO PELA SECRETARIA') && page.includes('confirmação oficial; o formulário não devolveu o comprovante original')],
   ['envio oficial passa pelo guard sem bloqueio acadêmico', page.includes("body.action==='submit'?'censo-submit-guard':'censo-oficial-bridge'") && !submitGuard.includes('const faltam=camposObrigatoriosFaltantes') && !edge.includes('const problems=required(d,opcoes)')],
   ['planilha mestre é consultada por RF', edge.includes('CensoDocenteMestre?ano=eq.2026&rf=eq.') && edge.includes('mestreRows')],
   ['planilha mestre é a fonte prioritária do rascunho', page.includes('cursosMestre') && page.includes('posMestre') && page.includes('Banco Mestre Censo Docentes 2026 + complemento Educacenso')],
