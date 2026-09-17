@@ -141,19 +141,6 @@ function cursosFicha(f:Record<string,any>){
   return uniq(values).slice(0,3);
 }
 function anosFicha(f:Record<string,any>){return academicoEntries(f).filter((e:any)=>norm(e?.campo).includes('TERMINO DO CURSO')).map((e:any)=>anoConclusao(e?.valor)).filter(Boolean)}
-function anosPosFicha(f:Record<string,any>){
-  const porColuna=new Map<number,string>();
-  for(const e of academicoEntries(f)){
-    const coluna=Number(e?.coluna||0);
-    if([37,43,45].includes(coluna))porColuna.set(coluna,anoConclusao(e?.valor));
-  }
-  return[37,43,45].map(coluna=>porColuna.get(coluna)||'');
-}
-function preencherAnosPos(rows:PosGraduacao[],f:Record<string,any>){
-  const anos=anosPosFicha(f),conhecidos=anos.filter(Boolean);
-  if(rows.length===1&&conhecidos.length===1)return rows.map(p=>({...p,ano:p.ano||conhecidos[0]}));
-  return rows.map((p,i)=>({...p,ano:p.ano||anos[i]||''}));
-}
 function resolveGraduacao(raw:string,opcoes:OpcoesOficiais){
   const matches=opcoes.graduacao.filter(x=>norm(x.curso)===norm(raw));
   const combos=uniq(matches.map(x=>`${txt(x.tipo)}|||${txt(x.area)}|||${txt(x.curso)}`));
@@ -190,8 +177,7 @@ function montarSuperiores(r:PrepareResponse){
       return{...cursoSuperiorVazio(),tipo:grad?.tipo||inOptions(first(x.tipo_oficial,x.tipo),TIPOS_SUPERIOR),area:grad?.area||'',curso:grad?.curso||'',ano:anoConclusao(x.termino),ufInstituicao:ufSigla(x.uf_instituicao)||inst?.ufInstituicao||'',categoriaOrg:first(x.categoria_org,inst?.categoriaOrg),instituicao:first(inst?.instituicao,x.instituicao_oficial),entregue:x.copia_entregue_ue===true};
     });
   }
-  const cursos=cursosFicha(f),universidades=Array.isArray(f.universidades)?f.universidades.map(txt).filter(Boolean):[],anos=anosFicha(f);
-  return cursos.map((raw,i)=>{const grad=resolveGraduacao(raw,opcoes);const inst=resolveInstituicao(universidades[i]||universidades[0]||'',opcoes);return{...cursoSuperiorVazio(),tipo:grad?.tipo||'',area:grad?.area||'',curso:grad?.curso||'',ano:anos[i]||'',...(inst||{})}});
+  return cursosFicha(f).map(raw=>{const grad=resolveGraduacao(raw,opcoes);return{...cursoSuperiorVazio(),tipo:grad?.tipo||'',area:grad?.area||'',curso:grad?.curso||''}});
 }
 function resolvePosEstruturada(x:Record<string,any>,areasPos:readonly string[]){
   const tipo=inOptions(first(x.tipo_oficial,x.tipo),TIPOS_POS);
@@ -207,7 +193,9 @@ function montarPosEstruturada(r:PrepareResponse,areasPos:readonly string[]):PosG
 }
 function referenciaFicha(r:PrepareResponse):ReferenciaFicha|null{
   const f=r.local?.ficha?.dados||{};if(!Object.keys(f).length)return null;
-  return{formacoes:cursosFicha(f),universidades:Array.isArray(f.universidades)?f.universidades.map(txt).filter(Boolean):[],anos:anosFicha(f),ensinoMedio:txt(f.ensinoMedioMagisterio),fonteData:txt(r.local?.ficha?.fonte_timestamp)};
+  const formacoes=cursosFicha(f),universidades=Array.isArray(f.universidades)?f.universidades.map(txt).filter(Boolean):[],anos=anosFicha(f),ensinoMedio=txt(f.ensinoMedioMagisterio);
+  if(!formacoes.length&&!universidades.length&&!anos.length&&!ensinoMedio)return null;
+  return{formacoes,universidades,anos,ensinoMedio,fonteData:txt(r.local?.ficha?.fonte_timestamp)};
 }
 function construirDraft(l:Linha,r:PrepareResponse,base:EducacensoLookup|null):{draft:Draft;avisoIdade:string}{
   const educacenso=base?.registro||null;
@@ -216,7 +204,7 @@ function construirDraft(l:Linha,r:PrepareResponse,base:EducacensoLookup|null):{d
   const dataNasc=first(official.dataNascimento,educacenso?.data_nascimento,f.dataNascimento,p.data_nascimento);
   const areasPosOficiais=uniq((r.opcoesOficiais?.pos||[]).map(x=>x.area));const areasPos=areasPosOficiais.length?areasPosOficiais:[...AREAS_POS];
   const posEstruturada=montarPosEstruturada(r,areasPos);const temPosEstruturada=posEstruturada.length>0;
-  const posEdu=preencherAnosPos(parsePosEducacenso(educacenso?.pos_graduacao_raw,areasPos),f);
+  const posEdu=parsePosEducacenso(educacenso?.pos_graduacao_raw,areasPos);
   const posRawEdu=txt(educacenso?.pos_graduacao_raw),temPosEducacenso=posEdu.length>0,temIndicacaoPosEducacenso=!!posRawEdu&&posRawEdu!=='-';
   const possuiPosFicha=base?.possuiPosFicha??(norm(f.posPossui)==='SIM'?true:norm(f.posPossui)==='NAO'?false:null);
   const possuiPos:boolean|null=temPosEstruturada?true:temIndicacaoPosEducacenso?true:possuiPosFicha!==null?possuiPosFicha:posRawEdu==='-'?false:null;
@@ -301,7 +289,7 @@ export default function EducacensoDocentes(){
   const toggleCursoEspecifico=(value:string)=>{if(!draft)return;let next=draft.cursosEspecificos.includes(value)?draft.cursosEspecificos.filter(x=>x!==value):[...draft.cursosEspecificos,value];if(value==='Nenhum'&&!draft.cursosEspecificos.includes(value))next=['Nenhum'];if(value!=='Nenhum')next=next.filter(x=>x!=='Nenhum');patch('cursosEspecificos',next)};
   const atualizarCurso=(i:number,novo:Partial<CursoSuperior>)=>{if(!draft)return;patch('cursosSuperiores',draft.cursosSuperiores.map((c,idx)=>idx===i?({...c,...novo}):c))};
   const atualizarPos=(i:number,novo:Partial<PosGraduacao>)=>{if(!draft)return;patch('posGraduacoes',draft.posGraduacoes.map((c,idx)=>idx===i?({...c,...novo}):c))};
-  const validarDraft=()=>{if(!draft)return['Cadastro não preparado'];const faltam:string[]=[];if(draft.unidadeEscolar!==SCHOOL)faltam.push('Unidade Escolar');if(!draft.modalidade)faltam.push('Modalidade');if(dig(draft.cpf).length!==11)faltam.push('CPF');if(!draft.dataNasc)faltam.push('Data Nasc.');if(!draft.email)faltam.push('E-mail');if(!draft.grauFormacao)faltam.push('Grau de Formação');if(typeof draft.possuiPos!=='boolean')faltam.push('Situação da Pós-Graduação');if(draft.possuiPos===true){if(!draft.posGraduacoes.length)faltam.push('Pós-Graduação');draft.posGraduacoes.forEach((p,i)=>{if(!p.tipo)faltam.push(`Tipo da ${i+1}ª Pós`);if(!p.area)faltam.push(`Área da ${i+1}ª Pós`);if(!/^\d{4}$/.test(p.ano))faltam.push(`Ano da ${i+1}ª Pós`)})}return [...new Set(faltam)]};
+  const validarDraft=()=>{if(!draft)return['Cadastro não preparado'];const faltam:string[]=[];if(draft.unidadeEscolar!==SCHOOL)faltam.push('Unidade Escolar');if(!draft.modalidade)faltam.push('Modalidade');if(dig(draft.cpf).length!==11)faltam.push('CPF');if(!draft.dataNasc)faltam.push('Data Nasc.');if(!draft.email)faltam.push('E-mail');if(!draft.grauFormacao)faltam.push('Grau de Formação');const cursosInformados=draft.cursosSuperiores.filter(c=>txt(c.tipo)||txt(c.area)||txt(c.curso)||txt(c.ano)||txt(c.ufInstituicao)||txt(c.categoriaOrg)||txt(c.instituicao));if(draft.grauFormacao==='Ensino Superior'&&!cursosInformados.length)faltam.push('Curso Superior');cursosInformados.forEach((c,i)=>{if(!c.tipo)faltam.push(`Tipo do ${i+1}º curso`);if(!c.area)faltam.push(`Área do ${i+1}º curso`);if(!c.curso)faltam.push(`Curso do ${i+1}º curso`)});if(typeof draft.possuiPos!=='boolean')faltam.push('Situação da Pós-Graduação');if(draft.possuiPos===true){if(!draft.posGraduacoes.length)faltam.push('Pós-Graduação');draft.posGraduacoes.forEach((p,i)=>{if(!p.tipo)faltam.push(`Tipo da ${i+1}ª Pós`);if(!p.area)faltam.push(`Área da ${i+1}ª Pós`);if(!/^\d{4}$/.test(p.ano))faltam.push(`Ano da ${i+1}ª Pós`)})}return [...new Set(faltam)]};
   const enviarDireto=async()=>{if(!draft||!linhaEmEdicao||!competencia)return;const faltam=validarDraft();if(faltam.length){setAviso(`Antes de enviar, revise: ${faltam.join(', ')}.`);return}if(!confirmacao){setAviso('Marque a declaração de conferência antes do envio oficial.');return}setEnviando(true);setAviso('');setResultado(null);try{const data=await bridge({action:'submit',dados:draft,competencia,confirmacaoFinal:true,requestId:crypto.randomUUID()});setResultado(data.result??data);await carregarEnvios();setConfirmacao(false);setAviso('Envio concluído pelo canal direto. O retorno oficial foi registrado para auditoria.')}catch(e:any){setAviso(e?.message||'Falha no envio. Nada deve ser reenviado sem conferir o aviso.')}finally{setEnviando(false)}};
 
   if(loading)return<Loading/>;
@@ -326,12 +314,12 @@ export default function EducacensoDocentes(){
       <div style={{marginTop:11,padding:10,borderRadius:8,background:`${theme.warning}0F`,border:`1px solid ${theme.warning}55`,color:theme.textSecondary,fontSize:11.5,lineHeight:1.5}}><strong style={{color:theme.text}}>Conferência humana:</strong> dados de Educacenso e ficha são pré-preenchimentos para conferência; qualquer divergência pode ser corrigida antes do envio.</div>
       {fonteEducacenso&&<div style={{marginTop:8,padding:10,borderRadius:8,background:`${theme.success}0F`,border:`1px solid ${theme.success}55`,color:theme.textSecondary,fontSize:11.5,lineHeight:1.5}}><strong style={{color:theme.success}}>✓ Base Educacenso aplicada:</strong> Sexo, Cor/Raça, Nacionalidade, Grau de Formação e cursos de 80h são aproveitados quando presentes na fotografia de {formatDataBR(fonteEducacenso.referenciaData)}. A pós-graduação é preenchida automaticamente quando existe registro estruturado validado (Tipo/Área/Ano) na base acadêmica, ou quando a fotografia do Educacenso já traz Tipo e Área oficiais; nos demais casos, fica em branco para conferência manual.</div>}
       {avisoConsolidacao&&<div style={{marginTop:8,padding:10,borderRadius:8,background:`${theme.warning}0F`,border:`1px solid ${theme.warning}66`,color:theme.textSecondary,fontSize:11.5,lineHeight:1.5}}><strong style={{color:theme.warning}}>⚠ Conferência necessária:</strong> {avisoConsolidacao}</div>}
-      {refFicha&&<div style={{marginTop:8,padding:10,borderRadius:8,background:'var(--ghost-bg)',border:`1px solid ${theme.border}`,color:theme.textSecondary,fontSize:11.5,lineHeight:1.5}}><strong style={{color:theme.text}}>✓ Ficha cadastral aplicada:</strong> formação, instituição e ano de conclusão são associados às listas oficiais quando há correspondência segura.{refFicha.formacoes.length?<> Formação registrada: <strong>{refFicha.formacoes.join(' · ')}</strong>.</>:null}{refFicha.universidades.length?<> Instituição(ões): <strong>{refFicha.universidades.join(' · ')}</strong>.</>:null}{refFicha.anos.length?<> Ano(s) encontrado(s): <strong>{refFicha.anos.join(' · ')}</strong>.</>:null}</div>}
+      {refFicha&&<div style={{marginTop:8,padding:10,borderRadius:8,background:'var(--ghost-bg)',border:`1px solid ${theme.border}`,color:theme.textSecondary,fontSize:11.5,lineHeight:1.5}}><strong style={{color:theme.text}}>✓ Ficha cadastral acadêmica localizada:</strong> curso é pré-preenchido apenas quando a correspondência com a lista oficial é segura; instituição e ano ficam para conferência quando não pertencem a um registro estruturado validado.{refFicha.formacoes.length?<> Formação registrada: <strong>{refFicha.formacoes.join(' · ')}</strong>.</>:null}{refFicha.universidades.length?<> Instituição(ões) encontradas para conferência: <strong>{refFicha.universidades.join(' · ')}</strong>.</>:null}{refFicha.anos.length?<> Ano(s) encontrados para conferência: <strong>{refFicha.anos.join(' · ')}</strong>.</>:null}</div>}
 
       <h3 style={{color:theme.text,fontSize:14,margin:'16px 0 9px'}}>1. Dados da instituição e pessoais</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:9}}>
         <Field labelText="Unidade Escolar de Preenchimento *" value={draft.unidadeEscolar} readOnly/><div><SelectField labelText="Modalidade *" value={draft.modalidade} onChange={v=>patch('modalidade',v)} options={MODALIDADES}/><div style={{marginTop:4,color:theme.textMuted,fontSize:10}}>Sugestão automática: <strong>{linhaEmEdicao.modalidade||'sem sugestão segura'}</strong>. Selecione para confirmar.</div></div><Field labelText="Nome Completo" value={draft.nome} onChange={v=>patch('nome',v)}/><Field labelText="CPF *" value={draft.cpf} readOnly/><Field labelText="Data Nasc. *" value={draft.dataNasc} onChange={v=>patch('dataNasc',v)} type="date"/><SelectField labelText="Sexo" value={draft.sexo} onChange={v=>patch('sexo',v)} options={SEXOS}/><SelectField labelText="Cor/Raça" value={draft.corRaca} onChange={v=>patch('corRaca',v)} options={CORES_RACAS}/><Field labelText="Telefone/Celular" value={draft.telefone} onChange={v=>patch('telefone',v)}/><Field labelText="E-mail *" value={draft.email} onChange={v=>patch('email',v)} type="email"/><Field labelText="Filiação 1" value={draft.nomeMae} onChange={v=>patch('nomeMae',v)}/><Field labelText="Filiação 2" value={draft.nomePai} onChange={v=>patch('nomePai',v)}/><SelectField labelText="Nacionalidade" value={draft.nacionalidade} onChange={v=>patch('nacionalidade',v)} options={NACIONALIDADES}/>{draft.nacionalidade==='Estrangeiro(a)'&&<Field labelText="País" value={draft.paisEstrangeiro} onChange={v=>patch('paisEstrangeiro',v)}/>}<Field labelText="Naturalidade (Cidade)" value={draft.naturalidade} onChange={v=>patch('naturalidade',v)}/><SelectField labelText="UF Nascimento" value={draft.ufNascimento} onChange={v=>patch('ufNascimento',v)} options={UFS}/>
       </div>
-      {!draft.ufNascimento&&draft.naturalidade&&<div style={{marginTop:7,color:theme.textMuted,fontSize:10.5}}>UF de nascimento não existe na relação atual do Educacenso nem na ficha cadastrada. A naturalidade foi trazida para conferência, mas a UF permanece manual para não ser presumida.</div>}
+      {!draft.ufNascimento&&draft.naturalidade&&<div style={{marginTop:7,color:theme.textMuted,fontSize:10.5}}>Naturalidade localizada nas fontes cruzadas, mas a UF de nascimento não consta de forma explícita nas fontes confiáveis disponíveis. A UF permanece manual para não ser presumida.</div>}
 
       <h3 style={{color:theme.text,fontSize:14,margin:'16px 0 9px'}}>2. Endereço residencial</h3><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:9}}><Field labelText="CEP" value={draft.cep} onChange={v=>patch('cep',v)}/><Field labelText="Rua/Avenida" value={draft.rua} onChange={v=>patch('rua',v)}/><Field labelText="Nº/Complemento" value={draft.numero} onChange={v=>patch('numero',v)}/><Field labelText="Bairro" value={draft.bairro} onChange={v=>patch('bairro',v)}/><Field labelText="Município" value={draft.municipio} onChange={v=>patch('municipio',v)}/><SelectField labelText="UF" value={draft.uf} onChange={v=>patch('uf',v)} options={UFS}/></div>
 
