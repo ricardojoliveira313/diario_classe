@@ -175,6 +175,18 @@ function montarSuperiores(r:PrepareResponse){
   const cursos=cursosFicha(f),universidades=Array.isArray(f.universidades)?f.universidades.map(txt).filter(Boolean):[],anos=anosFicha(f);
   return cursos.map((raw,i)=>{const grad=resolveGraduacao(raw,opcoes);const inst=resolveInstituicao(universidades[i]||universidades[0]||'',opcoes);return{...cursoSuperiorVazio(),tipo:grad?.tipo||'',area:grad?.area||'',curso:grad?.curso||'',ano:anos[i]||'',...(inst||{})}});
 }
+function resolvePosEstruturada(x:Record<string,any>,areasPos:readonly string[]){
+  const tipo=inOptions(first(x.tipo_oficial,x.tipo),TIPOS_POS);
+  const area=inOptions(txt(x.area_oficial),areasPos);
+  if(!tipo||!area)return null;
+  return{...posVazia(),tipo,area,ano:anoConclusao(x.termino),entregue:x.copia_entregue_ue===true};
+}
+function montarPosEstruturada(r:PrepareResponse,areasPos:readonly string[]):PosGraduacao[]{
+  const formacoes=Array.isArray(r.local?.formacoes)?r.local!.formacoes!:[];
+  const posRows=formacoes.filter((x:any)=>ehPosFormacao(x));
+  if(!posRows.length)return[];
+  return posRows.slice(0,6).map((x:any)=>resolvePosEstruturada(x,areasPos)).filter((x):x is PosGraduacao=>!!x);
+}
 function referenciaFicha(r:PrepareResponse):ReferenciaFicha|null{
   const f=r.local?.ficha?.dados||{};if(!Object.keys(f).length)return null;
   return{formacoes:cursosFicha(f),universidades:Array.isArray(f.universidades)?f.universidades.map(txt).filter(Boolean):[],anos:anosFicha(f),ensinoMedio:txt(f.ensinoMedioMagisterio),fonteData:txt(r.local?.ficha?.fonte_timestamp)};
@@ -184,11 +196,12 @@ function construirDraft(l:Linha,r:PrepareResponse,base:EducacensoLookup|null):Dr
   const p=r.local?.profile||{},f=r.local?.ficha?.dados||{},official=r.official||{};
   const endereco=splitEndereco(first(f.endereco,p.endereco));const superiores=montarSuperiores(r);
   const areasPosOficiais=uniq((r.opcoesOficiais?.pos||[]).map(x=>x.area));const areasPos=areasPosOficiais.length?areasPosOficiais:[...AREAS_POS];
+  const posEstruturada=montarPosEstruturada(r,areasPos);const temPosEstruturada=posEstruturada.length>0;
   const posEdu=preencherAnosPos(parsePosEducacenso(educacenso?.pos_graduacao_raw,areasPos),f);
   const posRawEdu=txt(educacenso?.pos_graduacao_raw),temPosEducacenso=posEdu.length>0,temIndicacaoPosEducacenso=!!posRawEdu&&posRawEdu!=='-';
   const possuiPosFicha=base?.possuiPosFicha??(norm(f.posPossui)==='SIM'?true:norm(f.posPossui)==='NAO'?false:null);
-  const possuiPos:boolean|null=temIndicacaoPosEducacenso?true:possuiPosFicha!==null?possuiPosFicha:posRawEdu==='-'?false:null;
-  const posGraduacoes=temPosEducacenso?posEdu:possuiPos===true?[posVazia()]:[];
+  const possuiPos:boolean|null=temPosEstruturada?true:temIndicacaoPosEducacenso?true:possuiPosFicha!==null?possuiPosFicha:posRawEdu==='-'?false:null;
+  const posGraduacoes=temPosEstruturada?posEstruturada:temPosEducacenso?posEdu:possuiPos===true?[posVazia()]:[];
   const etnia=txt(f.etniaReferencia||p.etnia),sexoEdu=inOptions(educacenso?.sexo,SEXOS),corEdu=mapCorRaca(educacenso?.cor_raca_oficial),nacionalidadeEdu=inOptions(educacenso?.nacionalidade_oficial,NACIONALIDADES),grauEdu=inOptions(educacenso?.grau_formacao_oficial,GRAUS);
   const grauLocal=superiores.some(c=>c.curso)?'Ensino Superior':norm(f.ensinoMedioMagisterio).includes('MAGISTERIO')?'Magistério':'';
   return{
@@ -281,7 +294,7 @@ export default function EducacensoDocentes(){
     {draft&&linhaEmEdicao&&<section id="censo-direto-editor" style={{marginTop:16,background:theme.card,border:`2px solid ${theme.primaryText}`,borderRadius:theme.radiusMd,boxShadow:theme.shadow,padding:17}}>
       <div style={{display:'flex',justifyContent:'space-between',gap:10,flexWrap:'wrap'}}><div><h2 style={{margin:0,color:theme.text,fontSize:19}}>Conferência oficial — {draft.nome}</h2><div style={{marginTop:5,color:theme.textSecondary,fontSize:11.5}}>RF <strong>{formatRf(draft.rf)}</strong> · CPF {maskCpf(draft.cpf)} · fonte local: {fonteMatch||'consolidada'}{fonteEducacenso&&<> · <strong style={{color:theme.success}}>Educacenso {formatDataBR(fonteEducacenso.referenciaData)} ({fonteEducacenso.match.toUpperCase()})</strong></>}</div></div><button style={btn('ghost',{small:true})} onClick={()=>{setDraft(null);setLinhaEmEdicao(null);setResultado(null);setFonteEducacenso(null);setRefFicha(null);setAvisoConsolidacao('')}}>Fechar</button></div>
       <div style={{marginTop:11,padding:10,borderRadius:8,background:`${theme.warning}0F`,border:`1px solid ${theme.warning}55`,color:theme.textSecondary,fontSize:11.5,lineHeight:1.5}}><strong style={{color:theme.text}}>Conferência humana:</strong> dados de Educacenso e ficha são pré-preenchimentos para conferência; qualquer divergência pode ser corrigida antes do envio.</div>
-      {fonteEducacenso&&<div style={{marginTop:8,padding:10,borderRadius:8,background:`${theme.success}0F`,border:`1px solid ${theme.success}55`,color:theme.textSecondary,fontSize:11.5,lineHeight:1.5}}><strong style={{color:theme.success}}>✓ Base Educacenso aplicada:</strong> Sexo, Cor/Raça, Nacionalidade, Grau de Formação e cursos de 80h são aproveitados quando presentes na fotografia de {formatDataBR(fonteEducacenso.referenciaData)}. A pós-graduação só é preenchida automaticamente quando essa fotografia traz Tipo e Área oficiais.</div>}
+      {fonteEducacenso&&<div style={{marginTop:8,padding:10,borderRadius:8,background:`${theme.success}0F`,border:`1px solid ${theme.success}55`,color:theme.textSecondary,fontSize:11.5,lineHeight:1.5}}><strong style={{color:theme.success}}>✓ Base Educacenso aplicada:</strong> Sexo, Cor/Raça, Nacionalidade, Grau de Formação e cursos de 80h são aproveitados quando presentes na fotografia de {formatDataBR(fonteEducacenso.referenciaData)}. A pós-graduação é preenchida automaticamente quando existe registro estruturado validado (Tipo/Área/Ano) na base acadêmica, ou quando a fotografia do Educacenso já traz Tipo e Área oficiais; nos demais casos, fica em branco para conferência manual.</div>}
       {avisoConsolidacao&&<div style={{marginTop:8,padding:10,borderRadius:8,background:`${theme.warning}0F`,border:`1px solid ${theme.warning}66`,color:theme.textSecondary,fontSize:11.5,lineHeight:1.5}}><strong style={{color:theme.warning}}>⚠ Conferência necessária:</strong> {avisoConsolidacao}</div>}
       {refFicha&&<div style={{marginTop:8,padding:10,borderRadius:8,background:'var(--ghost-bg)',border:`1px solid ${theme.border}`,color:theme.textSecondary,fontSize:11.5,lineHeight:1.5}}><strong style={{color:theme.text}}>✓ Ficha cadastral aplicada:</strong> formação, instituição e ano de conclusão são associados às listas oficiais quando há correspondência segura.{refFicha.formacoes.length?<> Formação registrada: <strong>{refFicha.formacoes.join(' · ')}</strong>.</>:null}{refFicha.universidades.length?<> Instituição(ões): <strong>{refFicha.universidades.join(' · ')}</strong>.</>:null}{refFicha.anos.length?<> Ano(s) encontrado(s): <strong>{refFicha.anos.join(' · ')}</strong>.</>:null}</div>}
 
