@@ -37,8 +37,8 @@ const checks = [
   ['lote aplica declaração global sem deficiência confirmada pelo responsável', page.includes("deficiencias:['Não possuo deficiência']")],
   ['lote prepara antes de enviar e retém pendências', page.includes("bridge({action:'prepare',rf,competencia})") && page.includes("bridge({action:'submit',dados:pronto,competencia") && page.includes("status:'pendente'")],
   ['lote não repete automaticamente falha de envio', page.includes('O sistema não repetirá este envio automaticamente.')],
-  ['RF já preenchido é reconciliado automaticamente no log', edge.includes('reconcileOfficialFilled') && edge.includes('official?.jaPreenchido===true') && edge.includes('reconciliacao_oficial:true')],
-  ['status distingue confirmação da Secretaria de envio local', statusEdge.includes('confirmadoSecretaria') && page.includes('CONFIRMADO PELA SECRETARIA') && page.includes('confirmação oficial; o formulário não devolveu o comprovante original')],
+  ['RF já preenchido é registrado sem ser tratado como envio validado', edge.includes('reconcileOfficialFilled') && edge.includes('official?.jaPreenchido===true') && edge.includes("'confirmado_secretaria'") && edge.includes('conteudo_validado:false')],
+  ['status distingue envio comprovado, cadastro existente e revisão necessária', statusEdge.includes('revisao_necessaria') && statusEdge.includes('confirmado_secretaria') && page.includes('REVISÃO NECESSÁRIA') && page.includes('CONTEÚDO NÃO VALIDADO')],
   ['envio oficial passa pelo guard sem bloqueio acadêmico', page.includes("body.action==='submit'?'censo-submit-guard':'censo-oficial-bridge'") && !submitGuard.includes('const faltam=camposObrigatoriosFaltantes') && !edge.includes('const problems=required(d,opcoes)')],
   ['planilha mestre é consultada por RF', edge.includes('CensoDocenteMestre?ano=eq.2026&rf=eq.') && edge.includes('mestreRows')],
   ['planilha mestre é a fonte prioritária do rascunho', page.includes('cursosMestre') && page.includes('posMestre') && page.includes('Banco Mestre Censo Docentes 2026 + complemento Educacenso')],
@@ -80,3 +80,4 @@ const checks = [
 const failed = checks.filter(([, ok]) => !ok);
 for (const [name, ok] of checks) console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}`);
 if (failed.length) process.exit(1);
+
