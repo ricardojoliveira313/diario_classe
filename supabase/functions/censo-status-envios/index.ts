@@ -85,7 +85,7 @@ Deno.serve(async (req: Request) => {
     if (body?.action !== 'list') return json(req, { ok: false, erro: 'Ação não suportada.' }, 400);
 
     const inicio = '2026-01-01T00:00:00.000Z';
-    const rows = await rest(`CensoEnvioLog?status=eq.enviado&criado_em=gte.${encodeURIComponent(inicio)}&select=rf,modalidade,status,criado_em,resposta&order=criado_em.desc&limit=500`) as any[];
+    const rows = await rest(`CensoEnvioLog?status=in.(enviado,confirmado_secretaria,revisao_necessaria)&criado_em=gte.${encodeURIComponent(inicio)}&select=rf,modalidade,status,criado_em,resposta&order=criado_em.desc&limit=500`) as any[];
     const latest = new Map<string, any>();
     for (const row of Array.isArray(rows) ? rows : []) {
       const rf = dig(row?.rf);
@@ -95,11 +95,13 @@ Deno.serve(async (req: Request) => {
       latest.set(key, {
         rf,
         modalidade,
-        status: 'enviado',
+        status: String(row?.status || 'enviado'),
         criadoEm: String(row?.criado_em || ''),
         comprovanteUrl: comprovanteUrl(row?.resposta),
         confirmadoSecretaria: Boolean(row?.resposta?.reconciliacao_oficial),
         confirmacaoMensagem: String(row?.resposta?.mensagem || ''),
+        conteudoValidado: Boolean(row?.resposta?.conteudo_validado),
+        motivoRevisao: String(row?.resposta?.motivo_revisao || ''),
       });
     }
 
