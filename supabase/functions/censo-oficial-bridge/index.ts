@@ -2,17 +2,6 @@ const DEPLOYMENT_ID = 'AKfycbxRAI9YowrLP1ffKAV7URQaXWPKaOOV3dqDbxVouD7Q4Jq-lRFJD
 const OFFICIAL_BASE = `https://script.google.com/macros/s/${DEPLOYMENT_ID}`;
 const SCHOOL = 'EMEIEF LUIZ GONZAGA';
 
-const MODALIDADES = new Set(['Educação Infantil','Ensino Fundamental Regular','Educação Básica I','Educação Básica II','Educação Física','Arte – Regular','EJA I','EJA II – Arte','EJA II – História','EJA II – Geografia','EJA II – Língua Portuguesa','EJA II – Matemática','EJA II – Ciências','EJA II – Inglês']);
-const SEXOS = new Set(['Feminino','Masculino','Não declarado']);
-const CORES_RACAS = new Set(['Branca','Preta','Parda','Amarela','Indígena','Não declarada']);
-const NACIONALIDADES = new Set(['Brasileiro(a)','Estrangeiro(a)']);
-const GRAUS = new Set(['Magistério','Ensino Superior']);
-const TIPOS_SUPERIOR = new Set(['Bacharelado','Licenciatura','Sequencial/Curta Duração','Tecnológico']);
-const UFS = new Set(['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO']);
-const TIPOS_POS = new Set(['Especialização','Mestrado','Doutorado']);
-const DEFICIENCIAS = new Set(['Baixa Visão','Cegueira','Surdez','Surdocegueira','Deficiência Auditiva','Deficiência Física','Deficiência Intelectual','Deficiência Múltipla','TEA','Visão Monocular','Altas Habilidades / Superdotação','Não possuo deficiência']);
-const CURSOS_ESPECIFICOS = new Set(['Creche (0 a 3 anos)','Pré-escola (4 e 5 anos)','Alfabetização','Anos iniciais do ensino fundamental','Anos finais do ensino fundamental','Ensino médio','Educação de jovens e adultos','Educação especial','Educação indígena','Educação do campo','Educação ambiental','Educação em direitos humanos','Educação bilíngue de surdos','Educação e Tecnologia de Informação e Comunicação (TIC)','Educação integral em tempo integral','Gênero e diversidade sexual','Direitos da criança e do adolescente','Educação para as relações étnico-raciais e história e cultura afro-brasileira e africana','Gestão escolar','Outros','Nenhum']);
-
 const GRADUACAO_FALLBACK = [
   {tipo:'Licenciatura',area:'Educação',curso:'Pedagogia'},
   {tipo:'Bacharelado',area:'',curso:''},
@@ -156,6 +145,8 @@ function removerAcademicoInseguro(dados:any){
   copia._academico_bloqueado='identidade divergente entre ficha histórica e cadastro oficial';return copia;
 }
 async function localSources(rf:string,official:any){
+  const mestreRows=await rest(`CensoDocenteMestre?ano=eq.2026&rf=eq.${encodeURIComponent(dig(rf))}&select=ano,rf,nome,fonte_arquivo,fonte_timestamp,dados&limit=1`) as any[];
+  const mestre=Array.isArray(mestreRows)?mestreRows[0]||null:null;
   const all=await profiles();
   let profile=latest(all.filter(p=>official?.cpf&&dig(p.cpf)===dig(official.cpf)&&perfilCompativel(p,official))),profileMatch=profile?'cpf':'';
   if(!profile){profile=latest(all.filter(p=>dig(p.registro_funcional_rf)===dig(rf)&&perfilCompativel(p,official)));if(profile)profileMatch='rf'}
@@ -183,42 +174,7 @@ async function localSources(rf:string,official:any){
   }
   let formacoes:any[]=[];if(profile?.id){const f=await rest(`formacoes?profile_id=eq.${encodeURIComponent(profile.id)}&status_validacao=in.(validado,importado_confiavel)&select=tipo,curso,universidade,rede_ensino,modalidade,inicio,termino,tipo_oficial,area_oficial,curso_oficial,instituicao_oficial,uf_instituicao,categoria_org,copia_entregue_ue,status_validacao&order=created_at.asc`) as any[];formacoes=Array.isArray(f)?f:[]}
   const fonteCadastro=perfilMaisRecente||(!fichaData&&perfilData)?{tipo:'perfil',data:profile?.updated_at||null}:{tipo:ficha?'ficha':profile?'perfil':'nenhuma',data:ficha?.fonte_timestamp||profile?.updated_at||null};
-  return {profile,profileMatch,ficha,formacoes,fonteCadastro};
-}
-function arraySomentePermitidos(v:unknown,permitidos:Set<string>){return Array.isArray(v)&&v.every(x=>permitidos.has(String(x)))}
-function tupleGradValida(c:any,graduacao:any[]){return graduacao.some((x:any)=>String(x?.tipo||'')===String(c?.tipo||'')&&String(x?.area||'')===String(c?.area||'')&&String(x?.curso||'')===String(c?.curso||''))}
-function instValida(c:any,instituicoes:any[]){if(!String(c?.instituicao||'').trim())return true;return instituicoes.some((x:any)=>String(x?.uf||'')===String(c?.ufInstituicao||'')&&String(x?.nome||'')===String(c?.instituicao||'')&&(String(x?.categoria||x?.org||'')===String(c?.categoriaOrg||'')))}
-function required(d:any,opcoes:{graduacao:any[];instituicoes:any[];pos:any[]}){
-  const p:string[]=[];
-  if(d.unidadeEscolar!==SCHOOL)p.push('Unidade Escolar');
-  if(!MODALIDADES.has(String(d.modalidade||'')))p.push('Modalidade');
-  if(!String(d.cpf||'').trim()||dig(d.cpf).length!==11)p.push('CPF');
-  if(!String(d.dataNasc||'').trim())p.push('Data Nasc.');
-  if(!String(d.email||'').trim())p.push('E-mail');
-  if(!GRAUS.has(String(d.grauFormacao||'')))p.push('Grau de Formação');
-  if(String(d.sexo||'')&&!SEXOS.has(String(d.sexo)))p.push('Sexo inválido');
-  if(String(d.corRaca||'')&&!CORES_RACAS.has(String(d.corRaca)))p.push('Cor/Raça inválida');
-  if(String(d.nacionalidade||'')&&!NACIONALIDADES.has(String(d.nacionalidade)))p.push('Nacionalidade inválida');
-  if(String(d.uf||'')&&!UFS.has(String(d.uf)))p.push('UF inválida');
-  if(String(d.ufNascimento||'')&&!UFS.has(String(d.ufNascimento)))p.push('UF Nascimento inválida');
-  if(Array.isArray(d.deficiencias)&&d.deficiencias.length){if(!arraySomentePermitidos(d.deficiencias,DEFICIENCIAS))p.push('Deficiência inválida');if(d.deficiencias.includes('Não possuo deficiência')&&d.deficiencias.length>1)p.push('Deficiência inconsistente')}
-  if(Array.isArray(d.cursosEspecificos)&&d.cursosEspecificos.length){if(!arraySomentePermitidos(d.cursosEspecificos,CURSOS_ESPECIFICOS))p.push('Curso específico inválido');if(d.cursosEspecificos.includes('Nenhum')&&d.cursosEspecificos.length>1)p.push('Cursos específicos inconsistentes')}
-  const cursos=Array.isArray(d.cursosSuperiores)?d.cursosSuperiores:[];
-  if(cursos.length>3)p.push('Máximo de 3 cursos superiores');
-  const cursosInformados=cursos.filter((c:any)=>String(c?.tipo||c?.area||c?.curso||c?.ano||c?.ufInstituicao||c?.categoriaOrg||c?.instituicao||'').trim());
-  if(String(d.grauFormacao||'')==='Ensino Superior'&&!cursosInformados.length)p.push('Curso Superior');
-  cursosInformados.forEach((c:any,i:number)=>{
-    if(!String(c?.tipo||'').trim())p.push(`Tipo do ${i+1}º curso`);
-    if(!String(c?.area||'').trim())p.push(`Área do ${i+1}º curso`);
-    if(!String(c?.curso||'').trim())p.push(`Curso do ${i+1}º curso`);
-    if(String(c?.tipo||'').trim()&&!TIPOS_SUPERIOR.has(String(c.tipo)))p.push(`Tipo do ${i+1}º curso`);
-    if(String(c?.tipo||'').trim()&&String(c?.area||'').trim()&&String(c?.curso||'').trim()&&opcoes.graduacao.length&&!tupleGradValida(c,opcoes.graduacao))p.push(`Combinação do ${i+1}º curso`);
-    if(String(c?.ufInstituicao||'')&&!UFS.has(String(c.ufInstituicao)))p.push(`UF instituição do ${i+1}º curso`);
-    if(opcoes.instituicoes.length&&!instValida(c,opcoes.instituicoes))p.push(`Instituição do ${i+1}º curso`);
-  });
-  if(typeof d.possuiPos!=='boolean')p.push('Situação da Pós-Graduação');
-  if(Array.isArray(d.posGraduacoes)){if(d.posGraduacoes.length>6)p.push('Máximo de 6 pós-graduações');const areas=new Set(opcoes.pos.map((x:any)=>String(x?.area||'')).filter(Boolean));if(d.possuiPos===true&&!d.posGraduacoes.length)p.push('Pós-Graduação');if(d.possuiPos===false&&d.posGraduacoes.length)p.push('Pós-Graduação inconsistente');d.posGraduacoes.forEach((x:any,i:number)=>{if(d.possuiPos!==true)return;if(!TIPOS_POS.has(String(x?.tipo||'')))p.push(`Tipo da ${i+1}ª pós`);if(!String(x?.area||'').trim()||(areas.size&&!areas.has(String(x.area))))p.push(`Área da ${i+1}ª pós`);if(!/^\d{4}$/.test(String(x?.ano||'')))p.push(`Ano da ${i+1}ª pós`)})}else if(d.possuiPos===true)p.push('Pós-Graduação');
-  return [...new Set(p)];
+  return {profile,profileMatch,ficha,formacoes,fonteCadastro,mestre};
 }
 async function audit(rf:string,nome:string,usuario:string,status:string,resposta:any,modalidade?:string,requestId?:string){try{await rest('CensoEnvioLog',{method:'POST',headers:{'content-type':'application/json','prefer':'return=minimal'},body:JSON.stringify({rf:dig(rf),nome:String(nome||'').slice(0,200),usuario,status,resposta,modalidade:modalidade||null,request_id:/^[0-9a-f-]{36}$/i.test(String(requestId||''))?requestId:null})})}catch{}}
 async function duplicate(rf:string,modalidade:string){const since=new Date(Date.now()-5*60*1000).toISOString();const rows=await rest(`CensoEnvioLog?rf=eq.${encodeURIComponent(dig(rf))}&modalidade=eq.${encodeURIComponent(modalidade)}&status=eq.enviado&criado_em=gte.${encodeURIComponent(since)}&select=id&limit=1`) as any[];return Array.isArray(rows)&&rows.length>0}
@@ -237,7 +193,7 @@ Deno.serve(async(req)=>{
       const [local,opcoesOficiais]=await Promise.all([localSources(rf,official),officialOptions()]);return json(req,{ok:true,official,attendance:freq,competencia,local,unidadeEscolar:SCHOOL,opcoesOficiais});
     }
     if(action==='submit'){
-      if(body.confirmacaoFinal!==true)return json(req,{ok:false,erro:'A confirmação final é obrigatória.'},400);const d=body.dados||{};const opcoes=await officialOptions();const problems=required(d,opcoes);if(problems.length)return json(req,{ok:false,erro:`Revise os campos: ${problems.join(', ')}.`,campos:problems},400);
+      if(body.confirmacaoFinal!==true)return json(req,{ok:false,erro:'A confirmação final é obrigatória.'},400);const d=body.dados||{};
       const competencia=await resolveCompetencia(body.competencia);if(!competencia)return json(req,{ok:false,erro:'Não há competência de frequência disponível. Nada foi enviado.'},409);const freq=await attendance(d.rf,competencia);if(!freq)return json(req,{ok:false,erro:`RF não consta como vínculo docente na frequência de ${competenciaLabel(competencia)}. Nada foi enviado.`},403);if(body.reenviar!==true&&await duplicate(d.rf,d.modalidade))return json(req,{ok:false,erro:'Este vínculo/modalidade já foi enviado nos últimos 5 minutos. Aguarde antes de reenviar.',duplicado:true},409);
       const official=await officialCall('buscarServidorCenso',[dig(d.rf)]);if(!official?.sucesso)return json(req,{ok:false,erro:'RF deixou de ser reconhecido pelo formulário oficial.'},409);if(norm(official.nome)!==norm(d.nome)||dig(official.cpf)!==dig(d.cpf)){await audit(d.rf,d.nome,session.usuario,'bloqueado_identidade',{motivo:'identidade_divergente'},d.modalidade,body.requestId);return json(req,{ok:false,erro:'Nome/CPF não correspondem ao RF retornado pela Secretaria. Nada foi enviado.'},409)}
       const cursosSuperiores=Array.isArray(d.cursosSuperiores)?d.cursosSuperiores.slice(0,3).filter((c:any)=>c?.tipo||c?.area||c?.curso).map((c:any)=>({tipo:c.tipo||'',area:c.area||'',curso:c.curso||'',instituicao:c.instituicao||'',ano:c.ano||'',entregue:Boolean(c.entregue)})):[];
