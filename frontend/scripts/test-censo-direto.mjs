@@ -62,6 +62,8 @@ const checks = [
   ['pós da planilha é aplicada sem descarte cronológico', page.includes('posMestre(m)') && page.includes('temPosNaPlanilha?{pos:posCheckIdade.itens,descartados:0}')],
   ['modalidade da planilha preenche o rascunho e continua editável', page.includes("modalidade:first(temMestre?m['Modalidade sugerida']:'',l.modalidade,modalidadeSugerida") && page.includes('onChange={v=>patch(\'modalidade\',v)}')],
   ['sem turma segura aparece A conferir e não deduz modalidade genérica', page.includes("'⚠️ A conferir'") && page.includes("{l.modalidade||'A conferir'}") && page.includes("if(!turmas.length&&cargo.includes('EDUCACAO INFANTIL')&&cargo.includes('ENSINO FUNDAMENTAL'))return''")],
+  ['RF é a chave explícita entre frequência e base de professores', page.includes('cruzamentoRfOk:!!encontrado') && page.includes("servidorPorRf.get(dig(freq.rf))") && page.includes('RF da frequência não localizado na base de professores')],
+  ['divergência de nome gera aviso, não bloqueio', page.includes('cruzamentoNomeOk') && page.includes('RF confere, mas o nome diverge entre as bases') && page.includes('disabled={enviando}')],
   ['turma cruza aba Alunos/TurmaProfessor com folha de frequência', page.includes("supabase.from('TurmaProfessor')") && page.includes('function rotuloProfessorCompativel') && page.includes('turmaProfessores,docentesFreq,servidorPorRf')],
   ['abreviação só é aceita quando resolve um único docente ou o período desempata', page.includes('if(candidatos.length===1)') && page.includes('const porPeriodo=candidatos.filter')],
   ['duas professoras na mesma turma e período viram conflito, não atribuição automática', page.includes('if(mesmaTurmaPeriodo.length>1)return false')],
