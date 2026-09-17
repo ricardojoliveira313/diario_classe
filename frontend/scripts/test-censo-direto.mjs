@@ -34,6 +34,8 @@ const checks = [
   ['envio oficial passa pelo guard sem bloqueio acadêmico', page.includes("body.action==='submit'?'censo-submit-guard':'censo-oficial-bridge'") && !submitGuard.includes('const faltam=camposObrigatoriosFaltantes') && !edge.includes('const problems=required(d,opcoes)')],
   ['planilha mestre é consultada por RF', edge.includes('CensoDocenteMestre?ano=eq.2026&rf=eq.') && edge.includes('mestreRows')],
   ['planilha mestre é a fonte prioritária do rascunho', page.includes('cursosMestre') && page.includes('posMestre') && page.includes("temMestre?'Banco Mestre Censo Docentes 2026'")],
+  ['data brasileira da planilha é normalizada para o campo de data', page.includes('function dataIso') && page.includes("const dataNasc=dataIso(first(temMestre?m['Data Nasc.']")],
+  ['valores da planilha continuam visíveis mesmo fora da lista oficial', page.includes("const visiveis=value&&!options.includes(value)?[value,...options]:options")],
   ['proteção contra envio duplicado', /duplicate\(d\.rf,d\.modalidade\)/.test(edge)],
   ['auditoria de envio', edge.includes('CensoEnvioLog') && edge.includes("'enviado'")],
   ['auditoria registra campos censitários sem replicar dados pessoais', edge.includes('dadosCensitariosEnviados') && edge.includes('posGraduacoes:payload.posGraduacoes') && !/dadosCensitariosEnviados=\{[^}]*cpf:/.test(edge)],
