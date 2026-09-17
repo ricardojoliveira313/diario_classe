@@ -10,7 +10,8 @@
     "test:situacoes": "node scripts/test-situacoes.mjs",
     "test:faixa-etaria": "node scripts/test-faixa-etaria.mjs",
     "test:educacenso-corte": "node scripts/test-educacenso-corte.mjs",
-    "test:censo-direto": "node scripts/test-censo-direto.mjs"
+    "test:censo-direto": "node scripts/test-censo-direto.mjs",
+    "test:historico-frequencia": "node scripts/test-historico-frequencia.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.43.4",

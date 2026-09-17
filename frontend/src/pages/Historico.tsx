@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { supabase } from '../api';
-import { btn, input, label, theme, contarDiasLetivosPeriodo, getFeriado, isRecesso, isSabadoLetivo } from '../styles';
+import { btn, input, label, theme, contarDiasLetivosPeriodo } from '../styles';
 
 interface TurmaHistorico {
   nome: string;
@@ -128,6 +128,10 @@ const ESCOLA_PADRAO = 'EMEIEF LUIZ GONZAGA';
 const MUN_PADRAO = 'Santo André';
 const DIRETOR = 'Terezinha Babichaka Squiavoni';
 const CARGO_DIRETOR = 'Diretora de Unidade Escolar';
+const MESES_EXTENSO = [
+  '', 'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
+];
 
 const OBSERVACOES_LEGAIS = [
   'O Sistema Continuado de Ensino, conforme deliberação CEE 9/97, indicação 22/97 das Escolas Municipais de Santo André prevê avaliação contínua, cumulativa e sistemática, através da síntese de desempenho do aluno, elaborado por meio de registro. A verificação do rendimento escolar não prevê notas.',
@@ -253,71 +257,93 @@ interface FaltaPeriodoHistorico {
   ano: number;
   faltas: number | null;
   frequencia: string | null;
+  conferido_sem_faltas: boolean | null;
 }
 
-function emendasDoAno(ano: number): Set<string> {
-  try {
-    const valor = JSON.parse(localStorage.getItem(`emendas-${ano}`) || '[]');
-    return new Set(Array.isArray(valor) ? valor.map(String) : []);
-  } catch {
-    return new Set<string>();
-  }
+interface PendenciaFrequencia {
+  chave: string;
+  label: string;
+  inicio: string;
+  fim: string;
+  diasLetivos: number;
+  motivo: string;
 }
 
-function diasLetivosDoMesHistorico(ano: number, mes: number): number[] {
-  const emendas = emendasDoAno(ano);
-  const totalDias = new Date(ano, mes, 0).getDate();
-  const dias: number[] = [];
-  for (let dia = 1; dia <= totalDias; dia += 1) {
-    const diaSemana = new Date(ano, mes - 1, dia).getDay();
-    const fimDeSemana = diaSemana === 0 || diaSemana === 6;
-    const dataISO = `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
-    const letivo = !getFeriado(ano, mes, dia)
-      && !isRecesso(ano, mes, dia)
-      && !emendas.has(dataISO)
-      && (!fimDeSemana || isSabadoLetivo(ano, mes, dia));
-    if (letivo) dias.push(dia);
-  }
-  return dias;
+interface ResumoFrequenciaPeriodo {
+  diasLetivos: number;
+  ausenciasRegistradas: number;
+  pendencias: PendenciaFrequencia[];
 }
 
-function calcularAusenciasNoPeriodo(
-  registros: FaltaPeriodoHistorico[],
+function isoData(ano: number, mes: number, dia: number): string {
+  return `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+}
+
+function diaAnteriorISO(dataISO: string): string {
+  const data = new Date(`${dataISO}T12:00:00`);
+  data.setDate(data.getDate() - 1);
+  return isoData(data.getFullYear(), data.getMonth() + 1, data.getDate());
+}
+
+function analisarFrequenciaPeriodo(
   inicioISO: string,
   fimISO: string,
-): { ausencias: number; usouFallbackMensal: boolean } {
-  let ausencias = 0;
-  let usouFallbackMensal = false;
+  registros: FaltaPeriodoHistorico[],
+): ResumoFrequenciaPeriodo | null {
+  const diasLetivos = contarDiasLetivosPeriodo(inicioISO, fimISO);
+  if (diasLetivos === null) return null;
 
-  for (const registro of registros) {
-    const ano = Number(registro.ano);
-    const mes = Number(registro.mes);
-    if (!Number.isInteger(ano) || !Number.isInteger(mes) || mes < 1 || mes > 12) continue;
+  const porCompetencia = new Map(registros.map(registro => [
+    `${registro.ano}-${String(registro.mes).padStart(2, '0')}`,
+    registro,
+  ]));
+  const inicio = new Date(`${inicioISO}T12:00:00`);
+  const fim = new Date(`${fimISO}T12:00:00`);
+  const cursor = new Date(inicio.getFullYear(), inicio.getMonth(), 1, 12);
+  let ausenciasRegistradas = 0;
+  const pendencias: PendenciaFrequencia[] = [];
 
-    const ultimoDia = new Date(ano, mes, 0).getDate();
-    const prefixo = `${ano}-${String(mes).padStart(2, '0')}`;
-    const inicioMes = `${prefixo}-01`;
-    const fimMes = `${prefixo}-${String(ultimoDia).padStart(2, '0')}`;
-    if (fimMes < inicioISO || inicioMes > fimISO) continue;
+  while (cursor <= fim) {
+    const ano = cursor.getFullYear();
+    const mes = cursor.getMonth() + 1;
+    const chave = `${ano}-${String(mes).padStart(2, '0')}`;
+    const primeiroDiaMes = isoData(ano, mes, 1);
+    const ultimoDiaMes = isoData(ano, mes, new Date(ano, mes, 0).getDate());
+    const inicioTrecho = inicioISO > primeiroDiaMes ? inicioISO : primeiroDiaMes;
+    const fimTrecho = fimISO < ultimoDiaMes ? fimISO : ultimoDiaMes;
+    const diasTrecho = contarDiasLetivosPeriodo(inicioTrecho, fimTrecho) ?? 0;
+    const registro = porCompetencia.get(chave);
+    const frequencia = String(registro?.frequencia ?? '');
+    const registroConferido = Boolean(
+      registro && (Number(registro.faltas ?? 0) > 0 || registro.conferido_sem_faltas === true),
+    );
 
-    const frequencia = String(registro.frequencia ?? '');
-    if (frequencia.startsWith('DIAS:')) {
-      const estados = frequencia.slice(5).split('');
-      const diasLetivos = diasLetivosDoMesHistorico(ano, mes);
-      diasLetivos.forEach((dia, indice) => {
-        const dataISO = `${prefixo}-${String(dia).padStart(2, '0')}`;
-        if (dataISO < inicioISO || dataISO > fimISO) return;
-        const estado = estados[indice] ?? 'P';
-        if (estado === 'F' || estado === 'J' || estado === 'A') ausencias += 1;
+    if (diasTrecho > 0 && registroConferido && frequencia.startsWith('DIAS:')) {
+      const antesDoTrecho = inicioTrecho === primeiroDiaMes
+        ? 0
+        : (contarDiasLetivosPeriodo(primeiroDiaMes, diaAnteriorISO(inicioTrecho)) ?? 0);
+      const ateOFimDoTrecho = contarDiasLetivosPeriodo(primeiroDiaMes, fimTrecho) ?? 0;
+      const marcacoes = frequencia.slice(5).split('').slice(antesDoTrecho, ateOFimDoTrecho);
+      ausenciasRegistradas += marcacoes.filter(status => status === 'F' || status === 'J' || status === 'A').length;
+    } else if (diasTrecho > 0 && registroConferido && inicioTrecho === primeiroDiaMes && fimTrecho === ultimoDiaMes) {
+      ausenciasRegistradas += Number(registro?.faltas ?? 0);
+    } else if (diasTrecho > 0) {
+      pendencias.push({
+        chave,
+        label: `${MESES_EXTENSO[mes][0].toUpperCase()}${MESES_EXTENSO[mes].slice(1)}/${ano}`,
+        inicio: inicioTrecho,
+        fim: fimTrecho,
+        diasLetivos: diasTrecho,
+        motivo: registro
+          ? 'lançamento ainda não confirmado para este aluno'
+          : 'mês sem lançamento de frequência para este aluno',
       });
-      continue;
     }
 
-    ausencias += Math.max(0, Number(registro.faltas ?? 0) || 0);
-    usouFallbackMensal = true;
+    cursor.setMonth(cursor.getMonth() + 1);
   }
 
-  return { ausencias, usouFallbackMensal };
+  return { diasLetivos, ausenciasRegistradas, pendencias };
 }
 
 function TabelaNotas({ grupo, anexo = false, repetirCabecalho = true }: { grupo: GrupoNotas; anexo?: boolean; repetirCabecalho?: boolean }) {
@@ -377,6 +403,9 @@ export default function Historico() {
   const [transferenciaDataInicio, setTransferenciaDataInicio] = useState('');
   const [transferenciaDataFim, setTransferenciaDataFim] = useState('');
   const [erroCalculoDiasLetivos, setErroCalculoDiasLetivos] = useState<string | null>(null);
+  const [faltasDoAluno, setFaltasDoAluno] = useState<FaltaPeriodoHistorico[]>([]);
+  const [resumoFrequenciaPeriodo, setResumoFrequenciaPeriodo] = useState<ResumoFrequenciaPeriodo | null>(null);
+  const [complementosFrequencia, setComplementosFrequencia] = useState<Record<string, string>>({});
   const [prosseguimentoAno, setProsseguimentoAno] = useState('');
   const [certSerie, setCertSerie] = useState('');
   const [via, setVia] = useState('1ª VIA');
@@ -428,6 +457,12 @@ export default function Historico() {
     setTransferenciaDiasLetivos('');
     setTransferenciaPresencas('');
     setTransferenciaAusencias('');
+    setTransferenciaDataInicio('');
+    setTransferenciaDataFim('');
+    setFaltasDoAluno([]);
+    setResumoFrequenciaPeriodo(null);
+    setComplementosFrequencia({});
+    setErroCalculoDiasLetivos(null);
     setProsseguimentoAno('');
     setDataEmissao(new Date().toLocaleDateString('pt-BR'));
     setCertSerie('');
@@ -436,48 +471,77 @@ export default function Historico() {
   // Calcula os dias letivos de um período exato (ex.: transferência no meio
   // do ano) usando o mesmo calendário oficial da aba Faltas — feriados,
   // recessos e sábados letivos — em vez de exigir contagem manual.
-  const calcularDiasLetivosPeriodo = async () => {
+  const aplicarResumoFrequencia = (
+    resumo: ResumoFrequenciaPeriodo,
+    complementos: Record<string, string>,
+  ) => {
+    const faltantes = resumo.pendencias.filter(
+      pendencia => (complementos[pendencia.chave] ?? '').trim() === '',
+    );
+    if (faltantes.length > 0) {
+      setTransferenciaPresencas('');
+      setTransferenciaAusencias('');
+      return;
+    }
+
+    const complementoTotal = resumo.pendencias.reduce(
+      (total, pendencia) => total + Number(complementos[pendencia.chave] ?? 0),
+      0,
+    );
+    const ausencias = resumo.ausenciasRegistradas + complementoTotal;
+    if (ausencias > resumo.diasLetivos) {
+      setErroCalculoDiasLetivos('As ausências informadas não podem ser maiores que os dias letivos do período.');
+      setTransferenciaPresencas('');
+      setTransferenciaAusencias('');
+      return;
+    }
+    setTransferenciaAusencias(String(ausencias));
+    setTransferenciaPresencas(String(resumo.diasLetivos - ausencias));
+  };
+
+  const calcularDiasLetivosPeriodo = () => {
     setErroCalculoDiasLetivos(null);
     if (!transferenciaDataInicio || !transferenciaDataFim) {
       setErroCalculoDiasLetivos('Informe a data de início e a data de fim do período.');
       return;
     }
-    const total = contarDiasLetivosPeriodo(transferenciaDataInicio, transferenciaDataFim);
-    if (total === null) {
+    const resumo = analisarFrequenciaPeriodo(transferenciaDataInicio, transferenciaDataFim, faltasDoAluno);
+    if (!resumo) {
       setErroCalculoDiasLetivos('Período inválido — confira se a data de fim é depois da data de início.');
       return;
     }
 
-    setTransferenciaDiasLetivos(String(total));
+    setResumoFrequenciaPeriodo(resumo);
+    setTransferenciaDiasLetivos(String(resumo.diasLetivos));
     if (!transferenciaPeriodo.trim()) {
       setTransferenciaPeriodo(`${formatarData(transferenciaDataInicio)} a ${formatarData(transferenciaDataFim)}`);
     }
+    aplicarResumoFrequencia(resumo, complementosFrequencia);
+    setAlteradoSemSalvar(true);
+  };
 
-    if (aluno?.id) {
-      const { data: faltasPeriodo, error: faltasPeriodoError } = await supabase
-        .from('Falta')
-        .select('mes, ano, faltas, frequencia')
-        .eq('alunoId', aluno.id);
+  const atualizarComplementoFrequencia = (pendencia: PendenciaFrequencia, valor: string) => {
+    const somenteDigitos = valor.replace(/\D/g, '');
+    const limitado = somenteDigitos === ''
+      ? ''
+      : String(Math.min(Number(somenteDigitos), pendencia.diasLetivos));
+    const proximos = { ...complementosFrequencia, [pendencia.chave]: limitado };
+    setAlteradoSemSalvar(true);
+    setErroCalculoDiasLetivos(null);
+    setComplementosFrequencia(proximos);
+    if (resumoFrequenciaPeriodo) aplicarResumoFrequencia(resumoFrequenciaPeriodo, proximos);
+  };
 
-      if (faltasPeriodoError) {
-        setErroCalculoDiasLetivos(`Dias letivos calculados, mas não foi possível buscar as faltas: ${faltasPeriodoError.message}`);
-      } else {
-        const { ausencias, usouFallbackMensal } = calcularAusenciasNoPeriodo(
-          (faltasPeriodo ?? []) as FaltaPeriodoHistorico[],
-          transferenciaDataInicio,
-          transferenciaDataFim,
-        );
-        setTransferenciaAusencias(String(ausencias));
-        setTransferenciaPresencas(String(Math.max(0, total - ausencias)));
-        if (usouFallbackMensal) {
-          setAviso('Presenças e ausências foram preenchidas automaticamente. Há registro antigo com total mensal; confira o total antes de imprimir.');
-        }
-      }
-    } else {
-      setTransferenciaAusencias('0');
-      setTransferenciaPresencas(String(total));
-    }
-
+  const alterarDataTransferencia = (campo: 'inicio' | 'fim', valor: string) => {
+    if (campo === 'inicio') setTransferenciaDataInicio(valor);
+    else setTransferenciaDataFim(valor);
+    setResumoFrequenciaPeriodo(null);
+    setComplementosFrequencia({});
+    setTransferenciaPeriodo('');
+    setTransferenciaDiasLetivos('');
+    setTransferenciaPresencas('');
+    setTransferenciaAusencias('');
+    setErroCalculoDiasLetivos(null);
     setAlteradoSemSalvar(true);
   };
 
@@ -568,7 +632,7 @@ export default function Historico() {
       }
 
       const faltasResult = selecionado.id
-        ? await supabase.from('Falta').select('faltas').eq('alunoId', selecionado.id)
+        ? await supabase.from('Falta').select('ano,mes,faltas,frequencia,conferido_sem_faltas').eq('alunoId', selecionado.id)
         : { data: [], error: null };
       if (faltasResult.error) throw new Error(`Não foi possível carregar as faltas: ${faltasResult.error.message}`);
 
@@ -577,6 +641,7 @@ export default function Historico() {
         0,
       );
       const total = primeiraLinha?.total_faltas ?? totalCalculado;
+      setFaltasDoAluno((faltasResult.data ?? []) as FaltaPeriodoHistorico[]);
 
       if (primeiraLinha) {
         setCertNum(primeiraLinha.cert_num ?? '');
@@ -596,6 +661,14 @@ export default function Historico() {
       } else {
         setRaExibicao(String(ra));
       }
+
+      const inicioMatricula = normalizarDataParaBanco(selecionado.data_inicio_matricula) ?? '';
+      const hoje = new Date();
+      const hojeISO = isoData(hoje.getFullYear(), hoje.getMonth() + 1, hoje.getDate());
+      const fimMatricula = normalizarDataParaBanco(selecionado.data_fim_matricula);
+      const alunoEncerrado = Boolean(selecionado.situacao && selecionado.situacao !== 'ATIVO');
+      setTransferenciaDataInicio(inicioMatricula);
+      setTransferenciaDataFim(alunoEncerrado && fimMatricula ? fimMatricula : hojeISO);
 
       const cicloAtual = detectarCiclo(selecionado.Turma?.nome ?? '');
       const anoMatricula = extrairAno(selecionado.data_inicio_matricula);
@@ -848,6 +921,13 @@ export default function Historico() {
     if (!aluno) return false;
     if (!Number.isInteger(aluno.ra) || aluno.ra <= 0) {
       setErro('Informe um RA válido antes de salvar ou imprimir.');
+      return false;
+    }
+    const pendenciasNaoConferidas = resumoFrequenciaPeriodo?.pendencias.filter(
+      pendencia => (complementosFrequencia[pendencia.chave] ?? '').trim() === '',
+    ) ?? [];
+    if (pendenciasNaoConferidas.length > 0) {
+      setErro(`Confira as ausências pendentes de ${pendenciasNaoConferidas.map(item => item.label).join(' e ')} antes de salvar ou imprimir.`);
       return false;
     }
     setSalvando(true);
@@ -1364,11 +1444,11 @@ export default function Historico() {
                 <div className="nao-imprimir" style={{ display: 'flex', alignItems: 'flex-end', gap: 10, flexWrap: 'wrap', marginBottom: 8, padding: '10px 12px', background: 'var(--ghost-bg)', borderRadius: theme.radius }}>
                   <div>
                     <label style={label} htmlFor="transf-data-inicio">Início do período</label>
-                    <input id="transf-data-inicio" type="date" style={input} value={transferenciaDataInicio} onChange={event => setTransferenciaDataInicio(event.target.value)} />
+                    <input id="transf-data-inicio" type="date" style={input} value={transferenciaDataInicio} onChange={event => alterarDataTransferencia('inicio', event.target.value)} />
                   </div>
                   <div>
                     <label style={label} htmlFor="transf-data-fim">Fim do período</label>
-                    <input id="transf-data-fim" type="date" style={input} value={transferenciaDataFim} onChange={event => setTransferenciaDataFim(event.target.value)} />
+                    <input id="transf-data-fim" type="date" style={input} value={transferenciaDataFim} onChange={event => alterarDataTransferencia('fim', event.target.value)} />
                   </div>
                   <button type="button" onClick={calcularDiasLetivosPeriodo} style={btn('primary', { small: true })}>
                     📐 Calcular dias letivos
@@ -1380,6 +1460,56 @@ export default function Historico() {
                     <span style={{ fontSize: 12, color: theme.danger, fontWeight: 700 }}>{erroCalculoDiasLetivos}</span>
                   )}
                 </div>
+                {resumoFrequenciaPeriodo && (
+                  <div className="nao-imprimir" style={{ marginBottom: 8, padding: '12px', background: 'var(--ghost-bg)', border: `1px solid ${resumoFrequenciaPeriodo.pendencias.length ? theme.warning : theme.success}`, borderRadius: theme.radius }}>
+                    <div style={{ fontWeight: 900, color: theme.text, marginBottom: 7 }}>Conferência da frequência do período</div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: resumoFrequenciaPeriodo.pendencias.length ? 10 : 0 }}>
+                      <span style={{ padding: '5px 8px', borderRadius: 6, background: theme.card, color: theme.text, fontSize: 12 }}>
+                        <strong>{resumoFrequenciaPeriodo.diasLetivos}</strong> dias letivos
+                      </span>
+                      <span style={{ padding: '5px 8px', borderRadius: 6, background: theme.card, color: theme.text, fontSize: 12 }}>
+                        <strong>{resumoFrequenciaPeriodo.ausenciasRegistradas}</strong> ausências já confirmadas na aba Faltas
+                      </span>
+                    </div>
+                    {resumoFrequenciaPeriodo.pendencias.length > 0 ? (
+                      <>
+                        <div style={{ color: theme.warning, fontWeight: 800, fontSize: 12, marginBottom: 8 }}>
+                          Há períodos sem frequência confirmada. Informe as ausências reais de cada trecho; digite 0 quando tiver certeza de que não houve falta.
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(245px, 1fr))', gap: 8 }}>
+                          {resumoFrequenciaPeriodo.pendencias.map(pendencia => (
+                            <label key={pendencia.chave} style={{ display: 'grid', gap: 4, padding: 9, borderRadius: 7, background: theme.card, color: theme.text }}>
+                              <span style={{ fontSize: 12, fontWeight: 900 }}>{pendencia.label}</span>
+                              <span style={{ fontSize: 10.5, color: theme.textMuted }}>
+                                {formatarData(pendencia.inicio)} a {formatarData(pendencia.fim)} · {pendencia.diasLetivos} dias letivos · {pendencia.motivo}
+                              </span>
+                              <input
+                                aria-label={`Ausências complementares de ${pendencia.label}`}
+                                type="number"
+                                min={0}
+                                max={pendencia.diasLetivos}
+                                inputMode="numeric"
+                                style={input}
+                                value={complementosFrequencia[pendencia.chave] ?? ''}
+                                onChange={event => atualizarComplementoFrequencia(pendencia, event.target.value)}
+                                placeholder="Informe as ausências (0 também confirma)"
+                              />
+                            </label>
+                          ))}
+                        </div>
+                        {resumoFrequenciaPeriodo.pendencias.some(pendencia => (complementosFrequencia[pendencia.chave] ?? '').trim() === '') && (
+                          <div style={{ color: theme.danger, fontWeight: 800, fontSize: 11.5, marginTop: 8 }}>
+                            Presenças e ausências finais permanecerão vazias até todos os períodos acima serem conferidos.
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div style={{ color: theme.success, fontWeight: 850, fontSize: 12 }}>
+                        Frequência integralmente confirmada: os totais finais foram calculados automaticamente.
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div className="quadro-oficial">
                   <h3 className="titulo-quadro">Transferência durante o período letivo</h3>
                   <table className="tabela-transferencia">
