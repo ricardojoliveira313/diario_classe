@@ -13,6 +13,7 @@ function headers(req:Request){
   return h;
 }
 function json(req:Request,data:unknown,status=200){return new Response(JSON.stringify(data),{status,headers:headers(req)})}
+
 function camposAcademicosFaltantes(d:any){
   const faltam:string[]=[];
   if(String(d?.grauFormacao||'')!=='Ensino Superior')return faltam;
@@ -27,6 +28,32 @@ function camposAcademicosFaltantes(d:any){
   return[...new Set(faltam)];
 }
 
+function camposObrigatoriosFaltantes(d:any){
+  const faltam:string[]=[];
+  if(!String(d?.unidadeEscolar||'').trim())faltam.push('Unidade Escolar');
+  if(!String(d?.modalidade||'').trim())faltam.push('Modalidade');
+  if(String(d?.cpf||'').replace(/\D/g,'').length!==11)faltam.push('CPF');
+  if(!String(d?.dataNasc||'').trim())faltam.push('Data Nasc.');
+  if(!String(d?.email||'').trim())faltam.push('E-mail');
+  if(!Array.isArray(d?.deficiencias)||!d.deficiencias.length)faltam.push('Deficiência / TEA / Altas Habilidades');
+  if(!String(d?.grauFormacao||'').trim())faltam.push('Grau de Formação');
+  faltam.push(...camposAcademicosFaltantes(d));
+
+  if(typeof d?.possuiPos!=='boolean')faltam.push('Situação da Pós-Graduação');
+  if(d?.possuiPos===true){
+    const pos=Array.isArray(d?.posGraduacoes)?d.posGraduacoes:[];
+    if(!pos.length)faltam.push('Pós-Graduação');
+    pos.forEach((p:any,i:number)=>{
+      if(!String(p?.tipo||'').trim())faltam.push(`Tipo da ${i+1}ª pós`);
+      if(!String(p?.area||'').trim())faltam.push(`Área da ${i+1}ª pós`);
+      if(!/^\d{4}$/.test(String(p?.ano||'')))faltam.push(`Ano da ${i+1}ª pós`);
+    });
+  }
+
+  if(!Array.isArray(d?.cursosEspecificos)||!d.cursosEspecificos.length)faltam.push('Cursos específicos de 80h');
+  return[...new Set(faltam)];
+}
+
 Deno.serve(async(req:Request)=>{
   if(req.method==='OPTIONS')return new Response(null,{status:204,headers:headers(req)});
   if(req.method!=='POST')return json(req,{ok:false,erro:'Método não permitido.'},405);
@@ -34,7 +61,8 @@ Deno.serve(async(req:Request)=>{
   try{
     const body=await req.json().catch(()=>({}));
     if(String(body?.action||'')!=='submit')return json(req,{ok:false,erro:'Ação não suportada por esta proteção.'},400);
-    const faltam=camposAcademicosFaltantes(body?.dados||{});
+    if(body?.confirmacaoFinal!==true)return json(req,{ok:false,erro:'Marque a declaração de conferência antes do envio.',campos:['Declaração de conferência']},400);
+    const faltam=camposObrigatoriosFaltantes(body?.dados||{});
     if(faltam.length)return json(req,{ok:false,erro:`Antes de enviar, revise: ${faltam.join(', ')}.`,campos:faltam},400);
     const token=req.headers.get('x-censo-token')||'';
     if(!token)return json(req,{ok:false,erro:'Sessão segura do Censo não informada.'},401);
