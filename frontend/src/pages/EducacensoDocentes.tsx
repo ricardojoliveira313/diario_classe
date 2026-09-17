@@ -98,6 +98,7 @@ const listaPipe = (value:unknown) => { const s=txt(value); return !s||s==='-'?[]
 function formatRf(rf:string){const d=dig(rf);return d.length===6?`${d.slice(0,2)}.${d.slice(2,5)}-${d.slice(5)}`:rf}
 function maskCpf(cpf:string){const d=dig(cpf);return d.length===11?`***.***.${d.slice(6,9)}-${d.slice(9)}`:(cpf||'—')}
 function formatDataBR(value:string){if(!value)return'';const s=value.slice(0,10);const p=s.split('-');return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:value}
+function dataIso(value:unknown){const s=txt(value);const br=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);return br?`${br[3]}-${br[2].padStart(2,'0')}-${br[1].padStart(2,'0')}`:s.slice(0,10)}
 function formatDataHora(value:string){if(!value)return'';const d=new Date(value);return Number.isNaN(d.getTime())?'':d.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}
 function formatCompetencia(c:Competencia){const data=new Date(c.ano,c.mes-1,1);return `${data.toLocaleDateString('pt-BR',{month:'long'}).replace(/^./,x=>x.toUpperCase())}/${c.ano}`}
 function ehDocente(cargo:string){const c=norm(cargo);return c.includes('PROFESSOR')||/^PROF\b/.test(c)}
@@ -239,7 +240,7 @@ function construirDraft(l:Linha,r:PrepareResponse,base:EducacensoLookup|null):{d
   const temMestre=Object.keys(m).length>0;
   const endereco=temMestre?{rua:txt(m['Rua/Avenida']),numero:txt(m['Nº/Complemento'])}:splitEndereco(first(f.endereco,p.endereco));
   const superioresBrutos=temMestre?cursosMestre(m,r.opcoesOficiais||EMPTY_OPTIONS):montarSuperiores(r);
-  const dataNasc=first(temMestre?m['Data Nasc.']:'',official.dataNascimento,educacenso?.data_nascimento,f.dataNascimento,p.data_nascimento);
+  const dataNasc=dataIso(first(temMestre?m['Data Nasc.']:'',official.dataNascimento,educacenso?.data_nascimento,f.dataNascimento,p.data_nascimento));
   const areasPosOficiais=uniq((r.opcoesOficiais?.pos||[]).map(x=>x.area));const areasPos=areasPosOficiais.length?areasPosOficiais:[...AREAS_POS];
   const posEstruturada=temMestre?posMestre(m):montarPosEstruturada(r,areasPos);const temPosEstruturada=posEstruturada.length>0;
   const posEdu=parsePosEducacenso(educacenso?.pos_graduacao_raw,areasPos);
@@ -275,7 +276,7 @@ function construirDraft(l:Linha,r:PrepareResponse,base:EducacensoLookup|null):{d
 }
 
 function Field({labelText,value,onChange,type='text',readOnly=false,placeholder=''}:{labelText:string;value:string;onChange?:(v:string)=>void;type?:string;readOnly?:boolean;placeholder?:string}){return<label style={{display:'grid',gap:5}}><span style={{color:theme.textSecondary,fontSize:10.5,fontWeight:800}}>{labelText}</span><input type={type} style={{...input,width:'100%',opacity:readOnly?0.78:1}} value={value} readOnly={readOnly} placeholder={placeholder} onChange={e=>onChange?.(e.target.value)}/></label>}
-function SelectField({labelText,value,onChange,options,placeholder='Selecione...',disabled=false}:{labelText:string;value:string;onChange:(v:string)=>void;options:readonly string[];placeholder?:string;disabled?:boolean}){return<label style={{display:'grid',gap:5}}><span style={{color:theme.textSecondary,fontSize:10.5,fontWeight:800}}>{labelText}</span><select style={{...input,width:'100%',opacity:disabled?0.65:1}} value={value} disabled={disabled} onChange={e=>onChange(e.target.value)}><option value="">{placeholder}</option>{options.map(o=><option key={o} value={o}>{o}</option>)}</select></label>}
+function SelectField({labelText,value,onChange,options,placeholder='Selecione...',disabled=false}:{labelText:string;value:string;onChange:(v:string)=>void;options:readonly string[];placeholder?:string;disabled?:boolean}){const visiveis=value&&!options.includes(value)?[value,...options]:options;return<label style={{display:'grid',gap:5}}><span style={{color:theme.textSecondary,fontSize:10.5,fontWeight:800}}>{labelText}</span><select style={{...input,width:'100%',opacity:disabled?0.65:1}} value={value} disabled={disabled} onChange={e=>onChange(e.target.value)}><option value="">{placeholder}</option>{visiveis.map(o=><option key={o} value={o}>{o}</option>)}</select></label>}
 function SearchableSelectField({labelText,value,onChange,options,disabled=false}:{labelText:string;value:string;onChange:(v:string)=>void;options:readonly string[];disabled?:boolean}){
   const[buscaOpcao,setBuscaOpcao]=useState('');
   const termo=norm(buscaOpcao);
