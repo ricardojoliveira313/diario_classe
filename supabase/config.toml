@@ -1,0 +1,42 @@
+# Configuração das Edge Functions atualmente publicadas no projeto.
+# Mantém explicitamente o mesmo comportamento de autenticação observado em produção,
+# evitando que um futuro deploy pelo Supabase CLI altere verify_jwt por engano.
+
+[functions.creches-pdfs-2027]
+verify_jwt = true
+
+[functions.censo-inspect-temp]
+verify_jwt = false
+
+[functions.censo-source-probe]
+verify_jwt = false
+
+[functions.censo-sandbox-probe]
+verify_jwt = false
+
+[functions.censo-runtime-probe]
+verify_jwt = true
+
+[functions.censo-driver-probe]
+verify_jwt = true
+
+[functions.censo-rpc-test]
+verify_jwt = true
+
+[functions.censo-oficial-bridge]
+verify_jwt = false
+
+[functions.censo-educacenso-base]
+verify_jwt = false
+
+[functions.censo-status-envios]
+verify_jwt = false
+
+[functions.censo-grad-probe]
+verify_jwt = false
+
+[functions.censo-submit-guard]
+verify_jwt = false
+
+[functions.censo-professor-formulario]
+verify_jwt = true
