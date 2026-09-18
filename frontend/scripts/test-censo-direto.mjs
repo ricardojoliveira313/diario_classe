@@ -68,6 +68,7 @@ const checks = [
   ['nome completo único resolve a turma sem exigir período', page.includes("if(mesmoNome.length<=1)return true")],
   ['nome repetido em mais de um RF usa período para desempatar', page.includes("const periodoVinculo=norm(servidoresPorRf.get(dig(f.rf))?.periodo||s.periodo)") && page.includes("periodoTurma===periodoVinculo")],
   ['não depende da tabela auxiliar TurmaProfessor', !page.includes("supabase.from('TurmaProfessor')") && !page.includes('rotuloProfessorCompativel')],
+  ['RF marcado como excluído do Censo não aparece na fila, mas a frequência permanece intacta', page.includes('censo_excluido') && page.includes("!servidorPorRf.get(dig(f.rf))?.censo_excluido") && page.includes("supabase.from('CensoFrequenciaServidor')")],
   ['lista de trabalho nasce exclusivamente da folha de frequência', page.includes("const docentesFreq=useMemo(()=>frequencias.filter") && page.includes("const linhas=useMemo<Linha[]>(()=>docentesFreq.map")],
   ['não existe envio automático em lote', !page.includes('enviarLoteAuditado') && !page.includes('Auditar e enviar todos os docentes prontos') && page.includes('Não existe envio automático em lote.')],
   ['envio permanece manual por professor', page.includes('O sistema não envia este formulário sozinho.') && page.includes("onClick={enviarDireto}") && page.includes('Salvar e enviar ao formulário oficial')],
