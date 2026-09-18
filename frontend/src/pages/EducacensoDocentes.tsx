@@ -46,7 +46,6 @@ type Servidor = { rf:string; nome:string; cargo:string; periodo:string; escola:s
 type Frequencia = { ano:number; mes:number; rf:string; nome:string; categoria?:string|null; lotacao?:string|null; cargo?:string|null; carga_horaria?:number|null; local_trabalho?:string|null; pagina_pdf?:number|null };
 type Competencia = { ano:number; mes:number };
 type Turma = { id:string; nome:string; professora?:string|null; periodo?:string|null; tipo?:string|null };
-type TurmaProfessor = { id:number; turma:string; professora:string; periodo:string };
 type Linha = { servidor:Servidor; frequencia:Frequencia; turmas:Turma[]; modalidade:string; vinculosMesmoNome:number; cruzamentoRfOk:boolean; cruzamentoNomeOk:boolean };
 type GradOpcao = { tipo?:string; area?:string; curso?:string };
 type InstOpcao = { uf?:string; categoria?:string; org?:string; nome?:string };
@@ -103,20 +102,14 @@ function dataIso(value:unknown){const s=txt(value);const br=s.match(/^(\d{1,2})\
 function formatDataHora(value:string){if(!value)return'';const d=new Date(value);return Number.isNaN(d.getTime())?'':d.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}
 function formatCompetencia(c:Competencia){const data=new Date(c.ano,c.mes-1,1);return `${data.toLocaleDateString('pt-BR',{month:'long'}).replace(/^./,x=>x.toUpperCase())}/${c.ano}`}
 function ehDocente(cargo:string){const c=norm(cargo);return c.includes('PROFESSOR')||/^PROF\b/.test(c)}
-function rotuloProfessorCompativel(rotulo:string,nomeCompleto:string){const r=norm(rotulo).split(' ').filter(Boolean),n=norm(nomeCompleto).split(' ').filter(Boolean);if(!r.length||!n.length)return false;return r.every(t=>t.length===1?n.some(x=>x.startsWith(t)):n.includes(t))}
-function turmasDoServidor(s:Servidor,f:Frequencia,turmas:Turma[],vinculos:TurmaProfessor[],docentes:Frequencia[],servidoresPorRf:Map<string,Servidor>){
+function turmasDoServidor(s:Servidor,f:Frequencia,turmas:Turma[]){
   const atribuida=norm(s.turma_atribuida||s.sala_atribuida||'');if(atribuida){const x=turmas.filter(t=>norm(t.nome)===atribuida);if(x.length)return x}
-  const compativeis=vinculos.filter(v=>{
-    if(!rotuloProfessorCompativel(v.professora,f.nome))return false;
-    const mesmaTurmaPeriodo=vinculos.filter(x=>norm(x.turma)===norm(v.turma)&&norm(x.periodo)===norm(v.periodo));
-    if(mesmaTurmaPeriodo.length>1)return false;
-    const candidatos=docentes.filter(d=>rotuloProfessorCompativel(v.professora,d.nome));
-    if(candidatos.length===1)return dig(candidatos[0].rf)===dig(f.rf);
-    const porPeriodo=candidatos.filter(d=>norm(servidoresPorRf.get(dig(d.rf))?.periodo||'')===norm(v.periodo));
-    return porPeriodo.length===1&&dig(porPeriodo[0].rf)===dig(f.rf);
+  const nome=norm(f.nome),periodo=norm(s.periodo);
+  return turmas.filter(t=>{
+    if(norm(t.professora)!==nome)return false;
+    const periodoTurma=norm(t.periodo);
+    return !periodoTurma||!periodo||periodoTurma===periodo;
   });
-  const nomes=new Set(compativeis.map(v=>norm(v.turma)));
-  return turmas.filter(t=>nomes.has(norm(t.nome)));
 }
 function modalidadeSugerida(s:Servidor,f:Frequencia,turmas:Turma[]){const cargo=norm(f.cargo||s.cargo),lotacao=norm(f.lotacao),nomes=turmas.map(t=>norm(t.nome));if(cargo.includes('EDUCACAO FISICA'))return'Educação Física';if(cargo.includes('ART'))return'Arte – Regular';if(cargo.includes('ATENDIMENTO EDUCACIONAL ESPECIALIZADO')||turmas.some(t=>norm(t.tipo)==='AEE'))return'';if(lotacao.includes('EJA')||nomes.some(n=>n.includes('EJA')))return'EJA I';if(nomes.some(n=>/^[12] ETAPA\b/.test(n)))return'Educação Infantil';if(nomes.some(n=>/^[1-5] ANO\b/.test(n)))return'Ensino Fundamental Regular';if(!turmas.length&&cargo.includes('EDUCACAO INFANTIL')&&cargo.includes('ENSINO FUNDAMENTAL'))return'';if(lotacao.includes('PRE ESCOLA'))return'Educação Infantil';if(cargo.includes('EDUCACAO INFANTIL'))return'Educação Infantil';if(cargo.includes('ENSINO FUNDAMENTAL'))return'Ensino Fundamental Regular';return''}
 function splitEndereco(value:string){const s=txt(value),m=s.match(/^(.*?)[,\s]+(\d+\w?(?:\s*[-/]\s*\w+)?(?:.*)?)$/i);return m?{rua:m[1].trim(),numero:m[2].trim()}:{rua:s,numero:''}}
@@ -303,7 +296,7 @@ function Resumo({titulo,valor,cor,sub}:{titulo:string;valor:number;cor:string;su
 
 export default function EducacensoDocentes(){
   const{username}=useAuth();
-  const[servidores,setServidores]=useState<Servidor[]>([]),[frequencias,setFrequencias]=useState<Frequencia[]>([]),[turmas,setTurmas]=useState<Turma[]>([]),[turmaProfessores,setTurmaProfessores]=useState<TurmaProfessor[]>([]);
+  const[servidores,setServidores]=useState<Servidor[]>([]),[frequencias,setFrequencias]=useState<Frequencia[]>([]),[turmas,setTurmas]=useState<Turma[]>([]);
   const[competencias,setCompetencias]=useState<Competencia[]>([]),[competencia,setCompetencia]=useState<Competencia|null>(null);
   const[loading,setLoading]=useState(true),[erro,setErro]=useState(''),[aviso,setAviso]=useState(''),[busca,setBusca]=useState('');
   const[token,setToken]=useState(()=>sessionStorage.getItem(TOKEN_KEY)||''),[expiraEm,setExpiraEm]=useState(()=>sessionStorage.getItem(TOKEN_EXP_KEY)||'');
@@ -316,18 +309,17 @@ export default function EducacensoDocentes(){
   const educacensoLookup=async(cpf:string):Promise<EducacensoLookup>=>{const headers:Record<string,string>={};if(token)headers['x-censo-token']=token;const{data,error}=await supabase.functions.invoke('censo-educacenso-base',{body:{action:'lookup',cpf},headers});if(error){let message=error.message||'Falha ao consultar a base Educacenso.';const ctx=(error as any).context;try{if(ctx&&typeof ctx.json==='function'){const detail=await ctx.json();if(detail?.erro)message=detail.erro}}catch{}throw new Error(message)}if(!data?.ok)throw new Error(data?.erro||'Falha ao consultar a base Educacenso.');return data as EducacensoLookup};
   const carregarEnvios=async(explicitToken?:string)=>{const t=explicitToken??token;if(!t){setEnvios([]);return}const headers:Record<string,string>={'x-censo-token':t};const{data,error}=await supabase.functions.invoke('censo-status-envios',{body:{action:'list'},headers});if(error||!data?.ok){setEnvios([]);return}setEnvios(Array.isArray(data.envios)?data.envios:[])};
 
-  useEffect(()=>{let montado=true;(async()=>{setLoading(true);const comp=await supabase.from('CensoFrequenciaServidor').select('ano,mes').order('ano',{ascending:false}).order('mes',{ascending:false});if(!montado)return;if(comp.error){setErro(`Erro ao carregar as competências: ${comp.error.message}`);setLoading(false);return}const lista=[...new Map((comp.data??[]).map((c:any)=>[`${c.ano}-${c.mes}`,{ano:Number(c.ano),mes:Number(c.mes)}])).values()] as Competencia[];const atual=lista[0]||null;setCompetencias(lista);setCompetencia(atual);const[srv,freq,tur,tp]=await Promise.all([
+  useEffect(()=>{let montado=true;(async()=>{setLoading(true);const comp=await supabase.from('CensoFrequenciaServidor').select('ano,mes').order('ano',{ascending:false}).order('mes',{ascending:false});if(!montado)return;if(comp.error){setErro(`Erro ao carregar as competências: ${comp.error.message}`);setLoading(false);return}const lista=[...new Map((comp.data??[]).map((c:any)=>[`${c.ano}-${c.mes}`,{ano:Number(c.ano),mes:Number(c.mes)}])).values()] as Competencia[];const atual=lista[0]||null;setCompetencias(lista);setCompetencia(atual);const[srv,freq,tur]=await Promise.all([
     supabase.from('ServidorCenso').select('rf,nome,cargo,periodo,escola,ativo,turma_atribuida,sala_atribuida').order('nome'),
     atual?supabase.from('CensoFrequenciaServidor').select('ano,mes,rf,nome,categoria,lotacao,cargo,carga_horaria,local_trabalho,pagina_pdf').eq('ano',atual.ano).eq('mes',atual.mes).order('pagina_pdf'):Promise.resolve({data:[],error:null}),
     supabase.from('Turma').select('id,nome,professora,periodo,tipo').order('nome'),
-    supabase.from('TurmaProfessor').select('id,turma,professora,periodo').order('turma'),
-  ]);if(!montado)return;const falha=srv.error||freq.error||tur.error||tp.error;if(falha)setErro(`Erro ao carregar as bases: ${falha.message}`);else{setServidores((srv.data??[])as Servidor[]);setFrequencias((freq.data??[])as Frequencia[]);setTurmas((tur.data??[])as Turma[]);setTurmaProfessores((tp.data??[])as TurmaProfessor[])}setLoading(false)})();return()=>{montado=false}},[]);
+  ]);if(!montado)return;const falha=srv.error||freq.error||tur.error;if(falha)setErro(`Erro ao carregar as bases: ${falha.message}`);else{setServidores((srv.data??[])as Servidor[]);setFrequencias((freq.data??[])as Frequencia[]);setTurmas((tur.data??[])as Turma[])}setLoading(false)})();return()=>{montado=false}},[]);
   useEffect(()=>{if(!token){setSessaoOk(false);setEnvios([]);return}if(!expiraEm||new Date(expiraEm).getTime()<=Date.now()){sessionStorage.removeItem(TOKEN_KEY);sessionStorage.removeItem(TOKEN_EXP_KEY);setToken('');setExpiraEm('');setSessaoOk(false);setEnvios([]);return}let ativo=true;bridge({action:'status'},token).then(()=>{if(ativo){setSessaoOk(true);void carregarEnvios(token)}}).catch(()=>{if(!ativo)return;sessionStorage.removeItem(TOKEN_KEY);sessionStorage.removeItem(TOKEN_EXP_KEY);setToken('');setExpiraEm('');setSessaoOk(false);setEnvios([])});return()=>{ativo=false}},[]);
 
   const docentesFreq=useMemo(()=>frequencias.filter(f=>ehDocente(f.cargo||'')),[frequencias]);
   const servidorPorRf=useMemo(()=>{const m=new Map<string,Servidor>();for(const s of servidores)m.set(dig(s.rf),s);return m},[servidores]);
   const nomesDuplicados=useMemo(()=>{const m=new Map<string,number>();for(const f of docentesFreq)m.set(norm(f.nome),(m.get(norm(f.nome))??0)+1);return m},[docentesFreq]);
-  const linhas=useMemo<Linha[]>(()=>docentesFreq.map(freq=>{const encontrado=servidorPorRf.get(dig(freq.rf));const servidor=encontrado??{rf:freq.rf,nome:freq.nome,cargo:freq.cargo||'',periodo:'',escola:freq.local_trabalho||SCHOOL,ativo:true,turma_atribuida:'',sala_atribuida:''};const ts=turmasDoServidor(servidor,freq,turmas,turmaProfessores,docentesFreq,servidorPorRf);return{servidor,frequencia:freq,turmas:ts,modalidade:modalidadeSugerida(servidor,freq,ts),vinculosMesmoNome:nomesDuplicados.get(norm(freq.nome))??1,cruzamentoRfOk:!!encontrado,cruzamentoNomeOk:!!encontrado&&norm(encontrado.nome)===norm(freq.nome)}}),[docentesFreq,servidorPorRf,turmas,turmaProfessores,nomesDuplicados]);
+  const linhas=useMemo<Linha[]>(()=>docentesFreq.map(freq=>{const encontrado=servidorPorRf.get(dig(freq.rf));const servidor=encontrado??{rf:freq.rf,nome:freq.nome,cargo:freq.cargo||'',periodo:'',escola:freq.local_trabalho||SCHOOL,ativo:true,turma_atribuida:'',sala_atribuida:''};const ts=turmasDoServidor(servidor,freq,turmas);return{servidor,frequencia:freq,turmas:ts,modalidade:modalidadeSugerida(servidor,freq,ts),vinculosMesmoNome:nomesDuplicados.get(norm(freq.nome))??1,cruzamentoRfOk:!!encontrado,cruzamentoNomeOk:!!encontrado&&norm(encontrado.nome)===norm(freq.nome)}}),[docentesFreq,servidorPorRf,turmas,nomesDuplicados]);
   const foraDaFrequencia=useMemo(()=>{const rfs=new Set(docentesFreq.map(f=>dig(f.rf)));return servidores.filter(s=>s.ativo&&ehDocente(s.cargo)&&!rfs.has(dig(s.rf)))},[servidores,docentesFreq]);
   const filtradas=useMemo(()=>{const q=norm(busca);if(!q)return linhas;return linhas.filter(l=>norm([l.servidor.nome,l.servidor.rf,l.frequencia.cargo,l.frequencia.lotacao,l.turmas.map(t=>t.nome).join(' '),l.modalidade].join(' ')).includes(q))},[linhas,busca]);
   const enviosPorRf=useMemo(()=>{const m=new Map<string,EnvioStatus[]>();for(const e of envios){const rf=dig(e.rf),lista=m.get(rf)||[];lista.push(e);m.set(rf,lista)}for(const lista of m.values())lista.sort((a,b)=>new Date(b.criadoEm).getTime()-new Date(a.criadoEm).getTime());return m},[envios]);
