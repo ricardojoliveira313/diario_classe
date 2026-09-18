@@ -46,31 +46,60 @@ import { existemAlteracoesNaoSalvas } from './unsavedChanges';
 // em lote e não deve ficar disponível pra qualquer administrador).
 const USUARIO_IMPORTACAO = 'ricojoliveira';
 
-const NAV_ITEMS: { to: string; label: string; end?: boolean; badge?: boolean; adminOnly?: boolean; usernameOnly?: string; pageKey?: PageKey; capabilityKey?: CapabilityKey }[] = [
-  { to: '/',          label: '📊 Dashboard', end: true,              pageKey: 'dashboard' },
-  { to: '/importar',  label: '📥 Importar',  adminOnly: true, usernameOnly: USUARIO_IMPORTACAO },
-  { to: '/creches-matriculas-2027', label: '🏫 Creches 2027', pageKey: 'creches' },
-  { to: '/uniforme-2027', label: '👕 Uniforme 2027', pageKey: 'uniforme2027' },
-  { to: '/turmas',    label: '👩‍🏫 Turmas',                            pageKey: 'turmas' },
-  { to: '/alunos',    label: '👥 Alunos',                             pageKey: 'alunos' },
-  { to: '/genero',    label: '👫 Gênero',                             capabilityKey: 'acessar_genero' },
-  { to: '/faltas',    label: '📋 Faltas',                             pageKey: 'faltas' },
-  { to: '/bf-frequencia', label: '💚 BF - Frequência',                 pageKey: 'bffrequencia' },
-  { to: '/ocorrencias', label: '📋 Ocorrências',                      pageKey: 'ocorrencias' },
-  { to: '/distorcao', label: '📐 Distorção',                          pageKey: 'distorcao' },
-  { to: '/pendentes', label: '📋 Ata',                badge: true,    pageKey: 'pendentes' },
-  { to: '/historico', label: '📜 Histórico',                          pageKey: 'historico' },
-  { to: '/formularios', label: '📄 Formulários', pageKey: 'formularios' },
-  { to: '/bilhetes', label: '📝 Bilhetes', pageKey: 'bilhetes' },
-  { to: '/capa',        label: '✉️ Capa',       pageKey: 'capa' },
-  { to: '/educacenso', label: '🔗 Educacenso',                       pageKey: 'educacenso' },
-  { to: '/educacenso-docentes', label: '👩‍🏫 Censo Docentes', adminOnly: true, usernameOnly: USUARIO_IMPORTACAO },
-  { to: '/situacoes', label: '🔄 Situações',                         pageKey: 'situacoes' },
-  { to: '/analitico', label: '📈 Painel Analítico',                  pageKey: 'analitico' },
-  { to: '/faixa-etaria', label: '📅 Faixa Etária',                   pageKey: 'faixaetaria' },
-  { to: '/mapa-eja',  label: '📋 Mapa EJA',                          pageKey: 'mapaeja' },
-  { to: '/controle',  label: '📊 Controle',  adminOnly: true },
-  { to: '/usuarios',  label: '👥 Usuários',  adminOnly: true },
+type NavSection = 'principal' | 'matriculas' | 'frequencia' | 'documentos' | 'censo' | 'relatorios' | 'administracao';
+
+type NavItem = {
+  to: string;
+  label: string;
+  section: NavSection;
+  end?: boolean;
+  badge?: boolean;
+  adminOnly?: boolean;
+  usernameOnly?: string;
+  pageKey?: PageKey;
+  capabilityKey?: CapabilityKey;
+};
+
+const NAV_ITEMS: NavItem[] = [
+  { to: '/',          label: '📊 Dashboard', section: 'principal', end: true, pageKey: 'dashboard' },
+  { to: '/alunos',    label: '👥 Alunos', section: 'principal', pageKey: 'alunos' },
+  { to: '/turmas',    label: '👩‍🏫 Turmas', section: 'principal', pageKey: 'turmas' },
+  { to: '/faltas',    label: '📋 Faltas', section: 'principal', pageKey: 'faltas' },
+
+  { to: '/creches-matriculas-2027', label: '🏫 Creches 2027', section: 'matriculas', pageKey: 'creches' },
+  { to: '/uniforme-2027', label: '👕 Uniforme 2027', section: 'matriculas', pageKey: 'uniforme2027' },
+
+  { to: '/bf-frequencia', label: '💚 BF - Frequência', section: 'frequencia', pageKey: 'bffrequencia' },
+  { to: '/ocorrencias', label: '📋 Ocorrências', section: 'frequencia', pageKey: 'ocorrencias' },
+  { to: '/situacoes', label: '🔄 Situações', section: 'frequencia', pageKey: 'situacoes' },
+
+  { to: '/pendentes', label: '📋 Ata', section: 'documentos', badge: true, pageKey: 'pendentes' },
+  { to: '/bilhetes', label: '📝 Bilhetes', section: 'documentos', pageKey: 'bilhetes' },
+  { to: '/capa', label: '✉️ Capa', section: 'documentos', pageKey: 'capa' },
+  { to: '/formularios', label: '📄 Formulários', section: 'documentos', pageKey: 'formularios' },
+  { to: '/historico', label: '📜 Histórico', section: 'documentos', pageKey: 'historico' },
+
+  { to: '/educacenso-docentes', label: '👩‍🏫 Censo Docentes', section: 'censo', adminOnly: true, usernameOnly: USUARIO_IMPORTACAO },
+  { to: '/educacenso', label: '🔗 Educacenso', section: 'censo', pageKey: 'educacenso' },
+  { to: '/genero', label: '👫 Gênero', section: 'censo', capabilityKey: 'acessar_genero' },
+
+  { to: '/distorcao', label: '📐 Distorção', section: 'relatorios', pageKey: 'distorcao' },
+  { to: '/faixa-etaria', label: '📅 Faixa Etária', section: 'relatorios', pageKey: 'faixaetaria' },
+  { to: '/mapa-eja', label: '📋 Mapa EJA', section: 'relatorios', pageKey: 'mapaeja' },
+  { to: '/analitico', label: '📈 Painel Analítico', section: 'relatorios', pageKey: 'analitico' },
+
+  { to: '/controle', label: '📊 Controle', section: 'administracao', adminOnly: true },
+  { to: '/importar', label: '📥 Importar', section: 'administracao', adminOnly: true, usernameOnly: USUARIO_IMPORTACAO },
+  { to: '/usuarios', label: '👥 Usuários', section: 'administracao', adminOnly: true },
+];
+
+const NAV_GROUPS: { key: Exclude<NavSection, 'principal'>; label: string }[] = [
+  { key: 'matriculas', label: 'Matrículas 2027' },
+  { key: 'frequencia', label: 'Frequência' },
+  { key: 'documentos', label: 'Documentos' },
+  { key: 'censo', label: 'Censo' },
+  { key: 'relatorios', label: 'Relatórios' },
+  { key: 'administracao', label: 'Administração' },
 ];
 
 const ANOS_DISPONIVEIS = [2025, 2026, 2027];
@@ -78,6 +107,10 @@ const ANOS_DISPONIVEIS = [2025, 2026, 2027];
 // No desktop, os ícones ocupavam espaço suficiente para empurrar as últimas
 // abas para fora da área visível. O menu móvel continua usando o rótulo completo.
 const labelDesktop = (label: string) => label.replace(/^\S+\s+/, '');
+
+const ordenarPorLabel = (items: NavItem[]) => [...items].sort((a, b) =>
+  labelDesktop(a.label).localeCompare(labelDesktop(b.label), 'pt-BR'),
+);
 
 // Primeira aba que o viewer realmente tem acesso, na ordem do menu — usado
 // como destino de redirecionamento em vez de sempre mandar pra "/", que
@@ -187,6 +220,14 @@ function AppShell() {
     return permissoes.includes(item.pageKey);             // verifica whitelist
   });
 
+  const itensPrincipais = navItems.filter(item => item.section === 'principal');
+  const gruposVisiveis = NAV_GROUPS
+    .map(grupo => ({
+      ...grupo,
+      items: ordenarPorLabel(navItems.filter(item => item.section === grupo.key)),
+    }))
+    .filter(grupo => grupo.items.length > 0);
+
   const navStyle: React.CSSProperties = {
     position: 'sticky', top: 0, zIndex: 50,
     background: theme.primary,
@@ -239,8 +280,8 @@ function AppShell() {
             </NavLink>
 
             {/* Desktop menu */}
-            <div className="nav-scroll" style={{ display: 'flex', gap: 1, flex: 1, minWidth: 0, overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'thin' }}>
-              {navItems.filter(item => item.to !== '/usuarios').map(item => (
+            <div className="desktop-nav" style={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1, minWidth: 0 }}>
+              {itensPrincipais.map(item => (
                 <NavLink
                   key={item.to} to={item.to} end={item.end}
                   onClick={confirmarSaidaComAlteracoes}
@@ -253,15 +294,53 @@ function AppShell() {
                   ) : labelDesktop(item.label)}
                 </NavLink>
               ))}
-            </div>
 
-            {/* Usuários — fixo fora da área rolável para nunca ficar escondido (admin) */}
-            {role === 'admin' && (
-              <NavLink to="/usuarios" title="Usuários" onClick={confirmarSaidaComAlteracoes}
-                style={({ isActive }) => ({ ...(isActive ? linkActive : linkBase), flexShrink: 0 })}>
-                👥 Usuários
-              </NavLink>
-            )}
+              {gruposVisiveis.map((grupo, indice) => (
+                <details
+                  key={grupo.key}
+                  className="nav-group"
+                  style={{ position: 'relative', flexShrink: 0 }}
+                  onToggle={e => {
+                    const atual = e.currentTarget;
+                    if (!atual.open) return;
+                    document.querySelectorAll<HTMLDetailsElement>('.nav-group[open]').forEach(outro => {
+                      if (outro !== atual) outro.open = false;
+                    });
+                  }}
+                >
+                  <summary style={{ ...linkBase, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', listStyle: 'none' }}>
+                    {grupo.label}<span aria-hidden="true" style={{ fontSize: 9, opacity: 0.8 }}>▼</span>
+                  </summary>
+                  <div className={`nav-dropdown ${indice >= gruposVisiveis.length - 2 ? 'nav-dropdown-right' : ''}`}>
+                    {grupo.items.map(item => (
+                      <NavLink
+                        key={item.to}
+                        to={item.to}
+                        end={item.end}
+                        onClick={e => {
+                          confirmarSaidaComAlteracoes(e);
+                          if (!e.defaultPrevented) e.currentTarget.closest('details')?.removeAttribute('open');
+                        }}
+                        style={({ isActive }) => ({
+                          ...linkBase,
+                          display: 'block',
+                          padding: '9px 11px',
+                          color: isActive ? 'white' : theme.text,
+                          background: isActive ? theme.primary : 'transparent',
+                          fontWeight: isActive ? 700 : 500,
+                        })}
+                      >
+                        {item.badge && nPendentes > 0 ? (
+                          <span>{item.label}
+                            <span style={{ marginLeft: 6, background: theme.danger, color: 'white', borderRadius: 10, padding: '1px 6px', fontSize: 11, fontWeight: 700 }}>{nPendentes}</span>
+                          </span>
+                        ) : item.label}
+                      </NavLink>
+                    ))}
+                  </div>
+                </details>
+              ))}
+            </div>
 
             {/* Badge de perfil + nome do usuário */}
             <span style={{ ...roleBadgeStyle, flexShrink: 0 }} title={`${username || ''} — ${role === 'admin' ? 'Acesso completo' : 'Somente visualização'}`}>
@@ -319,7 +398,7 @@ function AppShell() {
           {/* Mobile menu dropdown */}
           {menuAberto && (
             <div style={{ display: 'none', flexDirection: 'column', padding: '8px 12px 12px', gap: 4, borderTop: '1px solid rgba(255,255,255,0.1)' }} className="mobile-menu">
-              {navItems.map(item => (
+              {itensPrincipais.map(item => (
                 <NavLink
                   key={item.to} to={item.to} end={item.end}
                   onClick={e => { confirmarSaidaComAlteracoes(e); if (!e.defaultPrevented) setMenuAberto(false); }}
@@ -327,6 +406,22 @@ function AppShell() {
                 >
                   {item.badge && nPendentes > 0 ? `${item.label} (${nPendentes})` : item.label}
                 </NavLink>
+              ))}
+              {gruposVisiveis.map(grupo => (
+                <div key={grupo.key} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <div style={{ color: '#93c5fd', fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', padding: '10px 12px 3px', textTransform: 'uppercase' }}>
+                    {grupo.label}
+                  </div>
+                  {grupo.items.map(item => (
+                    <NavLink
+                      key={item.to} to={item.to} end={item.end}
+                      onClick={e => { confirmarSaidaComAlteracoes(e); if (!e.defaultPrevented) setMenuAberto(false); }}
+                      style={({ isActive }) => ({ ...linkBase, padding: '9px 12px 9px 22px', display: 'block', ...(isActive ? linkActive : {}) })}
+                    >
+                      {item.badge && nPendentes > 0 ? `${item.label} (${nPendentes})` : item.label}
+                    </NavLink>
+                  ))}
+                </div>
               ))}
               <button onClick={logout} style={{ ...linkBase, background: 'none', border: 'none', color: '#fca5a5', cursor: 'pointer', textAlign: 'left', padding: '10px 12px' }}>
                 ⬅ Sair
