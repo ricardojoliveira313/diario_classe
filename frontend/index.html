@@ -188,11 +188,11 @@
         position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
         overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
       }
-      @media (max-width: 768px) {
+      @media (max-width: 1024px) {
         html { font-size: 16px; }
         .mobile-menu-btn { display: block !important; }
         .mobile-menu { display: flex !important; }
-        nav > div > div:first-of-type { display: none !important; }
+        .desktop-nav { display: none !important; }
       }
       .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
       body:has(a[href="/educacenso-docentes"][aria-current="page"]) table th:nth-child(2),
@@ -205,8 +205,33 @@
         white-space: nowrap;
         min-width: 124px;
       }
-      .nav-scroll { overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; }
-      .nav-scroll::-webkit-scrollbar { display: none; }
+      .nav-group > summary::-webkit-details-marker { display: none; }
+      .nav-group > summary::marker { content: ''; }
+      .nav-group[open] > summary,
+      .nav-group:has(a[aria-current="page"]) > summary {
+        background: rgba(255,255,255,0.15);
+        color: white !important;
+        font-weight: 700 !important;
+      }
+      .nav-dropdown {
+        position: absolute;
+        top: calc(100% + 7px);
+        left: 0;
+        z-index: 200;
+        display: grid;
+        gap: 2px;
+        min-width: 225px;
+        max-height: 72vh;
+        overflow-y: auto;
+        padding: 7px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--bg-card);
+        box-shadow: var(--shadow-lg);
+        animation: fadeIn 0.16s ease both;
+      }
+      .nav-dropdown-right { left: auto; right: 0; }
+      .nav-dropdown a:hover { background: var(--ghost-hover) !important; }
       @keyframes fadeIn {
         from { opacity: 0; transform: translateY(4px); }
         to { opacity: 1; transform: translateY(0); }
@@ -234,7 +259,7 @@
   </head>
   <body>
     <div id="root"></div>
-    <script src="/censo-pendencias.js?v=20260917-unlocked" defer></script>
+    <script src="/censo-pendencias.js" defer></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
