@@ -79,7 +79,7 @@ const checks = [
   ['data de conclusão implausível pela idade é descartada, não adivinhada', page.includes('IDADE_MINIMA_CONCLUSAO') && page.includes('anoConclusaoPlausivel') && page.includes('limparAnosImplausiveis') && page.includes("return Number(ano)>=anoNasc+IDADE_MINIMA_CONCLUSAO")],
   ['aviso de idade implausível chega à tela de conferência', page.includes('avisoIdade') && page.includes('incompatíveis com a data de nascimento')],
   ['pós antes da graduação (ou doutorado antes do mestrado) é descartada', page.includes('limparCronologiaPos') && page.includes('anoP<anoGradMin') && page.includes("p.tipo==='Doutorado'&&Number.isFinite(anoMestrado)&&anoP<anoMestrado")],
-  ['fora da frequência considera apenas servidor ativo', page.includes('s=>s.ativo&&ehDocente(s.cargo)')],
+  ['fora da frequência considera apenas servidor ativo e não excluído do Censo', page.includes('s=>s.ativo&&!s.censo_excluido&&ehDocente(s.cargo)')],
   ['anos da ficha ficam para conferência sem pareamento posicional', page.includes('anosFicha') && page.includes('Ano(s) encontrados para conferência') && !page.includes('ano:anos[i]')],
   ['UF nascimento não é presumida sem fonte', page.includes('UF de nascimento não consta de forma explícita nas fontes confiáveis disponíveis')],
   ['origem acadêmica divergente é bloqueada independentemente da fonte cadastral', edge.includes('const origemIncompativel=!!origem&&!identidadeCompativel(origem,official)') && educacensoEdge.includes('if (origem && !identidadeFichaValida(origem, registro, cpf)) return false;')],
