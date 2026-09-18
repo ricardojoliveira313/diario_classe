@@ -40,3 +40,6 @@ verify_jwt = false
 
 [functions.censo-professor-formulario]
 verify_jwt = true
+
+[functions.censo-professor-status-oficial]
+verify_jwt = true
