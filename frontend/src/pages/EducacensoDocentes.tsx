@@ -102,13 +102,15 @@ function dataIso(value:unknown){const s=txt(value);const br=s.match(/^(\d{1,2})\
 function formatDataHora(value:string){if(!value)return'';const d=new Date(value);return Number.isNaN(d.getTime())?'':d.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}
 function formatCompetencia(c:Competencia){const data=new Date(c.ano,c.mes-1,1);return `${data.toLocaleDateString('pt-BR',{month:'long'}).replace(/^./,x=>x.toUpperCase())}/${c.ano}`}
 function ehDocente(cargo:string){const c=norm(cargo);return c.includes('PROFESSOR')||/^PROF\b/.test(c)}
-function turmasDoServidor(s:Servidor,f:Frequencia,turmas:Turma[]){
+function turmasDoServidor(s:Servidor,f:Frequencia,turmas:Turma[],docentes:Frequencia[],servidoresPorRf:Map<string,Servidor>){
   const atribuida=norm(s.turma_atribuida||s.sala_atribuida||'');if(atribuida){const x=turmas.filter(t=>norm(t.nome)===atribuida);if(x.length)return x}
-  const nome=norm(f.nome),periodo=norm(s.periodo);
+  const nome=norm(f.nome),mesmoNome=docentes.filter(d=>norm(d.nome)===nome);
   return turmas.filter(t=>{
     if(norm(t.professora)!==nome)return false;
+    if(mesmoNome.length<=1)return true;
     const periodoTurma=norm(t.periodo);
-    return !periodoTurma||!periodo||periodoTurma===periodo;
+    const periodoVinculo=norm(servidoresPorRf.get(dig(f.rf))?.periodo||s.periodo);
+    return !!periodoTurma&&!!periodoVinculo&&periodoTurma===periodoVinculo;
   });
 }
 function modalidadeSugerida(s:Servidor,f:Frequencia,turmas:Turma[]){const cargo=norm(f.cargo||s.cargo),lotacao=norm(f.lotacao),nomes=turmas.map(t=>norm(t.nome));if(cargo.includes('EDUCACAO FISICA'))return'Educação Física';if(cargo.includes('ART'))return'Arte – Regular';if(cargo.includes('ATENDIMENTO EDUCACIONAL ESPECIALIZADO')||turmas.some(t=>norm(t.tipo)==='AEE'))return'';if(lotacao.includes('EJA')||nomes.some(n=>n.includes('EJA')))return'EJA I';if(nomes.some(n=>/^[12] ETAPA\b/.test(n)))return'Educação Infantil';if(nomes.some(n=>/^[1-5] ANO\b/.test(n)))return'Ensino Fundamental Regular';if(!turmas.length&&cargo.includes('EDUCACAO INFANTIL')&&cargo.includes('ENSINO FUNDAMENTAL'))return'';if(lotacao.includes('PRE ESCOLA'))return'Educação Infantil';if(cargo.includes('EDUCACAO INFANTIL'))return'Educação Infantil';if(cargo.includes('ENSINO FUNDAMENTAL'))return'Ensino Fundamental Regular';return''}
@@ -319,7 +321,7 @@ export default function EducacensoDocentes(){
   const docentesFreq=useMemo(()=>frequencias.filter(f=>ehDocente(f.cargo||'')),[frequencias]);
   const servidorPorRf=useMemo(()=>{const m=new Map<string,Servidor>();for(const s of servidores)m.set(dig(s.rf),s);return m},[servidores]);
   const nomesDuplicados=useMemo(()=>{const m=new Map<string,number>();for(const f of docentesFreq)m.set(norm(f.nome),(m.get(norm(f.nome))??0)+1);return m},[docentesFreq]);
-  const linhas=useMemo<Linha[]>(()=>docentesFreq.map(freq=>{const encontrado=servidorPorRf.get(dig(freq.rf));const servidor=encontrado??{rf:freq.rf,nome:freq.nome,cargo:freq.cargo||'',periodo:'',escola:freq.local_trabalho||SCHOOL,ativo:true,turma_atribuida:'',sala_atribuida:''};const ts=turmasDoServidor(servidor,freq,turmas);return{servidor,frequencia:freq,turmas:ts,modalidade:modalidadeSugerida(servidor,freq,ts),vinculosMesmoNome:nomesDuplicados.get(norm(freq.nome))??1,cruzamentoRfOk:!!encontrado,cruzamentoNomeOk:!!encontrado&&norm(encontrado.nome)===norm(freq.nome)}}),[docentesFreq,servidorPorRf,turmas,nomesDuplicados]);
+  const linhas=useMemo<Linha[]>(()=>docentesFreq.map(freq=>{const encontrado=servidorPorRf.get(dig(freq.rf));const servidor=encontrado??{rf:freq.rf,nome:freq.nome,cargo:freq.cargo||'',periodo:'',escola:freq.local_trabalho||SCHOOL,ativo:true,turma_atribuida:'',sala_atribuida:''};const ts=turmasDoServidor(servidor,freq,turmas,docentesFreq,servidorPorRf);return{servidor,frequencia:freq,turmas:ts,modalidade:modalidadeSugerida(servidor,freq,ts),vinculosMesmoNome:nomesDuplicados.get(norm(freq.nome))??1,cruzamentoRfOk:!!encontrado,cruzamentoNomeOk:!!encontrado&&norm(encontrado.nome)===norm(freq.nome)}}),[docentesFreq,servidorPorRf,turmas,nomesDuplicados]);
   const foraDaFrequencia=useMemo(()=>{const rfs=new Set(docentesFreq.map(f=>dig(f.rf)));return servidores.filter(s=>s.ativo&&ehDocente(s.cargo)&&!rfs.has(dig(s.rf)))},[servidores,docentesFreq]);
   const filtradas=useMemo(()=>{const q=norm(busca);if(!q)return linhas;return linhas.filter(l=>norm([l.servidor.nome,l.servidor.rf,l.frequencia.cargo,l.frequencia.lotacao,l.turmas.map(t=>t.nome).join(' '),l.modalidade].join(' ')).includes(q))},[linhas,busca]);
   const enviosPorRf=useMemo(()=>{const m=new Map<string,EnvioStatus[]>();for(const e of envios){const rf=dig(e.rf),lista=m.get(rf)||[];lista.push(e);m.set(rf,lista)}for(const lista of m.values())lista.sort((a,b)=>new Date(b.criadoEm).getTime()-new Date(a.criadoEm).getTime());return m},[envios]);
