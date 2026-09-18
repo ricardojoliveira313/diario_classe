@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import CensoProfessorFormulario from './pages/CensoProfessorFormulario';
 import CensoProfessorConvites from './pages/CensoProfessorConvites';
 import { ThemeProvider } from './ThemeContext';
@@ -13,7 +13,9 @@ if (rotaPublica) {
     <React.StrictMode>
       <ThemeProvider>
         <BrowserRouter>
-          <CensoProfessorFormulario />
+          <Routes>
+            <Route path="/censo-professor/:token" element={<CensoProfessorFormulario />} />
+          </Routes>
         </BrowserRouter>
       </ThemeProvider>
     </React.StrictMode>,
