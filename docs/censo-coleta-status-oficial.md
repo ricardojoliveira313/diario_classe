@@ -5,3 +5,5 @@ Quando um RF que possui convite individual é registrado em `CensoEnvioLog` com 
 No painel **Coleta individual com professores**, o RF continua visível para fins de controle e passa a aparecer como **CONFERIDO E ENVIADO** ou **CONFIRMADO PELA SECRETARIA**, com a data/hora do registro oficial. O link individual deixa de oferecer qualquer ação.
 
 O painel consulta essa situação periodicamente e também permite atualização manual.
+
+A integração é validada pelo pipeline **Censo CI**, que executa os testes do Censo, os testes do Educacenso e o build do frontend.
