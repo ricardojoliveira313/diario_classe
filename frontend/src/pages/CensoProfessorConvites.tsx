@@ -14,9 +14,11 @@ function formatDataHora(v?:string){if(!v)return'';const d=new Date(v);return Num
 function valor(v:any){if(v===true)return'Sim';if(v===false)return'Não';return txt(v)||'—'}
 
 export default function CensoProfessorConvites(){
+  const[token,setToken]=useState(()=>sessionStorage.getItem(TOKEN_KEY)||'');
   const[professores,setProfessores]=useState<Professor[]>([]),[loading,setLoading]=useState(false),[erro,setErro]=useState(''),[aviso,setAviso]=useState(''),[competencia,setCompetencia]=useState<{ano:number;mes:number}|null>(null);
   const[links,setLinks]=useState<Record<string,string>>({}),[gerando,setGerando]=useState(''),[detalhe,setDetalhe]=useState<Detalhe|null>(null),[conferindo,setConferindo]=useState(false);
-  const token=sessionStorage.getItem(TOKEN_KEY)||'';
+
+  useEffect(()=>{const id=window.setInterval(()=>{const atual=sessionStorage.getItem(TOKEN_KEY)||'';setToken(t=>t===atual?t:atual)},600);return()=>window.clearInterval(id)},[]);
 
   const invoke=async(body:Record<string,any>)=>{
     const headers:Record<string,string>={};if(token)headers['x-censo-token']=token;
@@ -24,7 +26,7 @@ export default function CensoProfessorConvites(){
     if(error){let msg=error.message||'Falha na coleta com professores.';const ctx=(error as any).context;try{if(ctx&&typeof ctx.json==='function'){const detail=await ctx.json();if(detail?.erro)msg=detail.erro}}catch{}throw new Error(msg)}
     if(!data?.ok)throw new Error(data?.erro||'Operação não autorizada.');return data;
   };
-  const carregar=async()=>{if(!token){setProfessores([]);return}setLoading(true);setErro('');try{const r=await invoke({action:'admin-list'});setProfessores(Array.isArray(r.professores)?r.professores:[]);setCompetencia(r.competencia||null)}catch(e:any){setErro(e?.message||'Não foi possível carregar a coleta com professores.')}finally{setLoading(false)}};
+  const carregar=async()=>{if(!token){setProfessores([]);setCompetencia(null);return}setLoading(true);setErro('');try{const r=await invoke({action:'admin-list'});setProfessores(Array.isArray(r.professores)?r.professores:[]);setCompetencia(r.competencia||null)}catch(e:any){setErro(e?.message||'Não foi possível carregar a coleta com professores.')}finally{setLoading(false)}};
   useEffect(()=>{void carregar()},[token]);
 
   const gerar=async(p:Professor)=>{setGerando(p.rf);setErro('');setAviso('');try{const r=await invoke({action:'admin-generate',rf:p.rf});setLinks(x=>({...x,[p.rf]:r.link}));setAviso(`Link individual gerado para ${p.nome}.`);await carregar()}catch(e:any){setErro(e?.message||'Não foi possível gerar o link.')}finally{setGerando('')}};
