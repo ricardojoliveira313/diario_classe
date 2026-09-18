@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../api';
 import { btn, theme } from '../styles';
 
+// O painel cruza a coleta individual com o histórico oficial antes de oferecer qualquer nova ação.
 const TOKEN_KEY='censo_direto_token';
 const PRAZO_SECRETARIA='21/09/2026';
 type Campo={key:string;label:string;section:string;type:string};
