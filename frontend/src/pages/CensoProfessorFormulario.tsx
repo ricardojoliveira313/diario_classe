@@ -23,6 +23,8 @@ type FormData = {
   status:string;
 };
 
+const PRAZO_SECRETARIA='21/09/2026';
+const EMAIL_SECRETARIA='ALLBRANDAO@santoandre.sp.gov.br';
 const txt=(v:unknown)=>String(v??'').trim();
 function formatRf(rf:string){const d=rf.replace(/\D/g,'');return d.length===6?`${d.slice(0,2)}.${d.slice(2,5)}-${d.slice(5)}`:rf}
 function formatDataHora(v:string){const d=new Date(v);return Number.isNaN(d.getTime())?'':d.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}
@@ -62,8 +64,22 @@ export default function CensoProfessorFormulario(){
     <section style={{background:theme.card,border:`1px solid ${theme.border}`,borderRadius:theme.radiusMd,boxShadow:theme.shadow,padding:20,marginBottom:14}}>
       <div style={{fontSize:12,fontWeight:900,color:theme.primaryText}}>EMEIEF LUIZ GONZAGA</div>
       <h1 style={{margin:'5px 0 6px',fontSize:24,color:theme.text}}>👩‍🏫 Complemento cadastral — Censo Docentes 2026</h1>
-      <p style={{margin:0,color:theme.textSecondary,lineHeight:1.55}}>Preencha somente as informações que ainda estão faltando no cadastro da escola. As respostas serão conferidas pela administração antes de qualquer envio oficial.</p>
-      <div style={{marginTop:14,padding:12,borderRadius:9,background:'var(--ghost-bg)',border:`1px solid ${theme.border}`}}><div style={{color:theme.text,fontWeight:900}}>{data.nome}</div><div style={{color:theme.textSecondary,fontSize:12,marginTop:4}}>RF {formatRf(data.rf)}{data.turma?` · ${data.turma}`:''}{data.periodo?` · ${data.periodo}`:''}</div><div style={{color:theme.textMuted,fontSize:10.5,marginTop:5}}>Link válido até {formatDataHora(data.expiraEm)}.</div></div>
+      <p style={{margin:0,color:theme.textSecondary,lineHeight:1.55}}>Este é o seu link individual. Preencha somente as informações que ainda estão faltando no cadastro da escola. As respostas serão conferidas pela administração antes de qualquer envio oficial.</p>
+      <div style={{marginTop:14,padding:12,borderRadius:9,background:'var(--ghost-bg)',border:`1px solid ${theme.border}`}}><div style={{color:theme.text,fontWeight:900}}>{data.nome}</div><div style={{color:theme.textSecondary,fontSize:12,marginTop:4}}>RF {formatRf(data.rf)}{data.turma?` · ${data.turma}`:''}{data.periodo?` · ${data.periodo}`:''}</div><div style={{color:theme.textMuted,fontSize:10.5,marginTop:5}}>Link individual válido até {formatDataHora(data.expiraEm)}.</div></div>
+    </section>
+
+    <section style={{background:theme.card,border:`2px solid ${theme.warning}88`,borderRadius:theme.radiusMd,boxShadow:theme.shadow,padding:18,marginBottom:14}}>
+      <div style={{display:'flex',gap:10,alignItems:'flex-start'}}>
+        <div style={{fontSize:26,lineHeight:1}}>📢</div>
+        <div style={{flex:1}}>
+          <div style={{fontSize:15,fontWeight:950,color:theme.text}}>Solicitação da Secretaria de Educação — Censo Escolar 2026</div>
+          <p style={{margin:'7px 0 0',color:theme.textSecondary,fontSize:12.5,lineHeight:1.6}}>Conforme orientação encaminhada pela <strong>Secretaria de Educação</strong> às equipes gestoras e administrativas, é necessária a atualização das informações referentes à formação curricular dos docentes. Esses dados serão utilizados para conferência e posterior atualização na plataforma <strong>EDUCACENSO</strong>.</p>
+          <div style={{marginTop:12,padding:'10px 12px',borderRadius:8,background:`${theme.danger}10`,border:`1px solid ${theme.danger}55`,color:theme.danger,fontWeight:950,fontSize:13}}>🔴 PRAZO INFORMADO PELA SECRETARIA: {PRAZO_SECRETARIA} — PREENCHA O QUANTO ANTES</div>
+          <p style={{margin:'10px 0 0',color:theme.textSecondary,fontSize:12,lineHeight:1.6}}>A EMEIEF Luiz Gonzaga preparou este formulário individual para facilitar o procedimento. Os dados que já constam nas bases disponíveis foram aproveitados previamente; por isso, aqui aparecem <strong>somente as informações ainda necessárias para completar o seu cadastro</strong>.</p>
+          <p style={{margin:'8px 0 0',color:theme.textSecondary,fontSize:12,lineHeight:1.6}}>Ao preencher graduação, pós-graduação, cursos ou demais formações, utilize as informações constantes em seus documentos e certificados.</p>
+          <p style={{margin:'8px 0 0',color:theme.textMuted,fontSize:11.5,lineHeight:1.5}}>Dúvidas sobre a orientação da Secretaria de Educação: <a href={`mailto:${EMAIL_SECRETARIA}`} style={{color:theme.primaryText,fontWeight:850}}>{EMAIL_SECRETARIA}</a>.</p>
+        </div>
+      </div>
     </section>
 
     {erro&&<div style={{marginBottom:12,padding:11,borderRadius:8,background:`${theme.danger}10`,border:`1px solid ${theme.danger}55`,color:theme.danger,fontSize:12,fontWeight:800}}>{erro}</div>}
