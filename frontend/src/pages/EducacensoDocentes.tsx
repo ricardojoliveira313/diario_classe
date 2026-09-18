@@ -42,7 +42,7 @@ const CURSOS_ESPECIFICOS = [
   'Gestão escolar', 'Outros', 'Nenhum',
 ] as const;
 
-type Servidor = { rf:string; nome:string; cargo:string; periodo:string; escola:string; ativo:boolean; turma_atribuida?:string|null; sala_atribuida?:string|null };
+type Servidor = { rf:string; nome:string; cargo:string; periodo:string; escola:string; ativo:boolean; turma_atribuida?:string|null; sala_atribuida?:string|null; censo_excluido?:boolean };
 type Frequencia = { ano:number; mes:number; rf:string; nome:string; categoria?:string|null; lotacao?:string|null; cargo?:string|null; carga_horaria?:number|null; local_trabalho?:string|null; pagina_pdf?:number|null };
 type Competencia = { ano:number; mes:number };
 type Turma = { id:string; nome:string; professora?:string|null; periodo?:string|null; tipo?:string|null };
@@ -312,17 +312,17 @@ export default function EducacensoDocentes(){
   const carregarEnvios=async(explicitToken?:string)=>{const t=explicitToken??token;if(!t){setEnvios([]);return}const headers:Record<string,string>={'x-censo-token':t};const{data,error}=await supabase.functions.invoke('censo-status-envios',{body:{action:'list'},headers});if(error||!data?.ok){setEnvios([]);return}setEnvios(Array.isArray(data.envios)?data.envios:[])};
 
   useEffect(()=>{let montado=true;(async()=>{setLoading(true);const comp=await supabase.from('CensoFrequenciaServidor').select('ano,mes').order('ano',{ascending:false}).order('mes',{ascending:false});if(!montado)return;if(comp.error){setErro(`Erro ao carregar as competências: ${comp.error.message}`);setLoading(false);return}const lista=[...new Map((comp.data??[]).map((c:any)=>[`${c.ano}-${c.mes}`,{ano:Number(c.ano),mes:Number(c.mes)}])).values()] as Competencia[];const atual=lista[0]||null;setCompetencias(lista);setCompetencia(atual);const[srv,freq,tur]=await Promise.all([
-    supabase.from('ServidorCenso').select('rf,nome,cargo,periodo,escola,ativo,turma_atribuida,sala_atribuida').order('nome'),
+    supabase.from('ServidorCenso').select('rf,nome,cargo,periodo,escola,ativo,turma_atribuida,sala_atribuida,censo_excluido').order('nome'),
     atual?supabase.from('CensoFrequenciaServidor').select('ano,mes,rf,nome,categoria,lotacao,cargo,carga_horaria,local_trabalho,pagina_pdf').eq('ano',atual.ano).eq('mes',atual.mes).order('pagina_pdf'):Promise.resolve({data:[],error:null}),
     supabase.from('Turma').select('id,nome,professora,periodo,tipo').order('nome'),
   ]);if(!montado)return;const falha=srv.error||freq.error||tur.error;if(falha)setErro(`Erro ao carregar as bases: ${falha.message}`);else{setServidores((srv.data??[])as Servidor[]);setFrequencias((freq.data??[])as Frequencia[]);setTurmas((tur.data??[])as Turma[])}setLoading(false)})();return()=>{montado=false}},[]);
   useEffect(()=>{if(!token){setSessaoOk(false);setEnvios([]);return}if(!expiraEm||new Date(expiraEm).getTime()<=Date.now()){sessionStorage.removeItem(TOKEN_KEY);sessionStorage.removeItem(TOKEN_EXP_KEY);setToken('');setExpiraEm('');setSessaoOk(false);setEnvios([]);return}let ativo=true;bridge({action:'status'},token).then(()=>{if(ativo){setSessaoOk(true);void carregarEnvios(token)}}).catch(()=>{if(!ativo)return;sessionStorage.removeItem(TOKEN_KEY);sessionStorage.removeItem(TOKEN_EXP_KEY);setToken('');setExpiraEm('');setSessaoOk(false);setEnvios([])});return()=>{ativo=false}},[]);
 
-  const docentesFreq=useMemo(()=>frequencias.filter(f=>ehDocente(f.cargo||'')),[frequencias]);
   const servidorPorRf=useMemo(()=>{const m=new Map<string,Servidor>();for(const s of servidores)m.set(dig(s.rf),s);return m},[servidores]);
+  const docentesFreq=useMemo(()=>frequencias.filter(f=>ehDocente(f.cargo||'')&&!servidorPorRf.get(dig(f.rf))?.censo_excluido),[frequencias,servidorPorRf]);
   const nomesDuplicados=useMemo(()=>{const m=new Map<string,number>();for(const f of docentesFreq)m.set(norm(f.nome),(m.get(norm(f.nome))??0)+1);return m},[docentesFreq]);
   const linhas=useMemo<Linha[]>(()=>docentesFreq.map(freq=>{const encontrado=servidorPorRf.get(dig(freq.rf));const servidor=encontrado??{rf:freq.rf,nome:freq.nome,cargo:freq.cargo||'',periodo:'',escola:freq.local_trabalho||SCHOOL,ativo:true,turma_atribuida:'',sala_atribuida:''};const ts=turmasDoServidor(servidor,freq,turmas,docentesFreq,servidorPorRf);return{servidor,frequencia:freq,turmas:ts,modalidade:modalidadeSugerida(servidor,freq,ts),vinculosMesmoNome:nomesDuplicados.get(norm(freq.nome))??1,cruzamentoRfOk:!!encontrado,cruzamentoNomeOk:!!encontrado&&norm(encontrado.nome)===norm(freq.nome)}}),[docentesFreq,servidorPorRf,turmas,nomesDuplicados]);
-  const foraDaFrequencia=useMemo(()=>{const rfs=new Set(docentesFreq.map(f=>dig(f.rf)));return servidores.filter(s=>s.ativo&&ehDocente(s.cargo)&&!rfs.has(dig(s.rf)))},[servidores,docentesFreq]);
+  const foraDaFrequencia=useMemo(()=>{const rfs=new Set(docentesFreq.map(f=>dig(f.rf)));return servidores.filter(s=>s.ativo&&!s.censo_excluido&&ehDocente(s.cargo)&&!rfs.has(dig(s.rf)))},[servidores,docentesFreq]);
   const filtradas=useMemo(()=>{const q=norm(busca);if(!q)return linhas;return linhas.filter(l=>norm([l.servidor.nome,l.servidor.rf,l.frequencia.cargo,l.frequencia.lotacao,l.turmas.map(t=>t.nome).join(' '),l.modalidade].join(' ')).includes(q))},[linhas,busca]);
   const enviosPorRf=useMemo(()=>{const m=new Map<string,EnvioStatus[]>();for(const e of envios){const rf=dig(e.rf),lista=m.get(rf)||[];lista.push(e);m.set(rf,lista)}for(const lista of m.values())lista.sort((a,b)=>new Date(b.criadoEm).getTime()-new Date(a.criadoEm).getTime());return m},[envios]);
   const enviosDaLinha=(l:Linha)=>enviosPorRf.get(dig(l.servidor.rf))||[];
