@@ -48,7 +48,7 @@ export default function CensoProfessorFormulario(){
 
   const enviar=async()=>{
     if(!data)return;
-    const faltando=camposVisiveis.filter(c=>c.type!=='boolean'&&!txt(respostas[c.key]));
+    const faltando=camposVisiveis.filter(c=>c.type==='boolean'?typeof respostas[c.key]!=='boolean':!txt(respostas[c.key]));
     if(faltando.length){setErro(`Preencha os campos restantes: ${faltando.slice(0,3).map(c=>c.label).join(', ')}${faltando.length>3?'…':''}`);return}
     setEnviando(true);setErro('');try{const r=await invoke({action:'public-submit',token,respostas});setConcluido(true);setMensagem(r.mensagem||'Informações enviadas com sucesso.')}catch(e:any){setErro(e?.message||'Não foi possível enviar as informações.')}finally{setEnviando(false)}
   };
